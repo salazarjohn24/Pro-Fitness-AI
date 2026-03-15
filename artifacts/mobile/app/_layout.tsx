@@ -24,6 +24,8 @@ function RootLayoutNav() {
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="welcome" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="workout-session" options={{ headerShown: false, animation: "slide_from_bottom" }} />
+      <Stack.Screen name="workout-architect" options={{ headerShown: false, animation: "slide_from_bottom" }} />
     </Stack>
   );
 }

@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { router } from "expo-router";
 import React, { useState } from "react";
 import {
   Platform,
@@ -128,7 +129,10 @@ export default function VaultScreen() {
       {/* AI Build button */}
       <Pressable
         style={({ pressed }) => [styles.aiBuildBtn, { opacity: pressed ? 0.85 : 1 }]}
-        onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          router.push("/workout-architect");
+        }}
       >
         <View style={styles.aiBuildIcon}>
           <Feather name="cpu" size={18} color={Colors.highlight} />
@@ -164,7 +168,10 @@ export default function VaultScreen() {
             <View style={styles.workoutFooter}>
               <Pressable
                 style={({ pressed }) => [styles.startSmallBtn, { opacity: pressed ? 0.85 : 1 }]}
-                onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy)}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                  router.push({ pathname: "/workout-session", params: { workoutId: workout.id } });
+                }}
               >
                 <Feather name="play" size={12} color="#fff" />
                 <Text style={styles.startSmallText}>START</Text>

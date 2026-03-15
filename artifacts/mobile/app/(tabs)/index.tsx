@@ -1,9 +1,9 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { router } from "expo-router";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
-  Animated,
   Platform,
   Pressable,
   ScrollView,
@@ -13,6 +13,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { CheckInModal } from "@/components/CheckInModal";
+import { ActivityImportModal } from "@/components/ActivityImportModal";
+import { InsightInfoModal } from "@/components/InsightInfoModal";
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
 import { useProfile, useUpdateProfile } from "@/hooks/useProfile";
@@ -23,6 +26,13 @@ const TODAY = new Date().toLocaleDateString("en-US", {
   day: "numeric",
 }).toUpperCase();
 
+const AI_SMART_LOAD_INFO = {
+  title: "AI Smart Load",
+  what: "AI Smart Load analyzes your recent training history, recovery scores, and today's check-in data to determine the ideal training volume and intensity for today.",
+  why: "Training with the wrong volume or intensity leads to overtraining, injury, or insufficient stimulus for growth. Smart load keeps you in the optimal zone.",
+  how: "Complete your daily check-in so the AI has up-to-date biometric data. The more consistently you check in, the more accurate your recommendations become.",
+};
+
 function BentoCard({ children, style }: { children: React.ReactNode; style?: any }) {
   return <View style={[styles.card, style]}>{children}</View>;
 }
@@ -30,7 +40,7 @@ function BentoCard({ children, style }: { children: React.ReactNode; style?: any
 function RationaleChip({ text }: { text: string }) {
   return (
     <View style={styles.chip}>
-      <Feather name="sparkles" size={10} color={Colors.highlight} />
+      <Feather name="star" size={10} color={Colors.highlight} />
       <Text style={styles.chipText}>{text}</Text>
     </View>
   );
@@ -42,6 +52,10 @@ export default function StatusScreen() {
   const { data: profile, isLoading } = useProfile();
   const { mutate: updateProfile } = useUpdateProfile();
 
+  const [checkInOpen, setCheckInOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [insightOpen, setInsightOpen] = useState(false);
+
   const streak = profile?.streakDays ?? 0;
   const syncProgress = profile?.dailySyncProgress ?? 0;
   const checkInDone = profile?.checkInCompleted ?? false;
@@ -50,16 +64,16 @@ export default function StatusScreen() {
   const completedTasks = [checkInDone, activityDone, false].filter(Boolean).length;
   const pct = Math.round((completedTasks / 3) * 100);
 
-  const handleCheckIn = () => {
-    if (checkInDone) return;
+  const handleCheckInComplete = () => {
+    setCheckInOpen(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const newProgress = Math.min(100, syncProgress + 33);
     updateProfile({ checkInCompleted: true, dailySyncProgress: newProgress, streakDays: streak + 1 });
   };
 
-  const handleActivity = () => {
-    if (activityDone) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  const handleActivityComplete = () => {
+    setActivityOpen(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const newProgress = Math.min(100, syncProgress + 34);
     updateProfile({ activityImported: true, dailySyncProgress: newProgress });
   };
@@ -76,151 +90,210 @@ export default function StatusScreen() {
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={[styles.scrollContent, { paddingTop: topPad + 8, paddingBottom: botPad + 100 }]}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.dateText}>{TODAY}</Text>
-          <Text style={styles.logoText}>
-            PRO FITNESS <Text style={styles.logoAccent}>AI</Text>
+    <>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: topPad + 8, paddingBottom: botPad + 100 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.dateText}>{TODAY}</Text>
+            <Text style={styles.logoText}>
+              PRO FITNESS <Text style={styles.logoAccent}>AI</Text>
+            </Text>
+          </View>
+          <View style={styles.headerRight}>
+            <View style={styles.streakBadge}>
+              <Feather name="zap" size={14} color={Colors.orange} />
+              <Text style={styles.streakText}>{streak}</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Daily Protocol Sync */}
+        <BentoCard>
+          <View style={styles.syncHeader}>
+            <View style={styles.syncTitleRow}>
+              <Text style={styles.sectionLabel}>Daily Protocol Sync</Text>
+              <Text style={styles.syncPct}>{pct}%</Text>
+            </View>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${pct}%` as any }]} />
+            </View>
+          </View>
+
+          <View style={styles.taskList}>
+            {/* Check-in Task */}
+            <Pressable
+              onPress={() => {
+                if (checkInDone) return;
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setCheckInOpen(true);
+              }}
+              style={({ pressed }) => [
+                styles.taskItem,
+                checkInDone ? styles.taskDone : styles.taskPending,
+                { opacity: pressed ? 0.85 : 1 },
+              ]}
+            >
+              <View style={[styles.taskIcon, checkInDone ? styles.taskIconDone : styles.taskIconHighlight]}>
+                <Feather name={checkInDone ? "check" : "zap"} size={16} color={checkInDone ? Colors.bgPrimary : Colors.highlight} />
+              </View>
+              <View style={styles.taskInfo}>
+                <Text style={[styles.taskTitle, checkInDone && styles.taskTitleDone]}>Intelligence Check-in</Text>
+                <Text style={styles.taskSub}>{checkInDone ? "Calibration Complete" : "Tap to start calibration"}</Text>
+              </View>
+              <Feather name={checkInDone ? "check-circle" : "chevron-right"} size={16} color={checkInDone ? Colors.highlight : Colors.textMuted} />
+            </Pressable>
+
+            {/* Activity Task */}
+            <Pressable
+              onPress={() => {
+                if (activityDone) return;
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setActivityOpen(true);
+              }}
+              style={({ pressed }) => [
+                styles.taskItem,
+                styles.taskInactive,
+                activityDone && styles.taskDone,
+                { opacity: pressed ? 0.85 : 1 },
+              ]}
+            >
+              <View style={[styles.taskIcon, activityDone ? styles.taskIconDone : styles.taskIconNeutral]}>
+                <Feather name="camera" size={16} color={activityDone ? Colors.bgPrimary : Colors.textMuted} />
+              </View>
+              <View style={styles.taskInfo}>
+                <Text style={[styles.taskTitle, !activityDone && styles.taskTitleMuted, activityDone && styles.taskTitleDone]}>
+                  Activity Screenshot
+                </Text>
+                <Text style={styles.taskSub}>{activityDone ? "Synced via AI Vision" : "Tap to upload & AI scan"}</Text>
+              </View>
+              <Feather name={activityDone ? "check-circle" : "plus"} size={16} color={activityDone ? Colors.highlight : "#3C3C3A"} />
+            </Pressable>
+
+            {/* Workout Task */}
+            <Pressable
+              onPress={() => {
+                if (!checkInDone) return;
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                router.push("/workout-session");
+              }}
+              style={({ pressed }) => [
+                styles.taskItem,
+                checkInDone ? styles.taskPending : styles.taskLocked,
+                { opacity: checkInDone ? (pressed ? 0.85 : 1) : 0.5 },
+              ]}
+            >
+              <View style={[styles.taskIcon, checkInDone ? styles.taskIconHighlight : styles.taskIconLocked]}>
+                <Feather name="activity" size={16} color={checkInDone ? Colors.highlight : "#3C3C3A"} />
+              </View>
+              <View style={styles.taskInfo}>
+                <Text style={[styles.taskTitle, !checkInDone && styles.taskTitleLocked]}>Physique Protocol</Text>
+                <Text style={styles.taskSub}>
+                  {checkInDone ? "Tap to begin today's workout" : "Locked: Complete check-in first"}
+                </Text>
+              </View>
+              <Feather name={checkInDone ? "chevron-right" : "lock"} size={16} color={checkInDone ? Colors.textMuted : "#3C3C3A"} />
+            </Pressable>
+          </View>
+        </BentoCard>
+
+        {/* AI Recommendation */}
+        <BentoCard style={[styles.recommendCard, !checkInDone && styles.recommendLocked]}>
+          <View style={styles.recommendHeader}>
+            <View style={styles.recommendHeaderLeft}>
+              <RationaleChip text="AI Smart Load" />
+            </View>
+            <Pressable
+              onPress={() => setInsightOpen(true)}
+              style={styles.infoBtn}
+            >
+              <Feather name="info" size={15} color={Colors.textSubtle} />
+            </Pressable>
+          </View>
+          <Text style={styles.recommendTitle}>Back & Arms{"\n"}Focus</Text>
+          <Text style={styles.recommendDesc}>
+            The AI suggests this to balance your recent volume and improve posture.
           </Text>
-        </View>
-        <View style={styles.headerRight}>
-          <View style={styles.streakBadge}>
-            <Feather name="zap" size={14} color={Colors.orange} />
-            <Text style={styles.streakText}>{streak}</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Daily Protocol Sync */}
-      <BentoCard>
-        <View style={styles.syncHeader}>
-          <View style={styles.syncTitleRow}>
-            <Text style={styles.sectionLabel}>Daily Protocol Sync</Text>
-            <Text style={styles.syncPct}>{pct}%</Text>
-          </View>
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${pct}%` as any }]} />
-          </View>
-        </View>
-
-        <View style={styles.taskList}>
-          {/* Check-in Task */}
           <Pressable
-            onPress={handleCheckIn}
             style={({ pressed }) => [
-              styles.taskItem,
-              checkInDone ? styles.taskDone : styles.taskPending,
-              { opacity: pressed ? 0.85 : 1 },
+              styles.startButton,
+              !checkInDone && styles.startButtonDisabled,
+              { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
             ]}
+            onPress={() => {
+              if (!checkInDone) return;
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+              router.push("/workout-session");
+            }}
+            disabled={!checkInDone}
           >
-            <View style={[styles.taskIcon, checkInDone ? styles.taskIconDone : styles.taskIconHighlight]}>
-              <Feather name={checkInDone ? "check" : "zap"} size={16} color={checkInDone ? Colors.bgPrimary : Colors.highlight} />
-            </View>
-            <View style={styles.taskInfo}>
-              <Text style={[styles.taskTitle, checkInDone && styles.taskTitleDone]}>Intelligence Check-in</Text>
-              <Text style={styles.taskSub}>{checkInDone ? "Calibration Complete" : "Calibration Required"}</Text>
-            </View>
-            <Feather name={checkInDone ? "check-circle" : "chevron-right"} size={16} color={checkInDone ? Colors.highlight : Colors.textMuted} />
+            <Feather name="play" size={16} color="#fff" />
+            <Text style={styles.startButtonText}>
+              {checkInDone ? "START WORKOUT" : "COMPLETE CHECK-IN FIRST"}
+            </Text>
           </Pressable>
+        </BentoCard>
 
-          {/* Activity Task */}
-          <Pressable
-            onPress={handleActivity}
-            style={({ pressed }) => [
-              styles.taskItem,
-              styles.taskInactive,
-              activityDone && styles.taskDone,
-              { opacity: pressed ? 0.85 : 1 },
-            ]}
-          >
-            <View style={[styles.taskIcon, activityDone ? styles.taskIconDone : styles.taskIconNeutral]}>
-              <Feather name="camera" size={16} color={activityDone ? Colors.bgPrimary : Colors.textMuted} />
-            </View>
-            <View style={styles.taskInfo}>
-              <Text style={[styles.taskTitle, !activityDone && styles.taskTitleMuted, activityDone && styles.taskTitleDone]}>
-                Activity Screenshot
-              </Text>
-              <Text style={styles.taskSub}>{activityDone ? "Synced" : "Sync via AI Vision Scan"}</Text>
-            </View>
-            <Feather name={activityDone ? "check-circle" : "plus"} size={16} color={activityDone ? Colors.highlight : "#3C3C3A"} />
-          </Pressable>
-
-          {/* Workout Task */}
-          <View style={[styles.taskItem, styles.taskLocked]}>
-            <View style={[styles.taskIcon, styles.taskIconLocked]}>
-              <Feather name="dumbbell" size={16} color="#3C3C3A" />
-            </View>
-            <View style={styles.taskInfo}>
-              <Text style={styles.taskTitleLocked}>Physique Protocol</Text>
-              <Text style={styles.taskSub}>
-                {checkInDone ? "Ready to Start" : "Locked: Pending Calibration"}
-              </Text>
-            </View>
-            <Feather name={checkInDone ? "chevron-right" : "lock"} size={16} color="#3C3C3A" />
-          </View>
-        </View>
-      </BentoCard>
-
-      {/* AI Recommendation */}
-      <BentoCard style={[styles.recommendCard, !checkInDone && styles.recommendLocked]}>
-        <View style={styles.recommendHeader}>
-          <RationaleChip text="AI Smart Load" />
-          <Text style={styles.recommendLabel}>OPTIMIZED PLAN</Text>
-        </View>
-        <Text style={styles.recommendTitle}>Back & Arms{"\n"}Focus</Text>
-        <Text style={styles.recommendDesc}>
-          The AI suggests this to balance your recent volume and improve posture.
-        </Text>
+        {/* Workout Architect */}
         <Pressable
-          style={({ pressed }) => [
-            styles.startButton,
-            { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
-          ]}
-          onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy)}
-          disabled={!checkInDone}
+          style={({ pressed }) => [styles.card, styles.architectCard, { opacity: pressed ? 0.85 : 1 }]}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            router.push("/workout-architect");
+          }}
         >
-          <Feather name="play" size={16} color="#fff" />
-          <Text style={styles.startButtonText}>START WORKOUT</Text>
+          <View style={styles.architectIcon}>
+            <Feather name="cpu" size={20} color={Colors.highlight} />
+          </View>
+          <View style={styles.architectInfo}>
+            <Text style={styles.architectTitle}>Workout Architect</Text>
+            <Text style={styles.architectSub}>Build your own custom session</Text>
+          </View>
+          <Feather name="arrow-right" size={18} color={Colors.highlight} />
         </Pressable>
-      </BentoCard>
 
-      {/* Workout Architect */}
-      <Pressable style={({ pressed }) => [styles.card, styles.architectCard, { opacity: pressed ? 0.85 : 1 }]}>
-        <View style={styles.architectIcon}>
-          <Feather name="cpu" size={20} color={Colors.highlight} />
+        {/* Stats Row */}
+        <View style={styles.statsRow}>
+          <BentoCard style={styles.statCard}>
+            <Feather name="activity" size={18} color={Colors.recovery} />
+            <Text style={styles.statValue}>78</Text>
+            <Text style={styles.statLabel}>Recovery</Text>
+          </BentoCard>
+          <BentoCard style={styles.statCard}>
+            <Feather name="zap" size={18} color={Colors.orange} />
+            <Text style={styles.statValue}>{streak}</Text>
+            <Text style={styles.statLabel}>Day Streak</Text>
+          </BentoCard>
+          <BentoCard style={styles.statCard}>
+            <Feather name="target" size={18} color={Colors.highlight} />
+            <Text style={styles.statValue}>{profile?.workoutFrequency ?? 3}x</Text>
+            <Text style={styles.statLabel}>/ Week</Text>
+          </BentoCard>
         </View>
-        <View style={styles.architectInfo}>
-          <Text style={styles.architectTitle}>Workout Architect</Text>
-          <Text style={styles.architectSub}>Build your own custom session</Text>
-        </View>
-        <Feather name="arrow-right" size={18} color={Colors.highlight} />
-      </Pressable>
+      </ScrollView>
 
-      {/* Stats Row */}
-      <View style={styles.statsRow}>
-        <BentoCard style={styles.statCard}>
-          <Feather name="activity" size={18} color={Colors.recovery} />
-          <Text style={styles.statValue}>78</Text>
-          <Text style={styles.statLabel}>Recovery</Text>
-        </BentoCard>
-        <BentoCard style={styles.statCard}>
-          <Feather name="zap" size={18} color={Colors.orange} />
-          <Text style={styles.statValue}>{streak}</Text>
-          <Text style={styles.statLabel}>Day Streak</Text>
-        </BentoCard>
-        <BentoCard style={styles.statCard}>
-          <Feather name="target" size={18} color={Colors.highlight} />
-          <Text style={styles.statValue}>{profile?.workoutFrequency ?? 3}x</Text>
-          <Text style={styles.statLabel}>/ Week</Text>
-        </BentoCard>
-      </View>
-    </ScrollView>
+      <CheckInModal
+        visible={checkInOpen}
+        onClose={() => setCheckInOpen(false)}
+        onComplete={handleCheckInComplete}
+      />
+
+      <ActivityImportModal
+        visible={activityOpen}
+        onClose={() => setActivityOpen(false)}
+        onComplete={handleActivityComplete}
+      />
+
+      <InsightInfoModal
+        visible={insightOpen}
+        onClose={() => setInsightOpen(false)}
+        insight={AI_SMART_LOAD_INFO}
+      />
+    </>
   );
 }
 
@@ -278,7 +351,7 @@ const styles = StyleSheet.create({
   taskPending: { borderColor: "rgba(246,234,152,0.3)", backgroundColor: "rgba(246,234,152,0.04)" },
   taskDone: { borderColor: "rgba(246,234,152,0.2)", backgroundColor: "rgba(246,234,152,0.07)" },
   taskInactive: { borderColor: Colors.border, backgroundColor: "rgba(255,255,255,0.02)" },
-  taskLocked: { borderColor: "#2C2C2A", backgroundColor: "transparent", opacity: 0.5 },
+  taskLocked: { borderColor: "#2C2C2A", backgroundColor: "transparent" },
   taskIcon: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
   taskIconHighlight: { backgroundColor: "rgba(246,234,152,0.12)" },
   taskIconDone: { backgroundColor: Colors.highlight },
@@ -304,9 +377,19 @@ const styles = StyleSheet.create({
   },
   chipText: { fontSize: 9, fontFamily: "Inter_700Bold", color: Colors.highlight, textTransform: "uppercase", letterSpacing: 0.5 },
   recommendCard: { borderLeftWidth: 4, borderLeftColor: Colors.orange, gap: 12 },
-  recommendLocked: { opacity: 0.4 },
+  recommendLocked: { opacity: 0.5 },
   recommendHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  recommendLabel: { fontSize: 9, fontFamily: "Inter_700Bold", color: Colors.textSubtle, letterSpacing: 1 },
+  recommendHeaderLeft: { flex: 1 },
+  infoBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   recommendTitle: {
     fontSize: 30,
     fontFamily: "Inter_900Black",
@@ -326,6 +409,7 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 4,
   },
+  startButtonDisabled: { backgroundColor: "#3A3A38" },
   startButtonText: { fontSize: 13, fontFamily: "Inter_900Black", color: "#fff", letterSpacing: 1, fontStyle: "italic" },
   architectCard: {
     flexDirection: "row",
