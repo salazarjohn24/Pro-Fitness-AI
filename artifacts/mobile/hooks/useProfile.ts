@@ -1,7 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as SecureStore from "expo-secure-store";
+import { Platform } from "react-native";
 
 const AUTH_TOKEN_KEY = "auth_session_token";
+const IS_WEB = Platform.OS === "web";
 
 function getApiBase(): string {
   if (process.env.EXPO_PUBLIC_DOMAIN) {
@@ -10,9 +12,22 @@ function getApiBase(): string {
   return "";
 }
 
-async function getAuthHeaders() {
-  const token = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
-  return token ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  if (IS_WEB) {
+    return { "Content-Type": "application/json" };
+  }
+  try {
+    const token = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
+    return token
+      ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
+      : { "Content-Type": "application/json" };
+  } catch {
+    return { "Content-Type": "application/json" };
+  }
+}
+
+function getFetchOptions(headers: Record<string, string>): RequestInit {
+  return IS_WEB ? { headers, credentials: "include" } : { headers };
 }
 
 export interface FitnessProfile {
@@ -31,7 +46,7 @@ export function useProfile() {
     queryKey: ["profile"],
     queryFn: async () => {
       const headers = await getAuthHeaders();
-      const res = await fetch(`${getApiBase()}/api/profile`, { headers });
+      const res = await fetch(`${getApiBase()}/api/profile`, getFetchOptions(headers));
       if (!res.ok) throw new Error("Failed to load profile");
       return res.json();
     },
@@ -44,8 +59,8 @@ export function useUpdateProfile() {
     mutationFn: async (data: Partial<Omit<FitnessProfile, "userId" | "updatedAt">>) => {
       const headers = await getAuthHeaders();
       const res = await fetch(`${getApiBase()}/api/profile`, {
+        ...getFetchOptions(headers),
         method: "PUT",
-        headers,
         body: JSON.stringify(data),
       });
       if (!res.ok) throw new Error("Failed to update profile");

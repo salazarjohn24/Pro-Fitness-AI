@@ -2,11 +2,14 @@ import React, { createContext, useContext, useState, useEffect, useCallback, typ
 import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import * as SecureStore from "expo-secure-store";
+import { Platform } from "react-native";
 
 WebBrowser.maybeCompleteAuthSession();
 
 const AUTH_TOKEN_KEY = "auth_session_token";
 const ISSUER_URL = process.env.EXPO_PUBLIC_ISSUER_URL ?? "https://replit.com/oidc";
+
+const IS_WEB = Platform.OS === "web";
 
 interface User {
   id: string;
@@ -40,7 +43,22 @@ function getApiBaseUrl(): string {
 }
 
 function getClientId(): string {
-  return process.env.EXPO_PUBLIC_REPL_ID || "";
+  return process.env.EXPO_PUBLIC_REPL_ID || "placeholder";
+}
+
+async function getStoredToken(): Promise<string | null> {
+  if (IS_WEB) return null;
+  try { return await SecureStore.getItemAsync(AUTH_TOKEN_KEY); } catch { return null; }
+}
+
+async function setStoredToken(token: string): Promise<void> {
+  if (IS_WEB) return;
+  await SecureStore.setItemAsync(AUTH_TOKEN_KEY, token);
+}
+
+async function clearStoredToken(): Promise<void> {
+  if (IS_WEB) return;
+  try { await SecureStore.deleteItemAsync(AUTH_TOKEN_KEY); } catch {}
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -48,7 +66,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const discovery = AuthSession.useAutoDiscovery(ISSUER_URL);
-
   const redirectUri = AuthSession.makeRedirectUri();
 
   const [request, response, promptAsync] = AuthSession.useAuthRequest(
@@ -63,14 +80,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchUser = useCallback(async () => {
     try {
-      const token = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
+      const apiBase = getApiBaseUrl();
+
+      if (IS_WEB) {
+        const res = await fetch(`${apiBase}/api/auth/user`, { credentials: "include" });
+        const data = await res.json();
+        setUser(data.user ?? null);
+        setIsLoading(false);
+        return;
+      }
+
+      const token = await getStoredToken();
       if (!token) {
         setUser(null);
         setIsLoading(false);
         return;
       }
 
-      const apiBase = getApiBaseUrl();
       const res = await fetch(`${apiBase}/api/auth/user`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -79,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data.user) {
         setUser(data.user);
       } else {
-        await SecureStore.deleteItemAsync(AUTH_TOKEN_KEY);
+        await clearStoredToken();
         setUser(null);
       }
     } catch {
@@ -94,6 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchUser]);
 
   useEffect(() => {
+    if (IS_WEB) return;
     if (response?.type !== "success" || !request?.codeVerifier) return;
 
     const { code, state } = response.params;
@@ -126,7 +153,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const data = await exchangeRes.json();
         if (data.token) {
-          await SecureStore.setItemAsync(AUTH_TOKEN_KEY, data.token);
+          await setStoredToken(data.token);
           setIsLoading(true);
           await fetchUser();
         }
@@ -138,6 +165,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [response, request, redirectUri, fetchUser]);
 
   const login = useCallback(async () => {
+    if (IS_WEB) {
+      const apiBase = getApiBaseUrl();
+      window.location.href = `${apiBase}/api/login`;
+      return;
+    }
     try {
       await promptAsync();
     } catch (err) {
@@ -146,8 +178,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [promptAsync]);
 
   const logout = useCallback(async () => {
+    if (IS_WEB) {
+      const apiBase = getApiBaseUrl();
+      window.location.href = `${apiBase}/api/logout`;
+      return;
+    }
     try {
-      const token = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
+      const token = await getStoredToken();
       if (token) {
         const apiBase = getApiBaseUrl();
         await fetch(`${apiBase}/api/mobile-auth/logout`, {
@@ -157,21 +194,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch {
     } finally {
-      await SecureStore.deleteItemAsync(AUTH_TOKEN_KEY);
+      await clearStoredToken();
       setUser(null);
     }
   }, []);
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        isLoading,
-        isAuthenticated: !!user,
-        login,
-        logout,
-      }}
-    >
+    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: !!user, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
