@@ -1,0 +1,1345 @@
+I have a mobile app prototype designed in Gemini Canvas. I want you to use the attached code as the visual and logic foundation for a native mobile app using Expo.
+
+Core Requirements:
+
+Authentication: Implement Replit Auth. I want users to be able to 'Sign in with Google' or create an account via email/password.
+
+Database: Set up the Replit Database to store user profiles once they log in.
+
+UI Integration: Use my Gemini Canvas code for the main app screens, but create a new, polished 'Welcome/Login' screen that matches the existing design style.
+
+Mobile Optimization: Ensure the layout is fully responsive for iOS and Android devices.
+
+Please start by reviewing the code below and tell me the plan for the database schema before you begin building.
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Fitness AI - High Performance Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        
+        :root {
+            --bg-primary: #1D1D1B;
+            --action: #FC5200;
+            --highlight: #f6ea98;
+            --recovery: #779CAF;
+            --glass: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-primary);
+            color: #FFFFFF;
+            line-height: 1.5;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .bento-card {
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 20px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .bento-card:active { transform: scale(0.99); }
+
+        .action-button {
+            background-color: var(--action);
+            color: white;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .rationale-chip {
+            background: rgba(246, 234, 152, 0.15);
+            border: 1px solid rgba(246, 234, 152, 0.3);
+            color: var(--highlight);
+            font-size: 10px;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 100px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .glass-overlay {
+            background: rgba(29, 29, 27, 0.98);
+            backdrop-filter: blur(40px);
+            -webkit-backdrop-filter: blur(40px);
+        }
+
+        .chart-container { position: relative; width: 100%; height: 250px; }
+        .active-tab { color: var(--action); }
+        .view-hidden { display: none !important; }
+
+        input[type=range] { -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 6px; cursor: pointer; background: rgba(255,255,255,0.1); border-radius: 10px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            height: 24px; width: 24px; border-radius: 50%; background: var(--highlight);
+            cursor: pointer; -webkit-appearance: none; margin-top: -9px;
+            box-shadow: 0 0 15px rgba(246, 234, 152, 0.4);
+        }
+
+        .muscle-path { fill: rgba(255,255,255,0.05); stroke: rgba(255,255,255,0.2); stroke-width: 1; transition: all 0.3s ease; cursor: pointer; }
+        .muscle-path.active { fill: var(--action); stroke: var(--action); filter: drop-shadow(0 0 5px var(--action)); }
+
+        @keyframes subtle-pulse {
+            0% { border-color: rgba(246, 234, 152, 0.3); }
+            50% { border-color: rgba(246, 234, 152, 0.6); }
+            100% { border-color: rgba(246, 234, 152, 0.3); }
+        }
+        .task-pending { animation: subtle-pulse 2s infinite; border: 1px solid var(--highlight); }
+
+        .sync-progress { transition: width 1s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+        .audit-header {
+            font-size: 10px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #57534e;
+            margin-bottom: 8px;
+            display: block;
+            border-left: 2px solid var(--action);
+            padding-left: 8px;
+        }
+
+        .profile-field-label { font-size: 8px; font-weight: 900; text-transform: uppercase; color: #78716c; letter-spacing: 0.05em; }
+        .profile-field-value { font-size: 13px; font-weight: 700; color: #e7e5e4; }
+        
+        .profile-action-btn {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            padding: 10px;
+            font-size: 10px;
+            font-weight: 800;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            color: #a8a29e;
+        }
+
+        .range-btn {
+            font-size: 9px;
+            font-weight: 900;
+            padding: 6px 12px;
+            border-radius: 100px;
+            background: rgba(255,255,255,0.05);
+            color: #78716c;
+            transition: all 0.2s ease;
+        }
+        .range-btn.active { background: var(--action); color: white; }
+
+        .dna-metric {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 16px;
+            padding: 12px;
+        }
+
+        .ai-insight-box {
+            background: linear-gradient(135deg, rgba(246, 234, 152, 0.1) 0%, rgba(29, 29, 27, 0) 100%);
+            border: 1px solid rgba(246, 234, 152, 0.2);
+            border-radius: 20px;
+            padding: 16px;
+        }
+    </style>
+</head>
+<body class="antialiased select-none">
+
+<div id="app-wrapper" class="max-w-md mx-auto min-h-screen pb-28 relative overflow-x-hidden">
+
+    <!-- TOP HEADER -->
+    <header class="p-6 flex justify-between items-center sticky top-0 bg-[#1D1D1B]/90 backdrop-blur-md z-30">
+        <div>
+            <p id="current-date" class="text-stone-500 text-[10px] font-black uppercase tracking-[0.2em] mb-1"></p>
+            <h1 class="text-xl font-black tracking-tight italic uppercase">Pro Fitness <span class="text-[#FC5200]">AI</span></h1>
+        </div>
+        <div class="flex items-center gap-4">
+            <div class="flex items-center gap-1">
+                <i data-lucide="flame" class="w-4 h-4 text-[#FC5200] fill-[#FC5200]"></i>
+                <span class="text-sm font-black italic">12</span>
+            </div>
+            <button onclick="switchTab('profile')" class="w-10 h-10 bg-white/5 rounded-full border border-white/10 flex items-center justify-center transition-all active:scale-90">
+                <i data-lucide="user" class="w-5 h-5 text-stone-400"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- TAB 1: STATUS (HOME) -->
+    <section id="tab-status" class="px-6 space-y-4 animate-in fade-in duration-300">
+        
+        <!-- DAILY PROTOCOL SYNC HUB -->
+        <div class="bento-card space-y-4 relative overflow-hidden bg-gradient-to-br from-white/[0.02] to-transparent">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center gap-2">
+                    <h3 class="text-[10px] font-black uppercase tracking-widest text-stone-500">Daily Protocol Sync</h3>
+                    <span id="sync-percent" class="text-[10px] font-black text-[#f6ea98]">33%</span>
+                </div>
+                <div class="h-1.5 w-24 bg-stone-800 rounded-full overflow-hidden">
+                    <div id="sync-bar" class="sync-progress h-full bg-[#f6ea98]" style="width: 33%"></div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 gap-2">
+                <!-- Task 1: Check-in -->
+                <button id="checkin-task-btn" onclick="openCheckIn()" class="w-full p-4 rounded-2xl flex items-center justify-between transition-all task-pending">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-full bg-[#f6ea98]/10 flex items-center justify-center text-[#f6ea98]" id="checkin-icon-bg">
+                            <i data-lucide="zap" class="w-4 h-4"></i>
+                        </div>
+                        <div class="text-left">
+                            <p class="text-xs font-black uppercase tracking-tight" id="checkin-text-main">Intelligence Check-in</p>
+                            <p class="text-[9px] text-stone-500 font-bold" id="checkin-text-sub">Calibration Required</p>
+                        </div>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-4 h-4 text-stone-600"></i>
+                </button>
+
+                <!-- Task 2: Activity Screenshot Import -->
+                <button id="import-task-btn" onclick="openImport()" class="w-full p-4 rounded-2xl bg-white/[0.02] border border-white/5 flex items-center justify-between transition-all hover:bg-white/[0.05]">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-full bg-stone-800 flex items-center justify-center text-stone-400" id="import-icon-bg">
+                            <i data-lucide="camera" class="w-4 h-4"></i>
+                        </div>
+                        <div class="text-left">
+                            <p class="text-xs font-black uppercase tracking-tight text-stone-300" id="import-text-main">Activity Screenshot</p>
+                            <p class="text-[9px] text-stone-600 font-bold" id="import-text-sub">Sync via AI Vision Scan</p>
+                        </div>
+                    </div>
+                    <i data-lucide="plus" class="w-4 h-4 text-stone-700"></i>
+                </button>
+
+                <!-- Task 3: Main Workout -->
+                <div class="w-full p-4 rounded-2xl bg-white/[0.02] border border-white/5 flex items-center justify-between opacity-60" id="workout-task-item">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-full bg-stone-800 flex items-center justify-center text-stone-500"><i data-lucide="dumbbell" class="w-4 h-4"></i></div>
+                        <div class="text-left">
+                            <p class="text-xs font-black uppercase tracking-tight text-stone-400">Physique Protocol</p>
+                            <p class="text-[9px] text-stone-600 font-bold">Locked: Pending Calibration</p>
+                        </div>
+                    </div>
+                    <i data-lucide="lock" class="w-4 h-4 text-stone-800"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI RECOMMENDATION CARD -->
+        <div class="bento-card border-l-4 border-l-[#FC5200] relative overflow-hidden blur-[2px] grayscale opacity-40 pointer-events-none transition-all duration-500" id="recommendation-card">
+            <div class="flex justify-between items-start mb-4">
+                <span class="rationale-chip"><i data-lucide="sparkles" class="w-3 h-3"></i> AI Smart Load</span>
+                <span class="text-stone-500 text-xs font-bold uppercase">Optimized Plan</span>
+            </div>
+            <h2 class="text-3xl font-black leading-none mb-2 uppercase italic">Back & Arms Focus</h2>
+            <p class="text-stone-400 text-sm mb-6 italic leading-relaxed">The AI suggests this to balance your recent volume and improve posture.</p>
+            <button class="w-full action-button py-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-transform">
+                <i data-lucide="play" class="w-4 h-4 fill-white"></i> Start Workout
+            </button>
+        </div>
+
+        <!-- WORKOUT ARCHITECT -->
+        <button onclick="switchTab('vault')" class="w-full bento-card flex items-center justify-between border border-[#f6ea98]/30 transition-all hover:bg-[#f6ea98]/5">
+            <div class="flex items-center gap-4">
+                <div class="w-10 h-10 rounded-xl bg-[#f6ea98]/10 flex items-center justify-center text-[#f6ea98]"><i data-lucide="cpu" class="w-5 h-5"></i></div>
+                <div class="text-left">
+                    <p class="text-xs font-black uppercase tracking-tight text-white">Workout Architect</p>
+                    <p class="text-[9px] text-stone-500 font-bold">Build your own custom session</p>
+                </div>
+            </div>
+            <i data-lucide="plus-circle" class="w-5 h-5 text-[#f6ea98]"></i>
+        </button>
+
+        <div class="grid grid-cols-2 gap-4">
+            <div class="bento-card relative">
+                <div class="flex justify-between items-start mb-1">
+                    <p class="text-[10px] font-black text-stone-500 uppercase tracking-widest">Strength Score</p>
+                    <button onclick="showExplanation('iq')"><i data-lucide="info" class="w-3 h-3 text-stone-500"></i></button>
+                </div>
+                <p class="text-4xl font-black text-[#f6ea98]">782</p>
+            </div>
+            <div class="bento-card relative">
+                <div class="flex justify-between items-start mb-1">
+                    <p class="text-[10px] font-black text-stone-500 uppercase tracking-widest">Body Readiness</p>
+                    <button onclick="showExplanation('readiness')"><i data-lucide="info" class="w-3 h-3 text-stone-500"></i></button>
+                </div>
+                <p class="text-4xl font-black text-[#779CAF]" id="readiness-val">--%</p>
+            </div>
+        </div>
+
+        <div class="bento-card">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xs font-black text-stone-500 uppercase tracking-widest">Activity Pulse</h3>
+                <button onclick="showExplanation('heartbeat')"><i data-lucide="help-circle" class="w-4 h-4 text-stone-600"></i></button>
+            </div>
+            <div id="calendar-grid" class="grid grid-cols-7 gap-y-3 text-center"></div>
+        </div>
+    </section>
+
+    <!-- CHECK-IN MODAL (INTELLIGENCE OVERLAY) -->
+    <div id="checkin-overlay" class="view-hidden fixed inset-0 z-[100] glass-overlay p-8 flex flex-col animate-in slide-in-from-bottom duration-500">
+        <header class="flex justify-between items-center mb-8">
+            <div class="flex items-center gap-2">
+                <div class="w-2 h-2 rounded-full bg-[#f6ea98]"></div>
+                <span class="text-[10px] font-black uppercase tracking-widest text-stone-500">Step <span id="checkin-step-num">1</span> of 3</span>
+            </div>
+            <button onclick="closeCheckIn()" class="p-2 bg-white/5 rounded-full"><i data-lucide="x" class="w-5 h-5 text-stone-400"></i></button>
+        </header>
+        
+        <div id="checkin-content" class="flex-1 flex flex-col justify-between pb-10">
+            <div id="step-1" class="space-y-12 animate-in fade-in">
+                <div class="space-y-6">
+                    <header><h2 class="text-4xl font-black tracking-tight leading-none uppercase italic">Internal<br><span class="text-[#f6ea98]">Battery</span> Sync</h2><p class="text-stone-500 text-xs font-bold mt-4">Calibration of sleep and stress levels.</p></header>
+                    <div class="space-y-10 pt-4">
+                        <div class="space-y-4">
+                            <div class="flex justify-between items-end"><label class="text-[10px] font-black uppercase text-stone-400 tracking-widest">Sleep Quality</label><span id="val-sleep" class="text-2xl font-black text-[#f6ea98]">3</span></div>
+                            <input type="range" min="1" max="5" value="3" step="1" oninput="$('val-sleep').innerText = this.value" class="w-full">
+                        </div>
+                        <div class="space-y-4">
+                            <div class="flex justify-between items-end"><label class="text-[10px] font-black uppercase text-stone-400 tracking-widest">Stress Level</label><span id="val-stress" class="text-2xl font-black text-[#f6ea98]">3</span></div>
+                            <input type="range" min="1" max="5" value="3" step="1" oninput="$('val-stress').innerText = this.value" class="w-full">
+                        </div>
+                    </div>
+                </div>
+                <button onclick="nextCheckInStep(2)" class="w-full bg-[#FC5200] py-6 rounded-3xl font-black text-lg flex items-center justify-center gap-2 shadow-2xl">Next Protocol <i data-lucide="arrow-right" class="w-5 h-5"></i></button>
+            </div>
+            <div id="step-2" class="view-hidden space-y-8 animate-in slide-in-from-right">
+                <header><h2 class="text-4xl font-black tracking-tight leading-none uppercase italic">Fatigue<br><span class="text-[#f6ea98]">Mapping</span></h2><p class="text-stone-500 text-xs font-bold mt-2">Select areas that feel stiff or fatigued.</p></header>
+                <div class="flex justify-center py-4">
+                    <svg width="200" height="320" viewBox="0 0 100 160" class="filter drop-shadow-2xl">
+                        <circle cx="50" cy="15" r="10" class="muscle-path" onclick="toggleMuscle(this)"></circle>
+                        <path d="M35 30 L65 30 L62 70 L38 70 Z" class="muscle-path" onclick="toggleMuscle(this)"></path>
+                        <path d="M30 30 L10 60 L15 65 L32 40 Z" class="muscle-path" onclick="toggleMuscle(this)"></path>
+                        <path d="M70 30 L90 60 L85 65 L68 40 Z" class="muscle-path" onclick="toggleMuscle(this)"></path>
+                        <path d="M38 75 L62 75 L60 100 L40 100 Z" class="muscle-path" onclick="toggleMuscle(this)"></path>
+                        <path d="M38 105 L48 105 L45 150 L32 150 Z" class="muscle-path" onclick="toggleMuscle(this)"></path>
+                        <path d="M52 105 L62 105 L68 150 L55 150 Z" class="muscle-path" onclick="toggleMuscle(this)"></path>
+                    </svg>
+                </div>
+                <button onclick="nextCheckInStep(3)" class="w-full bg-[#FC5200] py-6 rounded-3xl font-black text-lg flex items-center justify-center gap-2 shadow-2xl">Sync Biomarkers <i data-lucide="arrow-right" class="w-5 h-5"></i></button>
+            </div>
+            <div id="step-3" class="view-hidden space-y-8 animate-in slide-in-from-right">
+                <header><h2 class="text-4xl font-black tracking-tight leading-none uppercase italic">Biometric<br><span class="text-[#f6ea98]">Sync</span></h2><p class="text-stone-500 text-xs font-bold mt-2">Weight entry for Strength Score tracking.</p></header>
+                <div class="bg-white/5 border border-white/10 p-10 rounded-[40px] text-center space-y-4 shadow-inner">
+                    <p class="text-[10px] font-black uppercase text-stone-500 tracking-widest">Current Mass (lbs)</p>
+                    <input type="number" id="input-daily-weight" placeholder="185.0" class="bg-transparent text-6xl font-black text-center w-full text-white focus:outline-none placeholder-stone-800">
+                </div>
+                <button onclick="finalizeCheckIn()" class="w-full bg-[#f6ea98] text-black py-7 rounded-[40px] font-black text-xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-2xl">Lock In Profile <i data-lucide="check-circle-2" class="w-6 h-6"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- EXTERNAL IMPORT OVERLAY -->
+    <div id="import-overlay" class="view-hidden fixed inset-0 z-[100] glass-overlay p-8 flex flex-col animate-in slide-in-from-bottom duration-500">
+        <header class="flex justify-between items-center mb-10"><h2 class="text-2xl font-black italic uppercase tracking-tight">AI Vision <span class="text-[#f6ea98]">Sync</span></h2><button onclick="closeImport()" class="p-3 bg-white/5 rounded-full"><i data-lucide="x" class="w-5 h-5 text-stone-400"></i></button></header>
+        <div class="flex-1 flex flex-col justify-center space-y-10">
+            <section class="text-center space-y-4"><div class="w-20 h-20 bg-indigo-500/10 rounded-full flex items-center justify-center text-indigo-400 mx-auto mb-2"><i data-lucide="image-plus" class="w-10 h-10"></i></div><h3 class="text-xl font-black tracking-tight">Upload Activity Proof</h3><p class="text-stone-400 text-sm leading-relaxed max-w-xs mx-auto">Upload a screenshot of your Strava run, Apple Fitness ring, or gym whiteboard.</p></section>
+            <button onclick="simulateImport()" class="w-full py-8 border-2 border-dashed border-[#f6ea98]/30 rounded-[32px] flex flex-col items-center gap-4 bg-[#f6ea98]/5 hover:bg-[#f6ea98]/10 transition-all"><div class="w-12 h-12 rounded-full bg-[#f6ea98] flex items-center justify-center text-black shadow-xl shadow-[#f6ea98]/20"><i data-lucide="upload" class="w-6 h-6"></i></div><p class="text-xs font-black uppercase text-[#f6ea98] tracking-widest">Select Screenshot</p></button>
+        </div>
+    </div>
+
+    <!-- TAB 2: MOVEMENT GUIDE -->
+    <section id="tab-vault" class="view-hidden px-6 space-y-6 animate-in slide-in-from-bottom-4 duration-300">
+        <header class="flex justify-between items-start"><div><h2 class="text-3xl font-black tracking-tight uppercase italic">Movement Guide</h2><p class="text-stone-500 text-sm font-medium">Learn the "DNA" of 1,200+ moves</p></div><button onclick="showExplanation('patterns')"><i data-lucide="help-circle" class="w-6 h-6 text-[#FC5200]"></i></button></header>
+        <div class="relative"><input type="text" id="vault-search" placeholder="Search Pattern DNA..." class="w-full bg-white/5 border border-white/10 rounded-2xl p-5 pl-12 font-bold outline-none focus:ring-2 focus:ring-[#FC5200]"><span class="absolute left-5 top-1/2 -translate-y-1/2 opacity-30"><i data-lucide="search" class="w-5 h-5"></i></span></div>
+        <div id="vault-list" class="space-y-3 pb-10"></div>
+    </section>
+
+    <!-- TAB 3: PERFORMANCE AUDIT -->
+    <section id="tab-stats" class="view-hidden px-6 space-y-6 animate-in slide-in-from-bottom-4 duration-300">
+        <header class="flex flex-col gap-4">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                    <h2 class="text-3xl font-black tracking-tight text-[#f6ea98]">PERFORMANCE AUDIT</h2>
+                    <button onclick="showExplanation('audit_blueprint')"><i data-lucide="help-circle" class="w-5 h-5 text-stone-500"></i></button>
+                </div>
+                <button id="analyze-btn" onclick="runAnalysis()" class="flex items-center gap-2 text-[9px] font-black bg-[#FC5200] px-4 py-2 rounded-full uppercase tracking-widest">Analyze</button>
+            </div>
+            <div class="flex justify-between bg-white/5 p-1 rounded-full border border-white/10">
+                <button onclick="setTimeRange('weekly')" id="range-weekly" class="range-btn">WEEKLY</button>
+                <button onclick="setTimeRange('monthly')" id="range-monthly" class="range-btn active">MONTHLY</button>
+                <button onclick="setTimeRange('yearly')" id="range-yearly" class="range-btn">YEARLY</button>
+            </div>
+        </header>
+        <div id="audit-insight-card" class="bento-card border-l-4 border-l-[#f6ea98] bg-[#f6ea98]/5">
+            <div class="flex items-center gap-2 text-[#f6ea98] mb-2"><i data-lucide="brain-circuit" class="w-4 h-4"></i><h3 id="audit-title" class="text-xs font-black uppercase tracking-widest text-white">Monthly AI Briefing</h3></div>
+            <p id="audit-text" class="text-xs text-stone-300 leading-relaxed font-medium"><b>Physique Protocol Audit:</b> Back volume is lagging by 24%. Focusing here will improve aesthetic symmetry and structural health.</p>
+        </div>
+        <div id="heatmap-container" class="bento-card">
+            <div class="flex justify-between items-center mb-6">
+                <div class="flex items-center gap-2"><h3 class="text-xs font-black text-stone-500 uppercase tracking-widest">Body Balance Index</h3><button onclick="showExplanation('structural')"><i data-lucide="info" class="w-3 h-3 text-stone-500"></i></button></div>
+                <span id="range-indicator" class="rationale-chip"><i data-lucide="activity" class="w-3 h-3"></i> Monthly View</span>
+            </div>
+            <div class="space-y-6" id="heatmap-content">
+                <div><span class="audit-header">Lower Body</span><div class="grid grid-cols-2 gap-2" id="heatmap-lower"></div></div>
+                <div><span class="audit-header">Pushing Muscles</span><div class="grid grid-cols-2 gap-2" id="heatmap-push"></div></div>
+                <div><span class="audit-header">Pulling Muscles</span><div class="grid grid-cols-2 gap-2" id="heatmap-pull"></div></div>
+                <div><span class="audit-header">Abs & Support</span><div class="grid grid-cols-2 gap-2" id="heatmap-core"></div></div>
+            </div>
+        </div>
+        <div class="bento-card">
+            <div class="flex items-center gap-2 mb-4"><p id="momentum-title" class="text-xs font-black text-stone-500 uppercase tracking-widest">Progress Momentum</p><button onclick="showExplanation('momentum')"><i data-lucide="info" class="w-3 h-3 text-stone-500"></i></button></div>
+            <div class="chart-container"><canvas id="strength-chart"></canvas></div>
+        </div>
+    </section>
+
+    <!-- TAB 4: PROFILE -->
+    <section id="tab-profile" class="view-hidden px-6 space-y-6 animate-in slide-in-from-bottom-4 duration-300 pb-10">
+        <header class="text-center py-6">
+            <div class="relative inline-block">
+                <div class="w-20 h-20 bg-gradient-to-tr from-[#FC5200] to-[#f6ea98] rounded-full p-1 mx-auto mb-4 shadow-2xl"><div class="w-full h-full bg-[#1D1D1B] rounded-full flex items-center justify-center"><i data-lucide="user" class="w-10 h-10 text-stone-300"></i></div></div>
+                <span class="absolute bottom-4 right-0 bg-[#FC5200] text-white p-1 rounded-full border-2 border-[#1D1D1B]"><i data-lucide="zap" class="w-2.5 h-2.5"></i></span>
+            </div>
+            <h2 class="text-2xl font-black italic uppercase leading-none">Alex Trainer</h2>
+            <p class="text-stone-500 text-[9px] font-black uppercase tracking-[0.3em] mt-2">Protocol Certified Athlete</p>
+        </header>
+
+        <!-- SECTION 1: ATHLETE PROFILE -->
+        <div class="bento-card space-y-6">
+            <div class="flex justify-between items-center"><h3 class="audit-header !mb-0">Athlete Profile</h3><i data-lucide="fingerprint" class="w-4 h-4 text-stone-700"></i></div>
+            <div class="grid grid-cols-3 gap-y-4">
+                <div><p class="profile-field-label">Age</p><p class="profile-field-value">28</p></div>
+                <div><p class="profile-field-label">Height</p><p class="profile-field-value">5'11"</p></div>
+                <div><p class="profile-field-label">Weight</p><p class="profile-field-value" id="prof-weight-display">185 lbs</p></div>
+                <div class="col-span-2"><p class="profile-field-label">Fitness Level</p><p class="profile-field-value">Intermediate</p></div>
+                <div><p class="profile-field-label">Goal</p><p class="profile-field-value text-[#f6ea98]">Physique</p></div>
+                <div class="col-span-3"><p class="profile-field-label">Success Metric</p><p class="profile-field-value italic">Body Fat % & Strength Score</p></div>
+            </div>
+            <div class="grid grid-cols-1 gap-2 pt-2">
+                <button class="profile-action-btn"><i data-lucide="edit-3" class="w-3 h-3"></i> Edit body stats</button>
+                <div class="grid grid-cols-2 gap-2">
+                    <button class="profile-action-btn"><i data-lucide="target" class="w-3 h-3"></i> Edit goal</button>
+                    <button class="profile-action-btn"><i data-lucide="award" class="w-3 h-3"></i> Update Level</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION 2: TRAINING SETUP -->
+        <div class="bento-card space-y-6">
+            <div class="flex justify-between items-center"><h3 class="audit-header !mb-0">Training Setup</h3><i data-lucide="sliders" class="w-4 h-4 text-stone-700"></i></div>
+            <div class="space-y-4">
+                <div><p class="profile-field-label">Equipment Access</p><p class="profile-field-value">Commercial Gym (Full Inventory)</p></div>
+                <div class="grid grid-cols-2">
+                    <div><p class="profile-field-label">Frequency</p><p class="profile-field-value">4x / week</p></div>
+                    <div><p class="profile-field-label">Preferred Time</p><p class="profile-field-value">Evening (18:00)</p></div>
+                </div>
+                <div><p class="profile-field-label">Preferred Days</p><p class="profile-field-value">Mon, Tue, Thu, Fri</p></div>
+                <div><p class="profile-field-label">Injury Flags</p><p class="profile-field-value text-red-400 flex items-center gap-2"><i data-lucide="alert-triangle" class="w-3 h-3"></i> Lower Back Sensitivity</p></div>
+            </div>
+            <div class="grid grid-cols-1 gap-2 pt-2">
+                <button class="profile-action-btn"><i data-lucide="calendar" class="w-3 h-3"></i> Update schedule</button>
+                <div class="grid grid-cols-2 gap-2">
+                    <button class="profile-action-btn"><i data-lucide="dumbbell" class="w-3 h-3"></i> Equipment</button>
+                    <button class="profile-action-btn"><i data-lucide="activity" class="w-3 h-3"></i> Injury status</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION 4: AI SETTINGS -->
+        <div class="bento-card space-y-6 border-l-4 border-l-[#f6ea98]">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center gap-2 text-[#f6ea98]"><i data-lucide="brain-circuit" class="w-4 h-4"></i><h3 class="text-[10px] font-black uppercase tracking-widest">AI Intelligence Engine</h3></div>
+                <button onclick="showExplanation('ai_settings')"><i data-lucide="info" class="w-3 h-3 text-stone-600"></i></button>
+            </div>
+            <div class="space-y-4">
+                <div class="flex justify-between items-center border-b border-white/5 pb-2"><p class="profile-field-label">Progression aggressiveness</p><span class="rationale-chip !bg-emerald-500/10 !text-emerald-400 !border-none !text-[8px]">Steady</span></div>
+                <div class="flex justify-between items-center border-b border-white/5 pb-2"><p class="profile-field-label">RPE Sensitivity</p><span class="rationale-chip !bg-[#FC5200]/10 !text-[#FC5200] !border-none !text-[8px]">High (Precise)</span></div>
+                <div class="flex justify-between items-center border-b border-white/5 pb-2"><p class="profile-field-label">Deload Frequency</p><span class="profile-field-value !text-xs uppercase">Auto (Metric-Based)</span></div>
+                <div class="flex justify-between items-center border-b border-white/5 pb-2"><p class="profile-field-label">Strength vs Volume Bias</p><div class="h-1 w-20 bg-stone-800 rounded-full flex"><div class="h-full bg-[#f6ea98]" style="width: 70%"></div></div></div>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <button class="profile-action-btn !text-red-400 !border-red-900/30"><i data-lucide="rotate-ccw" class="w-3 h-3"></i> Reset AI Learning</button>
+                <button class="profile-action-btn active:bg-emerald-500/20"><i data-lucide="toggle-right" class="w-3 h-3"></i> Adaptive Mode</button>
+            </div>
+        </div>
+
+        <!-- SECTION 3: ACCOUNT -->
+        <div class="bento-card space-y-6">
+            <div class="flex justify-between items-center"><h3 class="audit-header !mb-0">Account Settings</h3><i data-lucide="settings" class="w-4 h-4 text-stone-700"></i></div>
+            <div class="space-y-1">
+                <button class="w-full flex justify-between items-center p-3 hover:bg-white/5 rounded-xl transition-colors"><div class="text-left"><p class="profile-field-label">Email</p><p class="profile-field-value !text-xs">alex@trainer.io</p></div><i data-lucide="chevron-right" class="w-4 h-4 text-stone-600"></i></button>
+                <button class="w-full flex justify-between items-center p-3 hover:bg-white/5 rounded-xl transition-colors"><span class="text-sm font-bold text-stone-300">Notification Hub</span><span class="text-[10px] font-black text-[#FC5200] uppercase">Smart Alerts</span></button>
+            </div>
+            <div class="grid grid-cols-2 gap-2 border-t border-white/5 pt-4">
+                <button class="profile-action-btn active:bg-white/10" onclick="window.location.reload()"><i data-lucide="log-out" class="w-3 h-3"></i> Log out</button>
+                <button class="profile-action-btn !text-red-500 !border-red-900/50"><i data-lucide="trash-2" class="w-3 h-3"></i> Delete</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- NAVIGATION -->
+    <nav class="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md glass-overlay border border-white/10 rounded-[32px] px-8 py-4 flex justify-between items-center z-40 shadow-2xl">
+        <button onclick="switchTab('status')" class="flex flex-col items-center gap-1 active-tab" id="nav-status"><i data-lucide="home" class="w-6 h-6"></i><span class="text-[9px] font-black uppercase tracking-tighter">Status</span></button>
+        <button onclick="switchTab('vault')" class="flex flex-col items-center gap-1 text-stone-500" id="nav-vault"><i data-lucide="book-open" class="w-6 h-6"></i><span class="text-[9px] font-black uppercase tracking-tighter">Guide</span></button>
+        <button onclick="switchTab('stats')" class="flex flex-col items-center gap-1 text-stone-500" id="nav-stats"><i data-lucide="activity" class="w-6 h-6"></i><span class="text-[9px] font-black uppercase tracking-tighter">Audit</span></button>
+        <button onclick="switchTab('profile')" class="flex flex-col items-center gap-1 text-stone-500" id="nav-profile"><i data-lucide="user" class="w-6 h-6"></i><span class="text-[9px] font-black uppercase tracking-tighter">Profile</span></button>
+    </nav>
+
+    <!-- EXPLANATION MODAL -->
+    <div id="explanation-modal" class="view-hidden fixed inset-0 z-[100] glass-overlay flex items-center justify-center p-6 animate-in fade-in duration-300">
+        <div class="bento-card bg-[#1D1D1B] max-w-sm w-full border-[#FC5200]/20 shadow-2xl overflow-y-auto max-h-[85vh]"><div id="exp-content" class="space-y-4"></div><button onclick="closeExplanation()" class="w-full mt-8 py-4 action-button rounded-xl uppercase font-black tracking-widest">Understood</button></div>
+    </div>
+
+    <!-- VAULT DETAIL OVERLAY -->
+    <div id="vault-overlay" class="view-hidden fixed inset-0 z-[500] glass-overlay overflow-y-auto p-8 flex flex-col animate-in slide-in-from-right duration-400">
+        <button onclick="closeVaultOverlay()" class="fixed top-8 left-6 w-12 h-12 bg-white/10 rounded-full flex items-center justify-center z-50"><i data-lucide="chevron-left" class="w-6 h-6"></i></button>
+        <div id="overlay-content" class="space-y-6 pb-20"></div>
+    </div>
+
+</div>
+
+<script>
+    const profileData = { weight: 185, goal: 'Physique', aggressiveness: 'Steady', injury: 'None' };
+    const HEATMAP_DATA = {
+        weekly: { labels: ['MON','TUE','WED','THU','FRI','SAT','SUN'], values: [40, 60, 55, 80, 70, 100, 30], scores: { glutes: '42%', hams: '28%', quads: '110%', calves: '85%', chest: '95%', delts: '70%', tri: '70%', uback: '15%', bicep: '60%', core: '90%', lback: '80%'} },
+        monthly: { labels: ['WK 1','WK 2','WK 3','WK 4'], values: [1200, 1900, 1750, 2400], scores: { glutes: '48%', hams: '35%', quads: '132%', calves: '92%', chest: '105%', delts: '88%', tri: '88%', uback: '24%', bicep: '82%', core: '100%', lback: '95%'} },
+        yearly: { labels: ['JAN','FEB','MAR','APR','MAY','JUN'], values: [10000, 12000, 11500, 14000, 15000, 14500], scores: { glutes: '75%', hams: '72%', quads: '98%', calves: '94%', chest: '102%', delts: '95%', tri: '96%', uback: '82%', bicep: '90%', core: '98%', lback: '92%'} }
+    };
+    const VAULT_DATA = [{ name: 'Barbell Back Squat', muscle: 'Lower Body', pb: '285lb', videoId: 'SW_C1A-zeXw', aiInsight: { projection: '300lb Squat predicted by May.', plateau: 'Flat weight for 3 weeks.', dna: { drain: '82% (High)', synergy: 'Fixes quad dominance', velocity: '+5lb / Week' } } }];
+
+    // --- FULL THOROUGH EXPLANATIONS ---
+    const EXPLANATIONS = {
+        iq: { 
+            title: 'Strength Score', 
+            body: `<div class="space-y-4"><p class="text-xs text-stone-300"><b>What is it?</b> Overall power compared to size. Calculated using your weight of <b>${profileData.weight} lbs</b>.</p><div class="p-4 bg-white/5 rounded-xl border border-white/10"><p class="text-[10px] font-black uppercase text-[#f6ea98] mb-1">Why it matters</p><p class="text-[11px] text-stone-400 leading-relaxed">Ensures you're getting stronger, not just bigger. If your weight goes up but this score drops, physical efficiency is decreasing.</p></div></div>`
+        },
+        readiness: { 
+            title: 'Body Readiness', 
+            body: `<div class="space-y-4"><p class="text-xs text-stone-300"><b>What is it?</b> This is your "Internal Battery." Maps recovery based on recent sleep and stress.</p><div class="p-4 bg-white/5 rounded-xl border border-white/10"><p class="text-[10px] font-black uppercase text-[#FC5200] mb-1">The Strategy</p><p class="text-[11px] text-stone-400"><b>85%+: Green Light.</b> Go for a heavy lift. <br><b>Below 70%: Yellow Light.</b> Focus on stretching or technique work today.</p></div></div>`
+        },
+        heartbeat: { title: 'Activity Pulse', body: `<div class="space-y-4"><p class="text-xs text-stone-300">A map of consistency over the last 30 days. Balance hard "Work" (Orange) with "Restorative" (Blue).</p></div>` },
+        patterns: { 
+            title: 'Intelligence Patterns', 
+            body: `<div class="space-y-4"><p class="text-xs text-stone-300 leading-relaxed">Think of every exercise as a <b>"Smart Pattern"</b> for your body. We look at the <b>"DNA"</b> behind every move.</p><div class="space-y-3"><section><h4 class="text-[10px] font-black uppercase text-[#FC5200]">1. Battery Cost</h4><p class="text-[11px] text-stone-400">Tracks mental battery usage so you don't run out of energy mid-session.</p></section><section><h4 class="text-[10px] font-black uppercase text-[#779CAF]">2. Teamwork</h4><p class="text-[11px] text-stone-400">Tracks how back training improves posture for your big compound lifts.</p></section></div></div>`
+        },
+        momentum: { title: 'Progress Momentum', body: '<p class="text-xs text-stone-300 leading-relaxed">This chart shows if you are moving more total weight over time. If the line is going up, your body is adapting and getting stronger.</p>' },
+        structural: { title: 'Body Balance Index', body: 'This shows which muscles you are using most. If an area stays "Neglected" (Blue), it can lead to joint pain. Use this map to pick moves from the Guide that fill in the gaps and keep you balanced.' },
+        audit_blueprint: { 
+            title: 'Audit Blueprint', 
+            body: `<div class="space-y-6"><section class="border-b border-white/10 pb-4"><h4 class="text-[#FC5200] font-black text-xs uppercase mb-2">Why Log Workouts?</h4><p class="text-xs text-stone-300">Logging fuels the AI. Without logs, the engine is blind to your gaps.</p></section><section><h4 class="text-[#f6ea98] font-black text-xs uppercase mb-2">For Beginners</h4><p class="text-xs text-stone-300 leading-relaxed">Use the <b>Heatmap</b> to pick moves that fix your weakest spots to build a solid, pain-free foundation.</p></section></div>`
+        },
+        ai_settings: { title: 'AI Logic Engine', body: `<p class="text-xs text-stone-300 leading-relaxed">Tune how aggressively the AI pushes you for weight jumps and how much weight it gives your qualitative feedback.</p>` },
+        external_sync: { 
+            title: 'Activity Proof Sync', 
+            body: `
+            <div class="space-y-4">
+                <p class="text-xs text-stone-300"><b>Broad Intelligence:</b> Uploading a screenshot of outside work helps the AI track <b>"Total Systemic Load."</b></p>
+                <div class="p-4 bg-white/5 rounded-xl border border-white/10">
+                    <p class="text-[10px] font-black uppercase text-[#FC5200] mb-1">Why it's essential</p>
+                    <p class="text-[11px] text-stone-400">If you run a marathon, the AI needs to know to deload your leg day. This ensures your roadmap stays accurate.</p>
+                </div>
+            </div>`
+        }
+    };
+
+    const $ = (id) => document.getElementById(id);
+    let currentRange = 'monthly';
+    let myChart;
+
+    function init() { 
+        renderDate(); 
+        renderCalendar(); 
+        renderVaultList(); 
+        setTimeRange('monthly'); 
+        lucide.createIcons(); 
+    }
+
+    function renderDate() { const options = { weekday: 'long', month: 'short', day: 'numeric' }; $('current-date').innerText = new Date().toLocaleDateString('en-US', options); }
+    function renderCalendar() {
+        const grid = $('calendar-grid');
+        for(let i = 1; i <= 28; i++) {
+            const hasStrength = [2, 5, 8, 12, 14, 22, 25].includes(i);
+            const isToday = i === 21;
+            grid.innerHTML += `<div class="flex flex-col items-center"><span class="text-xs font-bold ${isToday ? 'text-[#FC5200]' : 'text-stone-600'}">${i}</span><div class="w-1 h-1 rounded-full ${hasStrength ? 'bg-[#FC5200]' : 'bg-transparent'} mt-1"></div></div>`;
+        }
+    }
+
+    function setTimeRange(range) {
+        currentRange = range;
+        const btns = document.querySelectorAll('.range-btn');
+        if (btns.length > 0) {
+            btns.forEach(b => b.classList.remove('active'));
+            const targetBtn = $(`range-${range}`);
+            if (targetBtn) targetBtn.classList.add('active');
+        }
+        
+        const data = HEATMAP_DATA[range];
+        const indicator = $('range-indicator');
+        if (indicator) indicator.innerHTML = `<i data-lucide="activity" class="w-3 h-3"></i> ${range.toUpperCase()} VIEW`;
+        
+        updateHeatmap(data.scores);
+        renderStatsChart(range);
+        lucide.createIcons();
+    }
+
+    function updateHeatmap(scores) {
+        const createItem = (label, val) => {
+            const num = parseInt(val);
+            const isInjured = label.toLowerCase().includes(profileData.injury.toLowerCase()) && profileData.injury !== 'None';
+            const typeClass = isInjured ? 'index-limited' : (num > 110 ? 'index-over' : (num < 50 ? 'index-neglect' : 'index-target'));
+            return `<div class="p-3 rounded-2xl border ${typeClass}"><p class="text-[8px] font-black uppercase text-stone-500">${label}</p><p class="text-sm font-black text-white">${isInjured ? '⚠️' : val}</p></div>`;
+        };
+        const lower = $('heatmap-lower');
+        if (lower) lower.innerHTML = createItem('Glutes', scores.glutes) + createItem('Hamstrings', scores.hams) + createItem('Quads', scores.quads) + createItem('Calves', scores.calves);
+        const push = $('heatmap-push');
+        if (push) push.innerHTML = createItem('Chest', scores.chest) + createItem('Shoulders', scores.delts) + createItem('Triceps', scores.tri);
+        const pull = $('heatmap-pull');
+        if (pull) pull.innerHTML = createItem('Upper Back', scores.uback) + createItem('Biceps', scores.bicep);
+        const core = $('heatmap-core');
+        if (core) core.innerHTML = createItem('Abs', scores.core) + createItem('L-Back', scores.lback);
+    }
+
+    function renderStatsChart(range) {
+        const canvas = $('strength-chart');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (myChart) myChart.destroy();
+        const config = HEATMAP_DATA[range];
+        myChart = new Chart(ctx, { type: 'line', data: { labels: config.labels, datasets: [{ data: config.values, borderColor: '#FC5200', borderWidth: 4, pointRadius: 0, tension: 0.4, fill: true, backgroundColor: 'rgba(252, 82, 0, 0.05)' }] }, options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { display: true, grid: { display: false }, ticks: { font: { weight: '800', size: 10 } } }, y: { display: false } } } });
+    }
+
+    function openCheckIn() { $('checkin-overlay').classList.remove('view-hidden'); }
+    function closeCheckIn() { $('checkin-overlay').classList.add('view-hidden'); }
+    function nextCheckInStep(step) { ['step-1', 'step-2', 'step-3'].forEach(s => $(s).classList.add('view-hidden')); $(`step-${step}`).classList.remove('view-hidden'); $('checkin-step-num').innerText = step; lucide.createIcons(); }
+    function toggleMuscle(path) { path.classList.toggle('active'); }
+    function finalizeCheckIn() { 
+        closeCheckIn(); 
+        $('readiness-val').innerText = '94%'; 
+        $('recommendation-card').classList.remove('blur-[2px]', 'grayscale', 'opacity-40', 'pointer-events-none'); 
+        
+        const checkinBtn = $('checkin-task-btn');
+        checkinBtn.classList.remove('task-pending');
+        checkinBtn.classList.add('bg-emerald-500/10', 'border-emerald-500/30');
+        $('checkin-icon-bg').innerHTML = '<i data-lucide="check" class="w-4 h-4 text-emerald-500"></i>';
+        
+        lucide.createIcons(); 
+    }
+
+    function openImport() { $('import-overlay').classList.remove('view-hidden'); }
+    function closeImport() { $('import-overlay').classList.add('view-hidden'); }
+    function simulateImport() { 
+        closeImport(); 
+        const importBtn = $('import-task-btn');
+        importBtn.classList.add('bg-emerald-500/10', 'border-emerald-500/30');
+        $('import-icon-bg').innerHTML = '<i data-lucide="check" class="w-4 h-4 text-emerald-500"></i>';
+        $('sync-percent').innerText = '100%';
+        $('sync-bar').style.width = '100%';
+        lucide.createIcons(); 
+    }
+
+    function switchTab(tabId) {
+        ['status', 'vault', 'stats', 'profile'].forEach(id => { $(`tab-${id}`).classList.add('view-hidden'); $(`nav-${id}`).classList.replace('active-tab', 'text-stone-500'); });
+        $(`tab-${tabId}`).classList.remove('view-hidden');
+        $(`nav-${tabId}`).classList.replace('text-stone-500', 'active-tab');
+        if(tabId === 'stats') renderStatsChart(currentRange);
+        lucide.createIcons();
+    }
+
+    function renderVaultList() {
+        const list = $('vault-list');
+        list.innerHTML = VAULT_DATA.map(ex => `<div onclick="openVaultOverlay('${ex.name}')" class="bento-card flex justify-between items-center"><div><h4 class="font-black text-lg leading-none">${ex.name}</h4><p class="text-[10px] font-black uppercase text-stone-500 mt-1">${ex.muscle}</p></div><i data-lucide="chevron-right" class="w-4 h-4 text-stone-700"></i></div>`).join('');
+    }
+
+    function openVaultOverlay(name) {
+        const ex = VAULT_DATA.find(e => e.name === name);
+        $('overlay-content').innerHTML = `
+            <header><h2 class="text-4xl font-black italic uppercase">${ex.name}</h2></header>
+            <div class="space-y-4">
+                <div class="dna-metric flex justify-between"><div><p class="text-xs font-black">Battery Drain</p></div><span class="text-xs font-black text-[#FC5200]">${ex.aiInsight.dna.drain}</span></div>
+                <div class="dna-metric flex justify-between"><div><p class="text-xs font-black">Teamwork</p></div><span class="text-xs font-black">${ex.aiInsight.dna.synergy}</span></div>
+            </div>
+            <div class="ai-insight-box"><p class="text-xs italic">${ex.aiInsight.plateau}</p><p class="text-xs font-bold mt-2">${ex.aiInsight.projection}</p></div>
+            <iframe class="w-full aspect-video rounded-3xl" src="https://www.youtube.com/embed/${ex.videoId}"></iframe>
+        `;
+        $('vault-overlay').classList.remove('view-hidden'); 
+        lucide.createIcons();
+    }
+    function closeVaultOverlay() { $('vault-overlay').classList.add('view-hidden'); }
+    function showExplanation(key) { const data = EXPLANATIONS[key]; $('exp-content').innerHTML = `<h3 class="text-2xl font-black text-[#f6ea98] uppercase italic">${data.title}</h3><div class="mt-4 text-xs text-stone-300 leading-relaxed">${data.body}</div>`; $('explanation-modal').classList.remove('view-hidden'); lucide.createIcons(); }
+    function closeExplanation() { $('explanation-modal').classList.add('view-hidden'); }
+    function runAnalysis() { const btn = $('analyze-btn'); btn.innerHTML = `<i data-lucide="refresh-cw" class="animate-spin w-3 h-3"></i>`; setTimeout(() => { btn.innerText = "Analyze"; }, 1000); }
+
+    document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Fitness AI - High Performance Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        
+        :root {
+            --bg-primary: #1D1D1B;
+            --action: #FC5200;
+            --highlight: #f6ea98;
+            --recovery: #779CAF;
+            --glass: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-primary);
+            color: #FFFFFF;
+            line-height: 1.5;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .bento-card {
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 20px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .bento-card:active { transform: scale(0.99); }
+
+        .action-button {
+            background-color: var(--action);
+            color: white;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .rationale-chip {
+            background: rgba(246, 234, 152, 0.15);
+            border: 1px solid rgba(246, 234, 152, 0.3);
+            color: var(--highlight);
+            font-size: 10px;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 100px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .glass-overlay {
+            background: rgba(29, 29, 27, 0.98);
+            backdrop-filter: blur(40px);
+            -webkit-backdrop-filter: blur(40px);
+        }
+
+        .chart-container { position: relative; width: 100%; height: 250px; }
+        .active-tab { color: var(--action); }
+        .view-hidden { display: none !important; }
+
+        input[type=range] { -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 6px; cursor: pointer; background: rgba(255,255,255,0.1); border-radius: 10px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            height: 24px; width: 24px; border-radius: 50%; background: var(--highlight);
+            cursor: pointer; -webkit-appearance: none; margin-top: -9px;
+            box-shadow: 0 0 15px rgba(246, 234, 152, 0.4);
+        }
+
+        .muscle-path { fill: rgba(255,255,255,0.05); stroke: rgba(255,255,255,0.2); stroke-width: 1; transition: all 0.3s ease; cursor: pointer; }
+        .muscle-path.active { fill: var(--action); stroke: var(--action); filter: drop-shadow(0 0 5px var(--action)); }
+
+        @keyframes subtle-pulse {
+            0% { border-color: rgba(246, 234, 152, 0.3); }
+            50% { border-color: rgba(246, 234, 152, 0.6); }
+            100% { border-color: rgba(246, 234, 152, 0.3); }
+        }
+        .task-pending { animation: subtle-pulse 2s infinite; border: 1px solid var(--highlight); }
+
+        .sync-progress { transition: width 1s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+        .audit-header {
+            font-size: 10px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #57534e;
+            margin-bottom: 8px;
+            display: block;
+            border-left: 2px solid var(--action);
+            padding-left: 8px;
+        }
+
+        .profile-field-label { font-size: 8px; font-weight: 900; text-transform: uppercase; color: #78716c; letter-spacing: 0.05em; }
+        .profile-field-value { font-size: 13px; font-weight: 700; color: #e7e5e4; }
+        
+        .profile-action-btn {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            padding: 10px;
+            font-size: 10px;
+            font-weight: 800;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            color: #a8a29e;
+        }
+
+        .range-btn {
+            font-size: 9px;
+            font-weight: 900;
+            padding: 6px 12px;
+            border-radius: 100px;
+            background: rgba(255,255,255,0.05);
+            color: #78716c;
+            transition: all 0.2s ease;
+        }
+        .range-btn.active { background: var(--action); color: white; }
+
+        .dna-metric {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 16px;
+            padding: 12px;
+        }
+
+        .ai-insight-box {
+            background: linear-gradient(135deg, rgba(246, 234, 152, 0.1) 0%, rgba(29, 29, 27, 0) 100%);
+            border: 1px solid rgba(246, 234, 152, 0.2);
+            border-radius: 20px;
+            padding: 16px;
+        }
+    </style>
+</head>
+<body class="antialiased select-none">
+
+<div id="app-wrapper" class="max-w-md mx-auto min-h-screen pb-28 relative overflow-x-hidden">
+
+    <!-- TOP HEADER -->
+    <header class="p-6 flex justify-between items-center sticky top-0 bg-[#1D1D1B]/90 backdrop-blur-md z-30">
+        <div>
+            <p id="current-date" class="text-stone-500 text-[10px] font-black uppercase tracking-[0.2em] mb-1"></p>
+            <h1 class="text-xl font-black tracking-tight italic uppercase">Pro Fitness <span class="text-[#FC5200]">AI</span></h1>
+        </div>
+        <div class="flex items-center gap-4">
+            <div class="flex items-center gap-1">
+                <i data-lucide="flame" class="w-4 h-4 text-[#FC5200] fill-[#FC5200]"></i>
+                <span class="text-sm font-black italic">12</span>
+            </div>
+            <button onclick="switchTab('profile')" class="w-10 h-10 bg-white/5 rounded-full border border-white/10 flex items-center justify-center transition-all active:scale-90">
+                <i data-lucide="user" class="w-5 h-5 text-stone-400"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- TAB 1: STATUS (HOME) -->
+    <section id="tab-status" class="px-6 space-y-4 animate-in fade-in duration-300">
+        
+        <!-- DAILY PROTOCOL SYNC HUB -->
+        <div class="bento-card space-y-4 relative overflow-hidden bg-gradient-to-br from-white/[0.02] to-transparent">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center gap-2">
+                    <h3 class="text-[10px] font-black uppercase tracking-widest text-stone-500">Daily Protocol Sync</h3>
+                    <span id="sync-percent" class="text-[10px] font-black text-[#f6ea98]">33%</span>
+                </div>
+                <div class="h-1.5 w-24 bg-stone-800 rounded-full overflow-hidden">
+                    <div id="sync-bar" class="sync-progress h-full bg-[#f6ea98]" style="width: 33%"></div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 gap-2">
+                <!-- Task 1: Check-in -->
+                <button id="checkin-task-btn" onclick="openCheckIn()" class="w-full p-4 rounded-2xl flex items-center justify-between transition-all task-pending">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-full bg-[#f6ea98]/10 flex items-center justify-center text-[#f6ea98]" id="checkin-icon-bg">
+                            <i data-lucide="zap" class="w-4 h-4"></i>
+                        </div>
+                        <div class="text-left">
+                            <p class="text-xs font-black uppercase tracking-tight" id="checkin-text-main">Intelligence Check-in</p>
+                            <p class="text-[9px] text-stone-500 font-bold" id="checkin-text-sub">Calibration Required</p>
+                        </div>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-4 h-4 text-stone-600"></i>
+                </button>
+
+                <!-- Task 2: Activity Screenshot Import -->
+                <button id="import-task-btn" onclick="openImport()" class="w-full p-4 rounded-2xl bg-white/[0.02] border border-white/5 flex items-center justify-between transition-all hover:bg-white/[0.05]">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-full bg-stone-800 flex items-center justify-center text-stone-400" id="import-icon-bg">
+                            <i data-lucide="camera" class="w-4 h-4"></i>
+                        </div>
+                        <div class="text-left">
+                            <p class="text-xs font-black uppercase tracking-tight text-stone-300" id="import-text-main">Activity Screenshot</p>
+                            <p class="text-[9px] text-stone-600 font-bold" id="import-text-sub">Sync via AI Vision Scan</p>
+                        </div>
+                    </div>
+                    <i data-lucide="plus" class="w-4 h-4 text-stone-700"></i>
+                </button>
+
+                <!-- Task 3: Main Workout -->
+                <div class="w-full p-4 rounded-2xl bg-white/[0.02] border border-white/5 flex items-center justify-between opacity-60" id="workout-task-item">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-full bg-stone-800 flex items-center justify-center text-stone-500"><i data-lucide="dumbbell" class="w-4 h-4"></i></div>
+                        <div class="text-left">
+                            <p class="text-xs font-black uppercase tracking-tight text-stone-400">Physique Protocol</p>
+                            <p class="text-[9px] text-stone-600 font-bold">Locked: Pending Calibration</p>
+                        </div>
+                    </div>
+                    <i data-lucide="lock" class="w-4 h-4 text-stone-800"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI RECOMMENDATION CARD -->
+        <div class="bento-card border-l-4 border-l-[#FC5200] relative overflow-hidden blur-[2px] grayscale opacity-40 pointer-events-none transition-all duration-500" id="recommendation-card">
+            <div class="flex justify-between items-start mb-4">
+                <span class="rationale-chip"><i data-lucide="sparkles" class="w-3 h-3"></i> AI Smart Load</span>
+                <span class="text-stone-500 text-xs font-bold uppercase">Optimized Plan</span>
+            </div>
+            <h2 class="text-3xl font-black leading-none mb-2 uppercase italic">Back & Arms Focus</h2>
+            <p class="text-stone-400 text-sm mb-6 italic leading-relaxed">The AI suggests this to balance your recent volume and improve posture.</p>
+            <button class="w-full action-button py-4 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-transform">
+                <i data-lucide="play" class="w-4 h-4 fill-white"></i> Start Workout
+            </button>
+        </div>
+
+        <!-- WORKOUT ARCHITECT -->
+        <button onclick="switchTab('vault')" class="w-full bento-card flex items-center justify-between border border-[#f6ea98]/30 transition-all hover:bg-[#f6ea98]/5">
+            <div class="flex items-center gap-4">
+                <div class="w-10 h-10 rounded-xl bg-[#f6ea98]/10 flex items-center justify-center text-[#f6ea98]"><i data-lucide="cpu" class="w-5 h-5"></i></div>
+                <div class="text-left">
+                    <p class="text-xs font-black uppercase tracking-tight text-white">Workout Architect</p>
+                    <p class="text-[9px] text-stone-500 font-bold">Build your own custom session</p>
+                </div>
+            </div>
+            <i data-lucide="plus-circle" class="w-5 h-5 text-[#f6ea98]"></i>
+        </button>
+
+        <div class="grid grid-cols-2 gap-4">
+            <div class="bento-card relative">
+                <div class="flex justify-between items-start mb-1">
+                    <p class="text-[10px] font-black text-stone-500 uppercase tracking-widest">Strength Score</p>
+                    <button onclick="showExplanation('iq')"><i data-lucide="info" class="w-3 h-3 text-stone-500"></i></button>
+                </div>
+                <p class="text-4xl font-black text-[#f6ea98]">782</p>
+            </div>
+            <div class="bento-card relative">
+                <div class="flex justify-between items-start mb-1">
+                    <p class="text-[10px] font-black text-stone-500 uppercase tracking-widest">Body Readiness</p>
+                    <button onclick="showExplanation('readiness')"><i data-lucide="info" class="w-3 h-3 text-stone-500"></i></button>
+                </div>
+                <p class="text-4xl font-black text-[#779CAF]" id="readiness-val">--%</p>
+            </div>
+        </div>
+
+        <div class="bento-card">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xs font-black text-stone-500 uppercase tracking-widest">Activity Pulse</h3>
+                <button onclick="showExplanation('heartbeat')"><i data-lucide="help-circle" class="w-4 h-4 text-stone-600"></i></button>
+            </div>
+            <div id="calendar-grid" class="grid grid-cols-7 gap-y-3 text-center"></div>
+        </div>
+    </section>
+
+    <!-- CHECK-IN MODAL (INTELLIGENCE OVERLAY) -->
+    <div id="checkin-overlay" class="view-hidden fixed inset-0 z-[100] glass-overlay p-8 flex flex-col animate-in slide-in-from-bottom duration-500">
+        <header class="flex justify-between items-center mb-8">
+            <div class="flex items-center gap-2">
+                <div class="w-2 h-2 rounded-full bg-[#f6ea98]"></div>
+                <span class="text-[10px] font-black uppercase tracking-widest text-stone-500">Step <span id="checkin-step-num">1</span> of 3</span>
+            </div>
+            <button onclick="closeCheckIn()" class="p-2 bg-white/5 rounded-full"><i data-lucide="x" class="w-5 h-5 text-stone-400"></i></button>
+        </header>
+        
+        <div id="checkin-content" class="flex-1 flex flex-col justify-between pb-10">
+            <div id="step-1" class="space-y-12 animate-in fade-in">
+                <div class="space-y-6">
+                    <header><h2 class="text-4xl font-black tracking-tight leading-none uppercase italic">Internal<br><span class="text-[#f6ea98]">Battery</span> Sync</h2><p class="text-stone-500 text-xs font-bold mt-4">Calibration of sleep and stress levels.</p></header>
+                    <div class="space-y-10 pt-4">
+                        <div class="space-y-4">
+                            <div class="flex justify-between items-end"><label class="text-[10px] font-black uppercase text-stone-400 tracking-widest">Sleep Quality</label><span id="val-sleep" class="text-2xl font-black text-[#f6ea98]">3</span></div>
+                            <input type="range" min="1" max="5" value="3" step="1" oninput="$('val-sleep').innerText = this.value" class="w-full">
+                        </div>
+                        <div class="space-y-4">
+                            <div class="flex justify-between items-end"><label class="text-[10px] font-black uppercase text-stone-400 tracking-widest">Stress Level</label><span id="val-stress" class="text-2xl font-black text-[#f6ea98]">3</span></div>
+                            <input type="range" min="1" max="5" value="3" step="1" oninput="$('val-stress').innerText = this.value" class="w-full">
+                        </div>
+                    </div>
+                </div>
+                <button onclick="nextCheckInStep(2)" class="w-full bg-[#FC5200] py-6 rounded-3xl font-black text-lg flex items-center justify-center gap-2 shadow-2xl">Next Protocol <i data-lucide="arrow-right" class="w-5 h-5"></i></button>
+            </div>
+            <div id="step-2" class="view-hidden space-y-8 animate-in slide-in-from-right">
+                <header><h2 class="text-4xl font-black tracking-tight leading-none uppercase italic">Fatigue<br><span class="text-[#f6ea98]">Mapping</span></h2><p class="text-stone-500 text-xs font-bold mt-2">Select areas that feel stiff or fatigued.</p></header>
+                <div class="flex justify-center py-4">
+                    <svg width="200" height="320" viewBox="0 0 100 160" class="filter drop-shadow-2xl">
+                        <circle cx="50" cy="15" r="10" class="muscle-path" onclick="toggleMuscle(this)"></circle>
+                        <path d="M35 30 L65 30 L62 70 L38 70 Z" class="muscle-path" onclick="toggleMuscle(this)"></path>
+                        <path d="M30 30 L10 60 L15 65 L32 40 Z" class="muscle-path" onclick="toggleMuscle(this)"></path>
+                        <path d="M70 30 L90 60 L85 65 L68 40 Z" class="muscle-path" onclick="toggleMuscle(this)"></path>
+                        <path d="M38 75 L62 75 L60 100 L40 100 Z" class="muscle-path" onclick="toggleMuscle(this)"></path>
+                        <path d="M38 105 L48 105 L45 150 L32 150 Z" class="muscle-path" onclick="toggleMuscle(this)"></path>
+                        <path d="M52 105 L62 105 L68 150 L55 150 Z" class="muscle-path" onclick="toggleMuscle(this)"></path>
+                    </svg>
+                </div>
+                <button onclick="nextCheckInStep(3)" class="w-full bg-[#FC5200] py-6 rounded-3xl font-black text-lg flex items-center justify-center gap-2 shadow-2xl">Sync Biomarkers <i data-lucide="arrow-right" class="w-5 h-5"></i></button>
+            </div>
+            <div id="step-3" class="view-hidden space-y-8 animate-in slide-in-from-right">
+                <header><h2 class="text-4xl font-black tracking-tight leading-none uppercase italic">Biometric<br><span class="text-[#f6ea98]">Sync</span></h2><p class="text-stone-500 text-xs font-bold mt-2">Weight entry for Strength Score tracking.</p></header>
+                <div class="bg-white/5 border border-white/10 p-10 rounded-[40px] text-center space-y-4 shadow-inner">
+                    <p class="text-[10px] font-black uppercase text-stone-500 tracking-widest">Current Mass (lbs)</p>
+                    <input type="number" id="input-daily-weight" placeholder="185.0" class="bg-transparent text-6xl font-black text-center w-full text-white focus:outline-none placeholder-stone-800">
+                </div>
+                <button onclick="finalizeCheckIn()" class="w-full bg-[#f6ea98] text-black py-7 rounded-[40px] font-black text-xl flex items-center justify-center gap-2 active:scale-95 transition-all shadow-2xl">Lock In Profile <i data-lucide="check-circle-2" class="w-6 h-6"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- EXTERNAL IMPORT OVERLAY -->
+    <div id="import-overlay" class="view-hidden fixed inset-0 z-[100] glass-overlay p-8 flex flex-col animate-in slide-in-from-bottom duration-500">
+        <header class="flex justify-between items-center mb-10"><h2 class="text-2xl font-black italic uppercase tracking-tight">AI Vision <span class="text-[#f6ea98]">Sync</span></h2><button onclick="closeImport()" class="p-3 bg-white/5 rounded-full"><i data-lucide="x" class="w-5 h-5 text-stone-400"></i></button></header>
+        <div class="flex-1 flex flex-col justify-center space-y-10">
+            <section class="text-center space-y-4"><div class="w-20 h-20 bg-indigo-500/10 rounded-full flex items-center justify-center text-indigo-400 mx-auto mb-2"><i data-lucide="image-plus" class="w-10 h-10"></i></div><h3 class="text-xl font-black tracking-tight">Upload Activity Proof</h3><p class="text-stone-400 text-sm leading-relaxed max-w-xs mx-auto">Upload a screenshot of your Strava run, Apple Fitness ring, or gym whiteboard.</p></section>
+            <button onclick="simulateImport()" class="w-full py-8 border-2 border-dashed border-[#f6ea98]/30 rounded-[32px] flex flex-col items-center gap-4 bg-[#f6ea98]/5 hover:bg-[#f6ea98]/10 transition-all"><div class="w-12 h-12 rounded-full bg-[#f6ea98] flex items-center justify-center text-black shadow-xl shadow-[#f6ea98]/20"><i data-lucide="upload" class="w-6 h-6"></i></div><p class="text-xs font-black uppercase text-[#f6ea98] tracking-widest">Select Screenshot</p></button>
+        </div>
+    </div>
+
+    <!-- TAB 2: MOVEMENT GUIDE -->
+    <section id="tab-vault" class="view-hidden px-6 space-y-6 animate-in slide-in-from-bottom-4 duration-300">
+        <header class="flex justify-between items-start"><div><h2 class="text-3xl font-black tracking-tight uppercase italic">Movement Guide</h2><p class="text-stone-500 text-sm font-medium">Learn the "DNA" of 1,200+ moves</p></div><button onclick="showExplanation('patterns')"><i data-lucide="help-circle" class="w-6 h-6 text-[#FC5200]"></i></button></header>
+        <div class="relative"><input type="text" id="vault-search" placeholder="Search Pattern DNA..." class="w-full bg-white/5 border border-white/10 rounded-2xl p-5 pl-12 font-bold outline-none focus:ring-2 focus:ring-[#FC5200]"><span class="absolute left-5 top-1/2 -translate-y-1/2 opacity-30"><i data-lucide="search" class="w-5 h-5"></i></span></div>
+        <div id="vault-list" class="space-y-3 pb-10"></div>
+    </section>
+
+    <!-- TAB 3: PERFORMANCE AUDIT -->
+    <section id="tab-stats" class="view-hidden px-6 space-y-6 animate-in slide-in-from-bottom-4 duration-300">
+        <header class="flex flex-col gap-4">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                    <h2 class="text-3xl font-black tracking-tight text-[#f6ea98]">PERFORMANCE AUDIT</h2>
+                    <button onclick="showExplanation('audit_blueprint')"><i data-lucide="help-circle" class="w-5 h-5 text-stone-500"></i></button>
+                </div>
+                <button id="analyze-btn" onclick="runAnalysis()" class="flex items-center gap-2 text-[9px] font-black bg-[#FC5200] px-4 py-2 rounded-full uppercase tracking-widest">Analyze</button>
+            </div>
+            <div class="flex justify-between bg-white/5 p-1 rounded-full border border-white/10">
+                <button onclick="setTimeRange('weekly')" id="range-weekly" class="range-btn">WEEKLY</button>
+                <button onclick="setTimeRange('monthly')" id="range-monthly" class="range-btn active">MONTHLY</button>
+                <button onclick="setTimeRange('yearly')" id="range-yearly" class="range-btn">YEARLY</button>
+            </div>
+        </header>
+        <div id="audit-insight-card" class="bento-card border-l-4 border-l-[#f6ea98] bg-[#f6ea98]/5">
+            <div class="flex items-center gap-2 text-[#f6ea98] mb-2"><i data-lucide="brain-circuit" class="w-4 h-4"></i><h3 id="audit-title" class="text-xs font-black uppercase tracking-widest text-white">Monthly AI Briefing</h3></div>
+            <p id="audit-text" class="text-xs text-stone-300 leading-relaxed font-medium"><b>Physique Protocol Audit:</b> Back volume is lagging by 24%. Focusing here will improve aesthetic symmetry and structural health.</p>
+        </div>
+        <div id="heatmap-container" class="bento-card">
+            <div class="flex justify-between items-center mb-6">
+                <div class="flex items-center gap-2"><h3 class="text-xs font-black text-stone-500 uppercase tracking-widest">Body Balance Index</h3><button onclick="showExplanation('structural')"><i data-lucide="info" class="w-3 h-3 text-stone-500"></i></button></div>
+                <span id="range-indicator" class="rationale-chip"><i data-lucide="activity" class="w-3 h-3"></i> Monthly View</span>
+            </div>
+            <div class="space-y-6" id="heatmap-content">
+                <div><span class="audit-header">Lower Body</span><div class="grid grid-cols-2 gap-2" id="heatmap-lower"></div></div>
+                <div><span class="audit-header">Pushing Muscles</span><div class="grid grid-cols-2 gap-2" id="heatmap-push"></div></div>
+                <div><span class="audit-header">Pulling Muscles</span><div class="grid grid-cols-2 gap-2" id="heatmap-pull"></div></div>
+                <div><span class="audit-header">Abs & Support</span><div class="grid grid-cols-2 gap-2" id="heatmap-core"></div></div>
+            </div>
+        </div>
+        <div class="bento-card">
+            <div class="flex items-center gap-2 mb-4"><p id="momentum-title" class="text-xs font-black text-stone-500 uppercase tracking-widest">Progress Momentum</p><button onclick="showExplanation('momentum')"><i data-lucide="info" class="w-3 h-3 text-stone-500"></i></button></div>
+            <div class="chart-container"><canvas id="strength-chart"></canvas></div>
+        </div>
+    </section>
+
+    <!-- TAB 4: PROFILE -->
+    <section id="tab-profile" class="view-hidden px-6 space-y-6 animate-in slide-in-from-bottom-4 duration-300 pb-10">
+        <header class="text-center py-6">
+            <div class="relative inline-block">
+                <div class="w-20 h-20 bg-gradient-to-tr from-[#FC5200] to-[#f6ea98] rounded-full p-1 mx-auto mb-4 shadow-2xl"><div class="w-full h-full bg-[#1D1D1B] rounded-full flex items-center justify-center"><i data-lucide="user" class="w-10 h-10 text-stone-300"></i></div></div>
+                <span class="absolute bottom-4 right-0 bg-[#FC5200] text-white p-1 rounded-full border-2 border-[#1D1D1B]"><i data-lucide="zap" class="w-2.5 h-2.5"></i></span>
+            </div>
+            <h2 class="text-2xl font-black italic uppercase leading-none">Alex Trainer</h2>
+            <p class="text-stone-500 text-[9px] font-black uppercase tracking-[0.3em] mt-2">Protocol Certified Athlete</p>
+        </header>
+
+        <!-- SECTION 1: ATHLETE PROFILE -->
+        <div class="bento-card space-y-6">
+            <div class="flex justify-between items-center"><h3 class="audit-header !mb-0">Athlete Profile</h3><i data-lucide="fingerprint" class="w-4 h-4 text-stone-700"></i></div>
+            <div class="grid grid-cols-3 gap-y-4">
+                <div><p class="profile-field-label">Age</p><p class="profile-field-value">28</p></div>
+                <div><p class="profile-field-label">Height</p><p class="profile-field-value">5'11"</p></div>
+                <div><p class="profile-field-label">Weight</p><p class="profile-field-value" id="prof-weight-display">185 lbs</p></div>
+                <div class="col-span-2"><p class="profile-field-label">Fitness Level</p><p class="profile-field-value">Intermediate</p></div>
+                <div><p class="profile-field-label">Goal</p><p class="profile-field-value text-[#f6ea98]">Physique</p></div>
+                <div class="col-span-3"><p class="profile-field-label">Success Metric</p><p class="profile-field-value italic">Body Fat % & Strength Score</p></div>
+            </div>
+            <div class="grid grid-cols-1 gap-2 pt-2">
+                <button class="profile-action-btn"><i data-lucide="edit-3" class="w-3 h-3"></i> Edit body stats</button>
+                <div class="grid grid-cols-2 gap-2">
+                    <button class="profile-action-btn"><i data-lucide="target" class="w-3 h-3"></i> Edit goal</button>
+                    <button class="profile-action-btn"><i data-lucide="award" class="w-3 h-3"></i> Update Level</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION 2: TRAINING SETUP -->
+        <div class="bento-card space-y-6">
+            <div class="flex justify-between items-center"><h3 class="audit-header !mb-0">Training Setup</h3><i data-lucide="sliders" class="w-4 h-4 text-stone-700"></i></div>
+            <div class="space-y-4">
+                <div><p class="profile-field-label">Equipment Access</p><p class="profile-field-value">Commercial Gym (Full Inventory)</p></div>
+                <div class="grid grid-cols-2">
+                    <div><p class="profile-field-label">Frequency</p><p class="profile-field-value">4x / week</p></div>
+                    <div><p class="profile-field-label">Preferred Time</p><p class="profile-field-value">Evening (18:00)</p></div>
+                </div>
+                <div><p class="profile-field-label">Preferred Days</p><p class="profile-field-value">Mon, Tue, Thu, Fri</p></div>
+                <div><p class="profile-field-label">Injury Flags</p><p class="profile-field-value text-red-400 flex items-center gap-2"><i data-lucide="alert-triangle" class="w-3 h-3"></i> Lower Back Sensitivity</p></div>
+            </div>
+            <div class="grid grid-cols-1 gap-2 pt-2">
+                <button class="profile-action-btn"><i data-lucide="calendar" class="w-3 h-3"></i> Update schedule</button>
+                <div class="grid grid-cols-2 gap-2">
+                    <button class="profile-action-btn"><i data-lucide="dumbbell" class="w-3 h-3"></i> Equipment</button>
+                    <button class="profile-action-btn"><i data-lucide="activity" class="w-3 h-3"></i> Injury status</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION 4: AI SETTINGS -->
+        <div class="bento-card space-y-6 border-l-4 border-l-[#f6ea98]">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center gap-2 text-[#f6ea98]"><i data-lucide="brain-circuit" class="w-4 h-4"></i><h3 class="text-[10px] font-black uppercase tracking-widest">AI Intelligence Engine</h3></div>
+                <button onclick="showExplanation('ai_settings')"><i data-lucide="info" class="w-3 h-3 text-stone-600"></i></button>
+            </div>
+            <div class="space-y-4">
+                <div class="flex justify-between items-center border-b border-white/5 pb-2"><p class="profile-field-label">Progression aggressiveness</p><span class="rationale-chip !bg-emerald-500/10 !text-emerald-400 !border-none !text-[8px]">Steady</span></div>
+                <div class="flex justify-between items-center border-b border-white/5 pb-2"><p class="profile-field-label">RPE Sensitivity</p><span class="rationale-chip !bg-[#FC5200]/10 !text-[#FC5200] !border-none !text-[8px]">High (Precise)</span></div>
+                <div class="flex justify-between items-center border-b border-white/5 pb-2"><p class="profile-field-label">Deload Frequency</p><span class="profile-field-value !text-xs uppercase">Auto (Metric-Based)</span></div>
+                <div class="flex justify-between items-center border-b border-white/5 pb-2"><p class="profile-field-label">Strength vs Volume Bias</p><div class="h-1 w-20 bg-stone-800 rounded-full flex"><div class="h-full bg-[#f6ea98]" style="width: 70%"></div></div></div>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <button class="profile-action-btn !text-red-400 !border-red-900/30"><i data-lucide="rotate-ccw" class="w-3 h-3"></i> Reset AI Learning</button>
+                <button class="profile-action-btn active:bg-emerald-500/20"><i data-lucide="toggle-right" class="w-3 h-3"></i> Adaptive Mode</button>
+            </div>
+        </div>
+
+        <!-- SECTION 3: ACCOUNT -->
+        <div class="bento-card space-y-6">
+            <div class="flex justify-between items-center"><h3 class="audit-header !mb-0">Account Settings</h3><i data-lucide="settings" class="w-4 h-4 text-stone-700"></i></div>
+            <div class="space-y-1">
+                <button class="w-full flex justify-between items-center p-3 hover:bg-white/5 rounded-xl transition-colors"><div class="text-left"><p class="profile-field-label">Email</p><p class="profile-field-value !text-xs">alex@trainer.io</p></div><i data-lucide="chevron-right" class="w-4 h-4 text-stone-600"></i></button>
+                <button class="w-full flex justify-between items-center p-3 hover:bg-white/5 rounded-xl transition-colors"><span class="text-sm font-bold text-stone-300">Notification Hub</span><span class="text-[10px] font-black text-[#FC5200] uppercase">Smart Alerts</span></button>
+            </div>
+            <div class="grid grid-cols-2 gap-2 border-t border-white/5 pt-4">
+                <button class="profile-action-btn active:bg-white/10" onclick="window.location.reload()"><i data-lucide="log-out" class="w-3 h-3"></i> Log out</button>
+                <button class="profile-action-btn !text-red-500 !border-red-900/50"><i data-lucide="trash-2" class="w-3 h-3"></i> Delete</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- NAVIGATION -->
+    <nav class="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md glass-overlay border border-white/10 rounded-[32px] px-8 py-4 flex justify-between items-center z-40 shadow-2xl">
+        <button onclick="switchTab('status')" class="flex flex-col items-center gap-1 active-tab" id="nav-status"><i data-lucide="home" class="w-6 h-6"></i><span class="text-[9px] font-black uppercase tracking-tighter">Status</span></button>
+        <button onclick="switchTab('vault')" class="flex flex-col items-center gap-1 text-stone-500" id="nav-vault"><i data-lucide="book-open" class="w-6 h-6"></i><span class="text-[9px] font-black uppercase tracking-tighter">Guide</span></button>
+        <button onclick="switchTab('stats')" class="flex flex-col items-center gap-1 text-stone-500" id="nav-stats"><i data-lucide="activity" class="w-6 h-6"></i><span class="text-[9px] font-black uppercase tracking-tighter">Audit</span></button>
+        <button onclick="switchTab('profile')" class="flex flex-col items-center gap-1 text-stone-500" id="nav-profile"><i data-lucide="user" class="w-6 h-6"></i><span class="text-[9px] font-black uppercase tracking-tighter">Profile</span></button>
+    </nav>
+
+    <!-- EXPLANATION MODAL -->
+    <div id="explanation-modal" class="view-hidden fixed inset-0 z-[100] glass-overlay flex items-center justify-center p-6 animate-in fade-in duration-300">
+        <div class="bento-card bg-[#1D1D1B] max-w-sm w-full border-[#FC5200]/20 shadow-2xl overflow-y-auto max-h-[85vh]"><div id="exp-content" class="space-y-4"></div><button onclick="closeExplanation()" class="w-full mt-8 py-4 action-button rounded-xl uppercase font-black tracking-widest">Understood</button></div>
+    </div>
+
+    <!-- VAULT DETAIL OVERLAY -->
+    <div id="vault-overlay" class="view-hidden fixed inset-0 z-[500] glass-overlay overflow-y-auto p-8 flex flex-col animate-in slide-in-from-right duration-400">
+        <button onclick="closeVaultOverlay()" class="fixed top-8 left-6 w-12 h-12 bg-white/10 rounded-full flex items-center justify-center z-50"><i data-lucide="chevron-left" class="w-6 h-6"></i></button>
+        <div id="overlay-content" class="space-y-6 pb-20"></div>
+    </div>
+
+</div>
+
+<script>
+    const profileData = { weight: 185, goal: 'Physique', aggressiveness: 'Steady', injury: 'None' };
+    const HEATMAP_DATA = {
+        weekly: { labels: ['MON','TUE','WED','THU','FRI','SAT','SUN'], values: [40, 60, 55, 80, 70, 100, 30], scores: { glutes: '42%', hams: '28%', quads: '110%', calves: '85%', chest: '95%', delts: '70%', tri: '70%', uback: '15%', bicep: '60%', core: '90%', lback: '80%'} },
+        monthly: { labels: ['WK 1','WK 2','WK 3','WK 4'], values: [1200, 1900, 1750, 2400], scores: { glutes: '48%', hams: '35%', quads: '132%', calves: '92%', chest: '105%', delts: '88%', tri: '88%', uback: '24%', bicep: '82%', core: '100%', lback: '95%'} },
+        yearly: { labels: ['JAN','FEB','MAR','APR','MAY','JUN'], values: [10000, 12000, 11500, 14000, 15000, 14500], scores: { glutes: '75%', hams: '72%', quads: '98%', calves: '94%', chest: '102%', delts: '95%', tri: '96%', uback: '82%', bicep: '90%', core: '98%', lback: '92%'} }
+    };
+    const VAULT_DATA = [{ name: 'Barbell Back Squat', muscle: 'Lower Body', pb: '285lb', videoId: 'SW_C1A-zeXw', aiInsight: { projection: '300lb Squat predicted by May.', plateau: 'Flat weight for 3 weeks.', dna: { drain: '82% (High)', synergy: 'Fixes quad dominance', velocity: '+5lb / Week' } } }];
+
+    // --- FULL THOROUGH EXPLANATIONS ---
+    const EXPLANATIONS = {
+        iq: { 
+            title: 'Strength Score', 
+            body: `<div class="space-y-4"><p class="text-xs text-stone-300"><b>What is it?</b> Overall power compared to size. Calculated using your weight of <b>${profileData.weight} lbs</b>.</p><div class="p-4 bg-white/5 rounded-xl border border-white/10"><p class="text-[10px] font-black uppercase text-[#f6ea98] mb-1">Why it matters</p><p class="text-[11px] text-stone-400 leading-relaxed">Ensures you're getting stronger, not just bigger. If your weight goes up but this score drops, physical efficiency is decreasing.</p></div></div>`
+        },
+        readiness: { 
+            title: 'Body Readiness', 
+            body: `<div class="space-y-4"><p class="text-xs text-stone-300"><b>What is it?</b> This is your "Internal Battery." Maps recovery based on recent sleep and stress.</p><div class="p-4 bg-white/5 rounded-xl border border-white/10"><p class="text-[10px] font-black uppercase text-[#FC5200] mb-1">The Strategy</p><p class="text-[11px] text-stone-400"><b>85%+: Green Light.</b> Go for a heavy lift. <br><b>Below 70%: Yellow Light.</b> Focus on stretching or technique work today.</p></div></div>`
+        },
+        heartbeat: { title: 'Activity Pulse', body: `<div class="space-y-4"><p class="text-xs text-stone-300">A map of consistency over the last 30 days. Balance hard "Work" (Orange) with "Restorative" (Blue).</p></div>` },
+        patterns: { 
+            title: 'Intelligence Patterns', 
+            body: `<div class="space-y-4"><p class="text-xs text-stone-300 leading-relaxed">Think of every exercise as a <b>"Smart Pattern"</b> for your body. We look at the <b>"DNA"</b> behind every move.</p><div class="space-y-3"><section><h4 class="text-[10px] font-black uppercase text-[#FC5200]">1. Battery Cost</h4><p class="text-[11px] text-stone-400">Tracks mental battery usage so you don't run out of energy mid-session.</p></section><section><h4 class="text-[10px] font-black uppercase text-[#779CAF]">2. Teamwork</h4><p class="text-[11px] text-stone-400">Tracks how back training improves posture for your big compound lifts.</p></section></div></div>`
+        },
+        momentum: { title: 'Progress Momentum', body: '<p class="text-xs text-stone-300 leading-relaxed">This chart shows if you are moving more total weight over time. If the line is going up, your body is adapting and getting stronger.</p>' },
+        structural: { title: 'Body Balance Index', body: 'This shows which muscles you are using most. If an area stays "Neglected" (Blue), it can lead to joint pain. Use this map to pick moves from the Guide that fill in the gaps and keep you balanced.' },
+        audit_blueprint: { 
+            title: 'Audit Blueprint', 
+            body: `<div class="space-y-6"><section class="border-b border-white/10 pb-4"><h4 class="text-[#FC5200] font-black text-xs uppercase mb-2">Why Log Workouts?</h4><p class="text-xs text-stone-300">Logging fuels the AI. Without logs, the engine is blind to your gaps.</p></section><section><h4 class="text-[#f6ea98] font-black text-xs uppercase mb-2">For Beginners</h4><p class="text-xs text-stone-300 leading-relaxed">Use the <b>Heatmap</b> to pick moves that fix your weakest spots to build a solid, pain-free foundation.</p></section></div>`
+        },
+        ai_settings: { title: 'AI Logic Engine', body: `<p class="text-xs text-stone-300 leading-relaxed">Tune how aggressively the AI pushes you for weight jumps and how much weight it gives your qualitative feedback.</p>` },
+        external_sync: { 
+            title: 'Activity Proof Sync', 
+            body: `
+            <div class="space-y-4">
+                <p class="text-xs text-stone-300"><b>Broad Intelligence:</b> Uploading a screenshot of outside work helps the AI track <b>"Total Systemic Load."</b></p>
+                <div class="p-4 bg-white/5 rounded-xl border border-white/10">
+                    <p class="text-[10px] font-black uppercase text-[#FC5200] mb-1">Why it's essential</p>
+                    <p class="text-[11px] text-stone-400">If you run a marathon, the AI needs to know to deload your leg day. This ensures your roadmap stays accurate.</p>
+                </div>
+            </div>`
+        }
+    };
+
+    const $ = (id) => document.getElementById(id);
+    let currentRange = 'monthly';
+    let myChart;
+
+    function init() { 
+        renderDate(); 
+        renderCalendar(); 
+        renderVaultList(); 
+        setTimeRange('monthly'); 
+        lucide.createIcons(); 
+    }
+
+    function renderDate() { const options = { weekday: 'long', month: 'short', day: 'numeric' }; $('current-date').innerText = new Date().toLocaleDateString('en-US', options); }
+    function renderCalendar() {
+        const grid = $('calendar-grid');
+        for(let i = 1; i <= 28; i++) {
+            const hasStrength = [2, 5, 8, 12, 14, 22, 25].includes(i);
+            const isToday = i === 21;
+            grid.innerHTML += `<div class="flex flex-col items-center"><span class="text-xs font-bold ${isToday ? 'text-[#FC5200]' : 'text-stone-600'}">${i}</span><div class="w-1 h-1 rounded-full ${hasStrength ? 'bg-[#FC5200]' : 'bg-transparent'} mt-1"></div></div>`;
+        }
+    }
+
+    function setTimeRange(range) {
+        currentRange = range;
+        const btns = document.querySelectorAll('.range-btn');
+        if (btns.length > 0) {
+            btns.forEach(b => b.classList.remove('active'));
+            const targetBtn = $(`range-${range}`);
+            if (targetBtn) targetBtn.classList.add('active');
+        }
+        
+        const data = HEATMAP_DATA[range];
+        const indicator = $('range-indicator');
+        if (indicator) indicator.innerHTML = `<i data-lucide="activity" class="w-3 h-3"></i> ${range.toUpperCase()} VIEW`;
+        
+        updateHeatmap(data.scores);
+        renderStatsChart(range);
+        lucide.createIcons();
+    }
+
+    function updateHeatmap(scores) {
+        const createItem = (label, val) => {
+            const num = parseInt(val);
+            const isInjured = label.toLowerCase().includes(profileData.injury.toLowerCase()) && profileData.injury !== 'None';
+            const typeClass = isInjured ? 'index-limited' : (num > 110 ? 'index-over' : (num < 50 ? 'index-neglect' : 'index-target'));
+            return `<div class="p-3 rounded-2xl border ${typeClass}"><p class="text-[8px] font-black uppercase text-stone-500">${label}</p><p class="text-sm font-black text-white">${isInjured ? '⚠️' : val}</p></div>`;
+        };
+        const lower = $('heatmap-lower');
+        if (lower) lower.innerHTML = createItem('Glutes', scores.glutes) + createItem('Hamstrings', scores.hams) + createItem('Quads', scores.quads) + createItem('Calves', scores.calves);
+        const push = $('heatmap-push');
+        if (push) push.innerHTML = createItem('Chest', scores.chest) + createItem('Shoulders', scores.delts) + createItem('Triceps', scores.tri);
+        const pull = $('heatmap-pull');
+        if (pull) pull.innerHTML = createItem('Upper Back', scores.uback) + createItem('Biceps', scores.bicep);
+        const core = $('heatmap-core');
+        if (core) core.innerHTML = createItem('Abs', scores.core) + createItem('L-Back', scores.lback);
+    }
+
+    function renderStatsChart(range) {
+        const canvas = $('strength-chart');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (myChart) myChart.destroy();
+        const config = HEATMAP_DATA[range];
+        myChart = new Chart(ctx, { type: 'line', data: { labels: config.labels, datasets: [{ data: config.values, borderColor: '#FC5200', borderWidth: 4, pointRadius: 0, tension: 0.4, fill: true, backgroundColor: 'rgba(252, 82, 0, 0.05)' }] }, options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { display: true, grid: { display: false }, ticks: { font: { weight: '800', size: 10 } } }, y: { display: false } } } });
+    }
+
+    function openCheckIn() { $('checkin-overlay').classList.remove('view-hidden'); }
+    function closeCheckIn() { $('checkin-overlay').classList.add('view-hidden'); }
+    function nextCheckInStep(step) { ['step-1', 'step-2', 'step-3'].forEach(s => $(s).classList.add('view-hidden')); $(`step-${step}`).classList.remove('view-hidden'); $('checkin-step-num').innerText = step; lucide.createIcons(); }
+    function toggleMuscle(path) { path.classList.toggle('active'); }
+    function finalizeCheckIn() { 
+        closeCheckIn(); 
+        $('readiness-val').innerText = '94%'; 
+        $('recommendation-card').classList.remove('blur-[2px]', 'grayscale', 'opacity-40', 'pointer-events-none'); 
+        
+        const checkinBtn = $('checkin-task-btn');
+        checkinBtn.classList.remove('task-pending');
+        checkinBtn.classList.add('bg-emerald-500/10', 'border-emerald-500/30');
+        $('checkin-icon-bg').innerHTML = '<i data-lucide="check" class="w-4 h-4 text-emerald-500"></i>';
+        
+        lucide.createIcons(); 
+    }
+
+    function openImport() { $('import-overlay').classList.remove('view-hidden'); }
+    function closeImport() { $('import-overlay').classList.add('view-hidden'); }
+    function simulateImport() { 
+        closeImport(); 
+        const importBtn = $('import-task-btn');
+        importBtn.classList.add('bg-emerald-500/10', 'border-emerald-500/30');
+        $('import-icon-bg').innerHTML = '<i data-lucide="check" class="w-4 h-4 text-emerald-500"></i>';
+        $('sync-percent').innerText = '100%';
+        $('sync-bar').style.width = '100%';
+        lucide.createIcons(); 
+    }
+
+    function switchTab(tabId) {
+        ['status', 'vault', 'stats', 'profile'].forEach(id => { $(`tab-${id}`).classList.add('view-hidden'); $(`nav-${id}`).classList.replace('active-tab', 'text-stone-500'); });
+        $(`tab-${tabId}`).classList.remove('view-hidden');
+        $(`nav-${tabId}`).classList.replace('text-stone-500', 'active-tab');
+        if(tabId === 'stats') renderStatsChart(currentRange);
+        lucide.createIcons();
+    }
+
+    function renderVaultList() {
+        const list = $('vault-list');
+        list.innerHTML = VAULT_DATA.map(ex => `<div onclick="openVaultOverlay('${ex.name}')" class="bento-card flex justify-between items-center"><div><h4 class="font-black text-lg leading-none">${ex.name}</h4><p class="text-[10px] font-black uppercase text-stone-500 mt-1">${ex.muscle}</p></div><i data-lucide="chevron-right" class="w-4 h-4 text-stone-700"></i></div>`).join('');
+    }
+
+    function openVaultOverlay(name) {
+        const ex = VAULT_DATA.find(e => e.name === name);
+        $('overlay-content').innerHTML = `
+            <header><h2 class="text-4xl font-black italic uppercase">${ex.name}</h2></header>
+            <div class="space-y-4">
+                <div class="dna-metric flex justify-between"><div><p class="text-xs font-black">Battery Drain</p></div><span class="text-xs font-black text-[#FC5200]">${ex.aiInsight.dna.drain}</span></div>
+                <div class="dna-metric flex justify-between"><div><p class="text-xs font-black">Teamwork</p></div><span class="text-xs font-black">${ex.aiInsight.dna.synergy}</span></div>
+            </div>
+            <div class="ai-insight-box"><p class="text-xs italic">${ex.aiInsight.plateau}</p><p class="text-xs font-bold mt-2">${ex.aiInsight.projection}</p></div>
+            <iframe class="w-full aspect-video rounded-3xl" src="https://www.youtube.com/embed/${ex.videoId}"></iframe>
+        `;
+        $('vault-overlay').classList.remove('view-hidden'); 
+        lucide.createIcons();
+    }
+    function closeVaultOverlay() { $('vault-overlay').classList.add('view-hidden'); }
+    function showExplanation(key) { const data = EXPLANATIONS[key]; $('exp-content').innerHTML = `<h3 class="text-2xl font-black text-[#f6ea98] uppercase italic">${data.title}</h3><div class="mt-4 text-xs text-stone-300 leading-relaxed">${data.body}</div>`; $('explanation-modal').classList.remove('view-hidden'); lucide.createIcons(); }
+    function closeExplanation() { $('explanation-modal').classList.add('view-hidden'); }
+    function runAnalysis() { const btn = $('analyze-btn'); btn.innerHTML = `<i data-lucide="refresh-cw" class="animate-spin w-3 h-3"></i>`; setTimeout(() => { btn.innerText = "Analyze"; }, 1000); }
+
+    document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

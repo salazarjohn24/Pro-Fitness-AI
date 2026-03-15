@@ -14,3 +14,112 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * @summary Get the currently authenticated user
+ */
+export const GetCurrentAuthUserHeader = zod.object({
+  Authorization: zod.string().optional(),
+});
+
+export const GetCurrentAuthUserResponse = zod.object({
+  user: zod
+    .union([
+      zod.object({
+        id: zod.string(),
+        email: zod.string().nullish(),
+        firstName: zod.string().nullish(),
+        lastName: zod.string().nullish(),
+        profileImageUrl: zod.string().nullish(),
+      }),
+      zod.null(),
+    ])
+    .nullable(),
+});
+
+/**
+ * @summary Start the browser OIDC login flow
+ */
+export const BeginBrowserLoginQueryParams = zod.object({
+  returnTo: zod.coerce.string().optional(),
+});
+
+/**
+ * @summary Complete the browser OIDC login flow
+ */
+export const HandleBrowserLoginCallbackQueryParams = zod.object({
+  code: zod.coerce.string().optional(),
+  state: zod.coerce.string().optional(),
+});
+
+/**
+ * @summary Exchange a mobile OIDC code for a session token
+ */
+
+export const ExchangeMobileAuthorizationCodeBody = zod.object({
+  code: zod.string().min(1),
+  code_verifier: zod.string().min(1),
+  redirect_uri: zod.string().min(1),
+  state: zod.string().min(1),
+  nonce: zod.string().min(1).optional(),
+});
+
+export const ExchangeMobileAuthorizationCodeResponse = zod.object({
+  token: zod.string(),
+});
+
+/**
+ * @summary Delete a mobile session token
+ */
+export const LogoutMobileSessionHeader = zod.object({
+  Authorization: zod.string().optional(),
+});
+
+export const LogoutMobileSessionResponse = zod.object({
+  success: zod.boolean(),
+});
+
+/**
+ * @summary Get the current user's fitness profile
+ */
+export const GetUserProfileHeader = zod.object({
+  Authorization: zod.string().optional(),
+});
+
+export const GetUserProfileResponse = zod.object({
+  userId: zod.string(),
+  streakDays: zod.number().nullish(),
+  fitnessGoal: zod.string().nullish(),
+  workoutFrequency: zod.number().nullish(),
+  dailySyncProgress: zod.number().nullish(),
+  checkInCompleted: zod.boolean().nullish(),
+  activityImported: zod.boolean().nullish(),
+  updatedAt: zod.date().nullish(),
+});
+
+/**
+ * @summary Create or update the current user's fitness profile
+ */
+export const UpdateUserProfileHeader = zod.object({
+  Authorization: zod.string().optional(),
+});
+
+export const UpdateUserProfileBody = zod.object({
+  streakDays: zod.number().nullish(),
+  fitnessGoal: zod.string().nullish(),
+  workoutFrequency: zod.number().nullish(),
+  dailySyncProgress: zod.number().nullish(),
+  checkInCompleted: zod.boolean().nullish(),
+  activityImported: zod.boolean().nullish(),
+});
+
+export const UpdateUserProfileResponse = zod.object({
+  userId: zod.string(),
+  streakDays: zod.number().nullish(),
+  fitnessGoal: zod.string().nullish(),
+  workoutFrequency: zod.number().nullish(),
+  dailySyncProgress: zod.number().nullish(),
+  checkInCompleted: zod.boolean().nullish(),
+  activityImported: zod.boolean().nullish(),
+  updatedAt: zod.date().nullish(),
+});
