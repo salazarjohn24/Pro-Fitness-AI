@@ -17,6 +17,8 @@ router.post("/checkins", async (req: Request, res: Response) => {
     return;
   }
 
+  const sleepScore = Math.round((sleepQuality / 5) * 100);
+
   const today = new Date().toISOString().split("T")[0];
 
   const existing = await db
@@ -32,6 +34,7 @@ router.post("/checkins", async (req: Request, res: Response) => {
         sleepQuality,
         stressLevel,
         sorenessScore,
+        sleepScore,
         soreMuscleGroups: soreMuscleGroups ?? [],
         notes: notes ?? null,
       })
@@ -50,6 +53,7 @@ router.post("/checkins", async (req: Request, res: Response) => {
       sleepQuality,
       stressLevel,
       sorenessScore,
+      sleepScore,
       soreMuscleGroups: soreMuscleGroups ?? [],
       notes: notes ?? null,
     })

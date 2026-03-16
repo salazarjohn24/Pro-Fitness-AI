@@ -28,6 +28,7 @@ interface SetLog {
   status: SetStatus;
   weight: string;
   reps: number;
+  completedAt?: number;
 }
 
 const DEFAULT_REST_SECONDS = 75;
@@ -132,7 +133,7 @@ export default function WorkoutSessionScreen() {
       const logs = [...(prev[exId] ?? [])];
       const current = logs[setIdx]?.status ?? "pending";
       const next: SetStatus = current === "pending" ? "done" : current === "done" ? "failed" : "pending";
-      logs[setIdx] = { ...logs[setIdx], status: next, completed: next === "done" };
+      logs[setIdx] = { ...logs[setIdx], status: next, completed: next === "done", completedAt: next === "done" ? Date.now() : undefined };
       if (next === "done") {
         setRestRemaining(restSeconds);
         setRestTimerVisible(true);
@@ -214,15 +215,30 @@ export default function WorkoutSessionScreen() {
   };
 
   const handleSubmitFeedback = () => {
-    const exerciseData = exercises.map(ex => ({
-      exerciseId: ex.exerciseId,
-      name: ex.name,
-      sets: (setLogs[ex.exerciseId] ?? []).map(s => ({
-        reps: s.reps,
-        weight: s.weight,
-        completed: s.status === "done",
-      })),
-    }));
+    const exerciseData = exercises.map(ex => {
+      const logs = setLogs[ex.exerciseId] ?? [];
+      const completedTimestamps = logs
+        .filter(s => s.status === "done" && s.completedAt)
+        .map(s => s.completedAt!)
+        .sort((a, b) => a - b);
+      const restIntervals: number[] = [];
+      for (let i = 1; i < completedTimestamps.length; i++) {
+        restIntervals.push(Math.round((completedTimestamps[i] - completedTimestamps[i - 1]) / 1000));
+      }
+      return {
+        exerciseId: ex.exerciseId,
+        name: ex.name,
+        targetWeight: ex.weight,
+        targetReps: ex.reps,
+        targetRestSeconds: restSeconds,
+        actualRestSeconds: restIntervals,
+        sets: logs.map(s => ({
+          reps: s.reps,
+          weight: s.weight,
+          completed: s.status === "done",
+        })),
+      };
+    });
 
     saveWorkout({
       workoutTitle: workoutData?.workoutTitle ?? "Workout",

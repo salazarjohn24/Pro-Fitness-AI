@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, userProfilesTable, dailyCheckInsTable, workoutSessionsTable } from "@workspace/db";
+import { db, userProfilesTable, dailyCheckInsTable, workoutSessionsTable, workoutHistoryTable, exerciseLibraryTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { EXERCISE_LIBRARY, exerciseMap, type ExerciseData } from "../data/exercises";
 
@@ -347,6 +347,69 @@ router.post("/workout/sessions", async (req: Request, res: Response) => {
       return;
     }
 
+    let totalVolume = 0;
+    let serverSetsCompleted = 0;
+    for (const ex of exercises) {
+      for (const s of (ex.sets ?? [])) {
+        if (s.completed) {
+          serverSetsCompleted++;
+          const weight = parseFloat(s.weight) || 0;
+          totalVolume += weight * (s.reps || 0);
+        }
+      }
+    }
+
+    const actualSetsCompleted = serverSetsCompleted > 0 ? serverSetsCompleted : (totalSetsCompleted ?? 0);
+
+    let consistencyIndex: number | null = null;
+    {
+      let weightRatioSum = 0;
+      let weightRatioCount = 0;
+      for (const ex of exercises) {
+        const targetWeight = parseFloat(ex.targetWeight ?? ex.weight ?? "0") || 0;
+        for (const s of (ex.sets ?? [])) {
+          if (!s.completed) continue;
+          const actualWeight = parseFloat(s.weight) || 0;
+          if (targetWeight > 0) {
+            weightRatioSum += Math.min(1, actualWeight / targetWeight);
+          } else if (actualWeight > 0) {
+            weightRatioSum += 1;
+          }
+          weightRatioCount++;
+        }
+      }
+      const weightAdherence = weightRatioCount > 0 ? weightRatioSum / weightRatioCount : 0;
+
+      let restRatioSum = 0;
+      let restRatioCount = 0;
+      for (const ex of exercises) {
+        const targetRest = ex.targetRestSeconds ?? 75;
+        const actualRests: number[] = ex.actualRestSeconds ?? [];
+        for (const actual of actualRests) {
+          if (targetRest > 0 && actual > 0) {
+            restRatioSum += Math.min(1, actual / targetRest);
+          }
+          restRatioCount++;
+        }
+      }
+      const restAdherence = restRatioCount > 0 ? restRatioSum / restRatioCount : 0;
+
+      let fatigueSelfReport = 0;
+      if (postWorkoutFeedback) {
+        const difficultyScore = postWorkoutFeedback.perceivedDifficulty
+          ? Math.min(1, Math.max(0, 1 - Math.abs(postWorkoutFeedback.perceivedDifficulty - 3) / 4))
+          : 0;
+        const energyScore = postWorkoutFeedback.energyAfter
+          ? Math.min(1, postWorkoutFeedback.energyAfter / 5)
+          : 0;
+        fatigueSelfReport = (difficultyScore + energyScore) / 2;
+      }
+
+      consistencyIndex = (weightAdherence + restAdherence + fatigueSelfReport) / 3;
+      consistencyIndex = Math.min(1, Math.max(0, consistencyIndex));
+      consistencyIndex = Math.round(consistencyIndex * 100) / 100;
+    }
+
     const [session] = await db
       .insert(workoutSessionsTable)
       .values({
@@ -354,10 +417,54 @@ router.post("/workout/sessions", async (req: Request, res: Response) => {
         workoutTitle,
         durationSeconds: durationSeconds ?? 0,
         exercises,
-        totalSetsCompleted: totalSetsCompleted ?? 0,
+        totalSetsCompleted: actualSetsCompleted,
+        totalVolume,
+        consistencyIndex,
         postWorkoutFeedback: postWorkoutFeedback ?? null,
       })
       .returning();
+
+    for (const ex of exercises) {
+      const completedSets = (ex.sets ?? []).filter((s: { completed: boolean }) => s.completed);
+      if (completedSets.length === 0) continue;
+
+      let dbExerciseId: number | null = null;
+      const numericId = parseInt(ex.exerciseId, 10);
+      if (!isNaN(numericId) && String(numericId) === ex.exerciseId) {
+        dbExerciseId = numericId;
+      } else {
+        const exerciseName = (ex.name ?? "").trim();
+        if (exerciseName) {
+          const [found] = await db
+            .select({ id: exerciseLibraryTable.id })
+            .from(exerciseLibraryTable)
+            .where(eq(exerciseLibraryTable.name, exerciseName))
+            .limit(1);
+          if (found) dbExerciseId = found.id;
+        }
+      }
+      if (dbExerciseId === null) continue;
+
+      const totalWeight = completedSets.reduce((sum: number, s: { weight: string; reps: number }) => {
+        return sum + (parseFloat(s.weight) || 0);
+      }, 0);
+      const avgWeight = Math.round(totalWeight / completedSets.length);
+      const avgReps = Math.round(
+        completedSets.reduce((sum: number, s: { reps: number }) => sum + (s.reps || 0), 0) / completedSets.length
+      );
+      try {
+        await db.insert(workoutHistoryTable).values({
+          userId: req.user.id,
+          exerciseId: dbExerciseId,
+          weight: avgWeight,
+          reps: avgReps,
+          sets: completedSets.length,
+          consistencyIndex,
+        });
+      } catch (historyErr) {
+        console.error(`Failed to insert workout_history for exercise ${dbExerciseId}:`, historyErr);
+      }
+    }
 
     res.json(session);
   } catch (err) {

@@ -49,7 +49,7 @@ Pro Fitness AI — dark-themed fitness tracker with AI recommendations.
 - `app/gym-setup.tsx` — Post-onboarding gym environment setup (name, type, equipment checklist)
 - `app/(tabs)/vault.tsx` — Exercise Vault: searchable, filterable exercise card grid (muscle group, equipment, goal filters)
 - `app/exercise/[id].tsx` — Exercise detail: YouTube link, instructions, common mistakes, stimulus map, Coach's Note, plateau alerts, similar exercises
-- `app/(tabs)/progress.tsx` — Progress: analytics, bar charts, muscle focus
+- `app/(tabs)/progress.tsx` — Audit tab (Performance Audit): time-range filtered (1M/3M/6M) training volume bar chart + muscle focus breakdown from real API data, data sufficiency banner, audit alerts, recovery correlation
 - `app/(tabs)/profile.tsx` — Profile: user info, fitness goals, gym environments, insight preferences, settings
 - `app/workout-session.tsx` — Active workout session with exercise cards, swap, video, rest timer
 - `app/workout-architect.tsx` — Multi-step custom workout builder (muscle groups → equipment → AI generate → review → start)
@@ -61,12 +61,16 @@ Pro Fitness AI — dark-themed fitness tracker with AI recommendations.
 - `components/ActivityImportModal.tsx` — External workout logger modal with screenshot import, manual entry (label, duration, type, RPE intensity, muscle groups), and AI interpreter (paste workout description → auto-parsed muscle groups & intensity)
 - `app/external-workouts.tsx` — Dedicated screen for viewing, editing, and deleting external workouts with add button
 - `components/InsightInfoModal.tsx` — Info popup for AI insights and readiness score explanation
+- `components/AccordionCard.tsx` — Collapsible card for deep-dive metrics (alert details, recovery correlation breakdown)
 
 ### Key Files
 - `lib/auth.tsx` — Auth context (Replit OIDC mobile flow)
 - `hooks/useProfile.ts` — React Query hooks for profile, check-ins, external workouts (submit, recent, update, delete), readiness score computation, and fitness profile CRUD
 - `hooks/useWorkout.ts` — Hooks for workout generation, architect generation, saving, alternatives
 - `hooks/useExercises.ts` — React Query hooks for exercise library (list, detail, history, log set)
+- `hooks/useAuditAlerts.ts` — React Query hook for fetching audit alerts (neglect + consistency)
+- `hooks/useRecoveryCorrelation.ts` — React Query hook for recovery-to-load correlation data
+- `hooks/useVolumeStats.ts` — React Query hook for time-range filtered volume stats (volume timeline + muscle focus)
 - `hooks/useEnvironments.ts` — React Query hooks for gym environment CRUD (list, create, activate, delete)
 - `components/EquipmentChecklist.tsx` — Reusable categorized equipment checklist component
 - `utils/stimulus.ts` — Stimulus point calculation, workout description parser, muscle group inference
@@ -95,7 +99,7 @@ Pro Fitness AI — dark-themed fitness tracker with AI recommendations.
 - `updated_at`
 
 ### `daily_check_ins` table
-- `id` (PK serial), `user_id` (FK → users), `date`, `energy_level`, `sleep_quality`, `stress_level`, `soreness_score`, `sore_muscle_groups` (JSONB {muscle, severity}[]), `notes`, `created_at`
+- `id` (PK serial), `user_id` (FK → users), `date`, `energy_level`, `sleep_quality`, `stress_level`, `soreness_score`, `sore_muscle_groups` (JSONB {muscle, severity}[]), `sleep_score` (integer, auto-computed from sleep_quality), `notes`, `created_at`
 - Unique constraint on (user_id, date) for upsert support
 
 ### `external_workouts` table
@@ -105,13 +109,13 @@ Pro Fitness AI — dark-themed fitness tracker with AI recommendations.
 - `id` (PK serial), `user_id` (FK → users), `name`, `type`, `equipment` (JSON: categorized equipment lists), `is_active` (boolean), `created_at`
 
 ### `workout_sessions` table
-- `id` (PK serial), `user_id` (FK → users), `session_date`, `workout_title`, `duration_seconds`, `exercises` (JSONB [{exerciseId, name, sets: [{reps, weight, completed}]}]), `total_sets_completed`, `created_at`
+- `id` (PK serial), `user_id` (FK → users), `session_date`, `workout_title`, `duration_seconds`, `exercises` (JSONB [{exerciseId, name, sets: [{reps, weight, completed}]}]), `total_sets_completed`, `total_volume` (real, computed server-side), `consistency_index` (real 0.0–1.0, computed from set completion + post-workout feedback), `post_workout_feedback` (JSONB), `created_at`
 
 ### `exercise_library` table
 - `id` (PK serial), `name`, `muscle_group`, `equipment`, `goal`, `difficulty`, `youtube_url`, `instructions` (JSONB string[]), `common_mistakes` (JSONB string[]), `primary_muscles` (JSONB string[]), `secondary_muscles` (JSONB string[]), `tertiary_muscles` (JSONB string[]), `alternative_ids` (JSONB int[]), `created_at`
 
 ### `workout_history` table
-- `id` (PK serial), `user_id` (FK → users), `exercise_id` (FK → exercise_library), `weight`, `reps`, `sets`, `performed_at`
+- `id` (PK serial), `user_id` (FK → users), `exercise_id` (FK → exercise_library), `weight`, `reps`, `sets`, `consistency_index` (real, nullable), `performed_at`
 
 ## Exercise Library
 - 54 exercises stored as JSON constant in `artifacts/api-server/src/data/exercises.ts`
@@ -150,6 +154,9 @@ Pro Fitness AI — dark-themed fitness tracker with AI recommendations.
 - `GET /api/exercises/:id/history` — Get last 3 sessions with 1RM estimate, plateau detection, rest recommendation
 - `POST /api/exercises/:id/history` — Log a set (weight, reps, sets)
 - `GET /api/exercises/:id/alternatives` — Get alternative exercises for swapping
+- `GET /api/audit/alerts` — Get audit alerts (neglected muscles 10+ days, consistency checks <80%)
+- `GET /api/audit/recovery-correlation` — Get recovery-to-load correlation (high vs low sleep score volume comparison)
+- `GET /api/audit/volume-stats?range=1M|3M|6M` — Get time-range filtered training volume timeline + muscle focus breakdown
 
 ## TypeScript & Composite Projects
 

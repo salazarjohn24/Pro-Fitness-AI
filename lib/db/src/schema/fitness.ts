@@ -1,4 +1,4 @@
-import { boolean, date, integer, jsonb, pgTable, serial, text, timestamp, unique, varchar } from "drizzle-orm/pg-core";
+import { boolean, date, integer, jsonb, pgTable, real, serial, text, timestamp, unique, varchar } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -53,6 +53,7 @@ export const dailyCheckInsTable = pgTable("daily_check_ins", {
   stressLevel: integer("stress_level").notNull(),
   sorenessScore: integer("soreness_score").notNull(),
   soreMuscleGroups: jsonb("sore_muscle_groups").$type<{ muscle: string; severity: number }[]>().default([]),
+  sleepScore: integer("sleep_score"),
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [unique("daily_checkin_user_date").on(table.userId, table.date)]);
@@ -92,6 +93,8 @@ export const workoutSessionsTable = pgTable("workout_sessions", {
     sets: { reps: number; weight: string; completed: boolean }[];
   }[]>().default([]),
   totalSetsCompleted: integer("total_sets_completed").default(0),
+  totalVolume: real("total_volume"),
+  consistencyIndex: real("consistency_index"),
   postWorkoutFeedback: jsonb("post_workout_feedback").$type<{
     perceivedDifficulty: number;
     energyAfter: number;
@@ -131,6 +134,7 @@ export const workoutHistoryTable = pgTable("workout_history", {
   weight: integer("weight").notNull(),
   reps: integer("reps").notNull(),
   sets: integer("sets").notNull(),
+  consistencyIndex: real("consistency_index"),
   performedAt: timestamp("performed_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

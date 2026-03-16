@@ -113,6 +113,7 @@ router.get("/exercises/:id/history", async (req: Request, res: Response) => {
     weight: h.weight,
     reps: h.reps,
     sets: h.sets,
+    consistencyIndex: h.consistencyIndex,
   }));
 
   let estimated1RM: number | null = null;

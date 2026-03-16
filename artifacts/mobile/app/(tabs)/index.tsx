@@ -31,6 +31,7 @@ import {
   computeReadinessScore,
 } from "@/hooks/useProfile";
 import { useGenerateWorkout, type GeneratedWorkout } from "@/hooks/useWorkout";
+import { useRecoveryCorrelation } from "@/hooks/useRecoveryCorrelation";
 
 const TODAY = new Date().toLocaleDateString("en-US", {
   weekday: "long",
@@ -77,9 +78,12 @@ export default function StatusScreen() {
   const { data: recentExternalWorkouts } = useRecentExternalWorkouts();
   const { mutate: generateWorkout, isPending: isGenerating } = useGenerateWorkout();
 
+  const { data: recoveryCorrelation } = useRecoveryCorrelation();
+
   const [checkInOpen, setCheckInOpen] = useState(false);
   const [insightOpen, setInsightOpen] = useState(false);
   const [readinessInfoOpen, setReadinessInfoOpen] = useState(false);
+  const [coachSecretInfoOpen, setCoachSecretInfoOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [autoCheckInTriggered, setAutoCheckInTriggered] = useState(false);
   const [generatedWorkout, setGeneratedWorkout] = useState<GeneratedWorkout | null>(null);
@@ -528,6 +532,50 @@ export default function StatusScreen() {
           </BentoCard>
         </View>
 
+        {recoveryCorrelation?.hasEnoughData && (
+          <BentoCard style={styles.coachCard}>
+            <View style={styles.coachHeader}>
+              <View style={styles.coachIconWrap}>
+                <Feather name="eye" size={16} color={Colors.highlight} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.coachLabel}>COACH'S SECRET</Text>
+                <Text style={styles.coachTitle}>Recovery-to-Load Insight</Text>
+              </View>
+              <Pressable
+                onPress={() => setCoachSecretInfoOpen(true)}
+                style={styles.infoBtn}
+              >
+                <Feather name="info" size={15} color={Colors.textSubtle} />
+              </Pressable>
+            </View>
+            <Text style={styles.coachText}>
+              {recoveryCorrelation.percentageDifference >= 0
+                ? `You perform ${recoveryCorrelation.percentageDifference}% more volume on well-recovered days. Prioritize sleep to unlock your full training potential.`
+                : `Your volume is ${Math.abs(recoveryCorrelation.percentageDifference)}% lower on well-recovered days. You may be overtraining on tired days — listen to your body.`
+              }
+            </Text>
+            <View style={styles.coachStats}>
+              <View style={styles.coachStat}>
+                <Text style={[styles.coachStatValue, { color: Colors.highlight }]}>{recoveryCorrelation.avgHighVolume}</Text>
+                <Text style={styles.coachStatLabel}>High Recovery Vol</Text>
+              </View>
+              <View style={styles.coachStatDivider} />
+              <View style={styles.coachStat}>
+                <Text style={[styles.coachStatValue, { color: Colors.orange }]}>{recoveryCorrelation.avgLowVolume}</Text>
+                <Text style={styles.coachStatLabel}>Low Recovery Vol</Text>
+              </View>
+              <View style={styles.coachStatDivider} />
+              <View style={styles.coachStat}>
+                <Text style={[styles.coachStatValue, { color: recoveryCorrelation.percentageDifference >= 0 ? Colors.highlight : Colors.orange }]}>
+                  {recoveryCorrelation.percentageDifference >= 0 ? "+" : ""}{recoveryCorrelation.percentageDifference}%
+                </Text>
+                <Text style={styles.coachStatLabel}>Delta</Text>
+              </View>
+            </View>
+          </BentoCard>
+        )}
+
         {(recentExternalWorkouts && recentExternalWorkouts.length > 0) && (
           <BentoCard>
             <Text style={styles.sectionLabel}>Recent Activity</Text>
@@ -599,6 +647,17 @@ export default function StatusScreen() {
         visible={readinessInfoOpen}
         onClose={() => setReadinessInfoOpen(false)}
         insight={READINESS_INFO}
+      />
+
+      <InsightInfoModal
+        visible={coachSecretInfoOpen}
+        onClose={() => setCoachSecretInfoOpen(false)}
+        insight={{
+          title: "Coach's Secret: Recovery-to-Load",
+          what: "This metric compares your average training volume on high-recovery days (sleep score ≥70) versus low-recovery days (sleep score <70), revealing how your recovery directly impacts performance.",
+          why: "Understanding this correlation helps you optimize training timing. If the delta is large, scheduling hard sessions on well-recovered days yields significantly better results.",
+          how: "Log your daily check-in consistently and complete workouts through the app. The more data points the engine has, the more accurate and actionable this insight becomes.",
+        }}
       />
     </>
   );
@@ -859,5 +918,72 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     color: Colors.textSubtle,
     marginTop: 2,
+  },
+  coachCard: {
+    borderColor: "rgba(246,234,152,0.2)",
+    backgroundColor: "rgba(246,234,152,0.04)",
+    gap: 12,
+  },
+  coachHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  coachIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: "rgba(246,234,152,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  coachLabel: {
+    fontSize: 8,
+    fontFamily: "Inter_700Bold",
+    color: Colors.highlight,
+    letterSpacing: 2,
+  },
+  coachTitle: {
+    fontSize: 13,
+    fontFamily: "Inter_900Black",
+    color: Colors.text,
+    fontStyle: "italic",
+    textTransform: "uppercase",
+    marginTop: 2,
+  },
+  coachText: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textMuted,
+    lineHeight: 18,
+  },
+  coachStats: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderRadius: 14,
+    padding: 12,
+  },
+  coachStat: {
+    flex: 1,
+    alignItems: "center",
+    gap: 2,
+  },
+  coachStatDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: Colors.border,
+  },
+  coachStatValue: {
+    fontSize: 16,
+    fontFamily: "Inter_900Black",
+    fontStyle: "italic",
+  },
+  coachStatLabel: {
+    fontSize: 7,
+    fontFamily: "Inter_700Bold",
+    color: Colors.textSubtle,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
   },
 });
