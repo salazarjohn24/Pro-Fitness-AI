@@ -4,12 +4,14 @@ import React, { useState } from "react";
 import {
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
-  Animated,
 } from "react-native";
 import { Colors } from "@/constants/colors";
+import { BodyMap } from "@/components/BodyMap";
 
 const QUESTIONS = [
   {
@@ -70,52 +72,112 @@ const QUESTIONS = [
   },
 ];
 
+type Step = "questions" | "bodymap" | "notes" | "done";
+
+export interface CheckInData {
+  energyLevel: number;
+  sleepQuality: number;
+  stressLevel: number;
+  sorenessScore: number;
+  soreMuscleGroups: string[];
+  notes: string;
+}
+
 interface Props {
   visible: boolean;
   onClose: () => void;
-  onComplete: () => void;
+  onComplete: (data: CheckInData) => void;
+  initialData?: CheckInData | null;
 }
 
-export function CheckInModal({ visible, onClose, onComplete }: Props) {
-  const [step, setStep] = useState(0);
+export function CheckInModal({ visible, onClose, onComplete, initialData }: Props) {
+  const [questionStep, setQuestionStep] = useState(0);
   const [answers, setAnswers] = useState<Record<string, number>>({});
-  const [done, setDone] = useState(false);
+  const [phase, setPhase] = useState<Step>("questions");
+  const [soreMuscles, setSoreMuscles] = useState<string[]>([]);
+  const [notes, setNotes] = useState("");
+  const [initialized, setInitialized] = useState(false);
 
-  const q = QUESTIONS[step];
-  const total = QUESTIONS.length;
-  const pct = ((step) / total) * 100;
+  React.useEffect(() => {
+    if (visible && initialData && !initialized) {
+      setAnswers({
+        energy: initialData.energyLevel,
+        sleep: initialData.sleepQuality,
+        soreness: initialData.sorenessScore,
+        stress: initialData.stressLevel,
+      });
+      setSoreMuscles(initialData.soreMuscleGroups ?? []);
+      setNotes(initialData.notes ?? "");
+      setInitialized(true);
+    }
+    if (!visible) {
+      setInitialized(false);
+    }
+  }, [visible, initialData, initialized]);
+
+  const q = QUESTIONS[questionStep];
+  const totalQuestions = QUESTIONS.length;
+  const totalSteps = totalQuestions + 2;
+  const currentOverallStep = phase === "questions" ? questionStep + 1 : phase === "bodymap" ? totalQuestions + 1 : phase === "notes" ? totalQuestions + 2 : totalSteps;
 
   const handleAnswer = (val: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const newAnswers = { ...answers, [q.id]: val };
     setAnswers(newAnswers);
 
-    if (step < total - 1) {
-      setTimeout(() => setStep(step + 1), 180);
+    if (questionStep < totalQuestions - 1) {
+      setTimeout(() => setQuestionStep(questionStep + 1), 180);
     } else {
-      setTimeout(() => {
-        setDone(true);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }, 180);
+      setTimeout(() => setPhase("bodymap"), 180);
     }
   };
 
+  const toggleMuscle = (id: string) => {
+    setSoreMuscles((prev) =>
+      prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]
+    );
+  };
+
   const handleFinish = () => {
-    onComplete();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    onComplete({
+      energyLevel: answers["energy"] ?? 3,
+      sleepQuality: answers["sleep"] ?? 3,
+      stressLevel: answers["stress"] ?? 3,
+      sorenessScore: answers["soreness"] ?? 3,
+      soreMuscleGroups: soreMuscles,
+      notes,
+    });
     setTimeout(() => {
-      setStep(0);
+      setQuestionStep(0);
       setAnswers({});
-      setDone(false);
+      setPhase("questions");
+      setSoreMuscles([]);
+      setNotes("");
     }, 300);
   };
 
   const handleClose = () => {
     onClose();
     setTimeout(() => {
-      setStep(0);
+      setQuestionStep(0);
       setAnswers({});
-      setDone(false);
+      setPhase("questions");
+      setSoreMuscles([]);
+      setNotes("");
     }, 300);
+  };
+
+  const handleBack = () => {
+    Haptics.selectionAsync();
+    if (phase === "notes") {
+      setPhase("bodymap");
+    } else if (phase === "bodymap") {
+      setPhase("questions");
+      setQuestionStep(totalQuestions - 1);
+    } else if (questionStep > 0) {
+      setQuestionStep(questionStep - 1);
+    }
   };
 
   return (
@@ -123,21 +185,22 @@ export function CheckInModal({ visible, onClose, onComplete }: Props) {
       <View style={styles.backdrop}>
         <Pressable style={styles.backdropTouch} onPress={handleClose} />
         <View style={styles.sheet}>
-          {/* Handle */}
           <View style={styles.handle} />
 
-          {!done ? (
+          {phase === "done" ? null : (
             <>
-              {/* Progress */}
               <View style={styles.progressRow}>
                 <Text style={styles.progressLabel}>INTELLIGENCE CHECK-IN</Text>
-                <Text style={styles.progressCount}>{step + 1} / {total}</Text>
+                <Text style={styles.progressCount}>{currentOverallStep} / {totalSteps}</Text>
               </View>
               <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${((step + 1) / total) * 100}%` as any }]} />
+                <View style={[styles.progressFill, { width: `${(currentOverallStep / totalSteps) * 100}%` as any }]} />
               </View>
+            </>
+          )}
 
-              {/* Question */}
+          {phase === "questions" && (
+            <>
               <View style={styles.questionBlock}>
                 <View style={[styles.questionIcon, { backgroundColor: q.color + "20" }]}>
                   <Feather name={q.icon as any} size={24} color={q.color} />
@@ -146,7 +209,6 @@ export function CheckInModal({ visible, onClose, onComplete }: Props) {
                 <Text style={styles.questionText}>{q.question}</Text>
               </View>
 
-              {/* Options */}
               <View style={styles.optionGrid}>
                 {q.options.map((opt) => {
                   const selected = answers[q.id] === opt.value;
@@ -167,45 +229,77 @@ export function CheckInModal({ visible, onClose, onComplete }: Props) {
                 })}
               </View>
 
-              {/* Back button */}
-              {step > 0 && (
-                <Pressable onPress={() => { Haptics.selectionAsync(); setStep(step - 1); }} style={styles.backBtn}>
+              {questionStep > 0 && (
+                <Pressable onPress={handleBack} style={styles.backBtn}>
                   <Feather name="arrow-left" size={14} color={Colors.textSubtle} />
                   <Text style={styles.backBtnText}>Back</Text>
                 </Pressable>
               )}
             </>
-          ) : (
-            <View style={styles.doneBlock}>
-              <View style={styles.doneIcon}>
-                <Feather name="check" size={32} color={Colors.highlight} />
-              </View>
-              <Text style={styles.doneTitle}>CALIBRATION{"\n"}COMPLETE</Text>
-              <Text style={styles.doneDesc}>
-                Your AI protocol has been updated based on today's biometrics. Optimal training load calculated.
-              </Text>
+          )}
 
-              <View style={styles.summaryRow}>
-                {QUESTIONS.map((q) => {
-                  const val = answers[q.id] ?? 0;
-                  return (
-                    <View key={q.id} style={styles.summaryCard}>
-                      <Feather name={q.icon as any} size={14} color={q.color} />
-                      <Text style={[styles.summaryVal, { color: q.color }]}>{val}/5</Text>
-                      <Text style={styles.summaryKey}>{q.label.split(" ")[0].toUpperCase()}</Text>
-                    </View>
-                  );
-                })}
+          {phase === "bodymap" && (
+            <>
+              <View style={styles.questionBlock}>
+                <View style={[styles.questionIcon, { backgroundColor: Colors.orange + "20" }]}>
+                  <Feather name="user" size={24} color={Colors.orange} />
+                </View>
+                <Text style={styles.questionLabel}>SORE AREAS</Text>
+                <Text style={styles.questionText}>Tap sore muscles</Text>
               </View>
 
-              <Pressable
-                style={({ pressed }) => [styles.finishBtn, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
-                onPress={handleFinish}
-              >
-                <Feather name="zap" size={16} color="#fff" />
-                <Text style={styles.finishBtnText}>UNLOCK TODAY'S PROTOCOL</Text>
-              </Pressable>
-            </View>
+              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 320 }}>
+                <BodyMap selected={soreMuscles} onToggle={toggleMuscle} />
+              </ScrollView>
+
+              <View style={styles.bodyMapFooter}>
+                <Pressable onPress={handleBack} style={styles.backBtn}>
+                  <Feather name="arrow-left" size={14} color={Colors.textSubtle} />
+                  <Text style={styles.backBtnText}>Back</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setPhase("notes"); }}
+                  style={styles.continueBtn}
+                >
+                  <Text style={styles.continueBtnText}>{soreMuscles.length === 0 ? "SKIP" : "CONTINUE"}</Text>
+                  <Feather name="arrow-right" size={14} color="#fff" />
+                </Pressable>
+              </View>
+            </>
+          )}
+
+          {phase === "notes" && (
+            <>
+              <View style={styles.questionBlock}>
+                <View style={[styles.questionIcon, { backgroundColor: "#A78BFA20" }]}>
+                  <Feather name="edit-3" size={24} color="#A78BFA" />
+                </View>
+                <Text style={styles.questionLabel}>NOTES</Text>
+                <Text style={styles.questionText}>Anything else?</Text>
+              </View>
+
+              <TextInput
+                style={styles.notesInput}
+                placeholder="Optional: How are you feeling? Any context for today..."
+                placeholderTextColor={Colors.textSubtle}
+                value={notes}
+                onChangeText={setNotes}
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top"
+              />
+
+              <View style={styles.bodyMapFooter}>
+                <Pressable onPress={handleBack} style={styles.backBtn}>
+                  <Feather name="arrow-left" size={14} color={Colors.textSubtle} />
+                  <Text style={styles.backBtnText}>Back</Text>
+                </Pressable>
+                <Pressable onPress={handleFinish} style={styles.continueBtn}>
+                  <Feather name="check" size={14} color="#fff" />
+                  <Text style={styles.continueBtnText}>COMPLETE</Text>
+                </Pressable>
+              </View>
+            </>
           )}
         </View>
       </View>
@@ -318,85 +412,44 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    alignSelf: "center",
-    marginTop: 20,
   },
   backBtnText: {
     fontSize: 12,
     fontFamily: "Inter_400Regular",
     color: Colors.textSubtle,
   },
-  doneBlock: { alignItems: "center", gap: 16 },
-  doneIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 24,
-    backgroundColor: "rgba(246,234,152,0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(246,234,152,0.3)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
-  },
-  doneTitle: {
-    fontSize: 30,
-    fontFamily: "Inter_900Black",
-    color: Colors.text,
-    fontStyle: "italic",
-    textTransform: "uppercase",
-    textAlign: "center",
-    lineHeight: 34,
-  },
-  doneDesc: {
-    fontSize: 13,
-    fontFamily: "Inter_400Regular",
-    color: Colors.textMuted,
-    textAlign: "center",
-    lineHeight: 20,
-  },
-  summaryRow: {
+  bodyMapFooter: {
     flexDirection: "row",
-    gap: 8,
-    marginVertical: 4,
-  },
-  summaryCard: {
-    flex: 1,
-    backgroundColor: Colors.bgCard,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 14,
+    justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 12,
-    gap: 4,
+    marginTop: 16,
   },
-  summaryVal: {
-    fontSize: 16,
-    fontFamily: "Inter_900Black",
-    fontStyle: "italic",
-  },
-  summaryKey: {
-    fontSize: 7,
-    fontFamily: "Inter_700Bold",
-    color: Colors.textSubtle,
-    letterSpacing: 1,
-  },
-  finishBtn: {
+  continueBtn: {
     backgroundColor: Colors.orange,
-    borderRadius: 16,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
     gap: 8,
-    width: "100%",
-    marginTop: 4,
   },
-  finishBtnText: {
-    fontSize: 13,
+  continueBtnText: {
+    fontSize: 11,
     fontFamily: "Inter_900Black",
     color: "#fff",
     letterSpacing: 1,
     fontStyle: "italic",
+  },
+  notesInput: {
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.bgCard,
+    borderRadius: 16,
+    padding: 16,
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+    color: Colors.text,
+    minHeight: 100,
+    marginBottom: 8,
   },
 });

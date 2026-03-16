@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -16,9 +16,17 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CheckInModal } from "@/components/CheckInModal";
 import { ActivityImportModal } from "@/components/ActivityImportModal";
 import { InsightInfoModal } from "@/components/InsightInfoModal";
+import { OnboardingModal } from "@/components/OnboardingModal";
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
-import { useProfile, useUpdateProfile } from "@/hooks/useProfile";
+import {
+  useProfile,
+  useUpdateProfile,
+  useTodayCheckIn,
+  useSubmitCheckIn,
+  useSubmitExternalWorkout,
+  computeReadinessScore,
+} from "@/hooks/useProfile";
 
 const TODAY = new Date().toLocaleDateString("en-US", {
   weekday: "long",
@@ -31,6 +39,13 @@ const AI_SMART_LOAD_INFO = {
   what: "AI Smart Load analyzes your recent training history, recovery scores, and today's check-in data to determine the ideal training volume and intensity for today.",
   why: "Training with the wrong volume or intensity leads to overtraining, injury, or insufficient stimulus for growth. Smart load keeps you in the optimal zone.",
   how: "Complete your daily check-in so the AI has up-to-date biometric data. The more consistently you check in, the more accurate your recommendations become.",
+};
+
+const READINESS_INFO = {
+  title: "Daily Readiness Score",
+  what: "Your readiness score is computed from today's check-in data: energy level (30%), sleep quality (30%), stress level (20%), and muscle soreness (20%).",
+  why: "This score helps the AI calibrate workout intensity. Higher scores mean you can handle more volume; lower scores trigger deload protocols.",
+  how: "Complete your daily check-in to generate an accurate score. Consistent daily check-ins improve the AI's ability to personalize your training.",
 };
 
 function BentoCard({ children, style }: { children: React.ReactNode; style?: any }) {
@@ -51,31 +66,98 @@ export default function StatusScreen() {
   const { user } = useAuth();
   const { data: profile, isLoading } = useProfile();
   const { mutate: updateProfile } = useUpdateProfile();
+  const { data: todayCheckIn, isLoading: checkInLoading } = useTodayCheckIn();
+  const { mutate: submitCheckIn } = useSubmitCheckIn();
+  const { mutate: submitExternalWorkout } = useSubmitExternalWorkout();
 
   const [checkInOpen, setCheckInOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [insightOpen, setInsightOpen] = useState(false);
+  const [readinessInfoOpen, setReadinessInfoOpen] = useState(false);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [autoCheckInTriggered, setAutoCheckInTriggered] = useState(false);
 
   const streak = profile?.streakDays ?? 0;
   const syncProgress = profile?.dailySyncProgress ?? 0;
-  const checkInDone = profile?.checkInCompleted ?? false;
+  const checkInDone = !!todayCheckIn;
   const activityDone = profile?.activityImported ?? false;
+  const onboardingDone = profile?.onboardingCompleted ?? false;
+
+  const readinessScore = computeReadinessScore(todayCheckIn);
 
   const completedTasks = [checkInDone, activityDone, false].filter(Boolean).length;
   const pct = Math.round((completedTasks / 3) * 100);
 
-  const handleCheckInComplete = () => {
-    setCheckInOpen(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const newProgress = Math.min(100, syncProgress + 33);
-    updateProfile({ checkInCompleted: true, dailySyncProgress: newProgress, streakDays: streak + 1 });
+  useEffect(() => {
+    if (!isLoading && !checkInLoading && profile && !onboardingDone) {
+      setOnboardingOpen(true);
+    }
+  }, [isLoading, checkInLoading, profile, onboardingDone]);
+
+  useEffect(() => {
+    if (!isLoading && !checkInLoading && onboardingDone && !checkInDone && !autoCheckInTriggered) {
+      const timer = setTimeout(() => {
+        setAutoCheckInTriggered(true);
+        setCheckInOpen(true);
+      }, 1200);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading, checkInLoading, onboardingDone, checkInDone, autoCheckInTriggered]);
+
+  const handleOnboardingComplete = (data: {
+    fitnessGoal: string;
+    skillLevel: string;
+    equipment: string[];
+    injuries: string[];
+  }) => {
+    updateProfile({
+      fitnessGoal: data.fitnessGoal,
+      skillLevel: data.skillLevel,
+      equipment: data.equipment,
+      injuries: data.injuries,
+      onboardingCompleted: true,
+    }, {
+      onSuccess: () => setOnboardingOpen(false),
+    });
   };
 
-  const handleActivityComplete = () => {
-    setActivityOpen(false);
+  const handleCheckInComplete = (data: {
+    energyLevel: number;
+    sleepQuality: number;
+    stressLevel: number;
+    sorenessScore: number;
+    soreMuscleGroups: string[];
+    notes: string;
+  }) => {
+    const wasAlreadyDone = checkInDone;
+    setCheckInOpen(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    submitCheckIn(data, {
+      onSuccess: () => {
+        if (!wasAlreadyDone) {
+          const newProgress = Math.min(100, syncProgress + 33);
+          updateProfile({ checkInCompleted: true, dailySyncProgress: newProgress, streakDays: streak + 1 });
+        }
+      },
+    });
+  };
+
+  const markActivityDone = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const newProgress = Math.min(100, syncProgress + 34);
     updateProfile({ activityImported: true, dailySyncProgress: newProgress });
+  };
+
+  const handleScreenshotComplete = () => {
+    setActivityOpen(false);
+    markActivityDone();
+    submitExternalWorkout({ label: "Screenshot Import", duration: 47, workoutType: "Imported", source: "screenshot" });
+  };
+
+  const handleManualWorkout = (data: { label: string; duration: number; workoutType: string }) => {
+    setActivityOpen(false);
+    markActivityDone();
+    submitExternalWorkout(data);
   };
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -96,7 +178,6 @@ export default function StatusScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingTop: topPad + 8, paddingBottom: botPad + 100 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
         <View style={styles.header}>
           <View>
             <Text style={styles.dateText}>{TODAY}</Text>
@@ -112,7 +193,6 @@ export default function StatusScreen() {
           </View>
         </View>
 
-        {/* Daily Protocol Sync */}
         <BentoCard>
           <View style={styles.syncHeader}>
             <View style={styles.syncTitleRow}>
@@ -125,10 +205,8 @@ export default function StatusScreen() {
           </View>
 
           <View style={styles.taskList}>
-            {/* Check-in Task */}
             <Pressable
               onPress={() => {
-                if (checkInDone) return;
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                 setCheckInOpen(true);
               }}
@@ -143,12 +221,11 @@ export default function StatusScreen() {
               </View>
               <View style={styles.taskInfo}>
                 <Text style={[styles.taskTitle, checkInDone && styles.taskTitleDone]}>Intelligence Check-in</Text>
-                <Text style={styles.taskSub}>{checkInDone ? "Calibration Complete" : "Tap to start calibration"}</Text>
+                <Text style={styles.taskSub}>{checkInDone ? "Tap to edit" : "Tap to start calibration"}</Text>
               </View>
-              <Feather name={checkInDone ? "check-circle" : "chevron-right"} size={16} color={checkInDone ? Colors.highlight : Colors.textMuted} />
+              <Feather name={checkInDone ? "edit-2" : "chevron-right"} size={16} color={checkInDone ? Colors.highlight : Colors.textMuted} />
             </Pressable>
 
-            {/* Activity Task */}
             <Pressable
               onPress={() => {
                 if (activityDone) return;
@@ -167,14 +244,13 @@ export default function StatusScreen() {
               </View>
               <View style={styles.taskInfo}>
                 <Text style={[styles.taskTitle, !activityDone && styles.taskTitleMuted, activityDone && styles.taskTitleDone]}>
-                  Activity Screenshot
+                  Log External Workout
                 </Text>
-                <Text style={styles.taskSub}>{activityDone ? "Synced via AI Vision" : "Tap to upload & AI scan"}</Text>
+                <Text style={styles.taskSub}>{activityDone ? "Workout logged" : "Screenshot or manual entry"}</Text>
               </View>
               <Feather name={activityDone ? "check-circle" : "plus"} size={16} color={activityDone ? Colors.highlight : "#3C3C3A"} />
             </Pressable>
 
-            {/* Workout Task */}
             <Pressable
               onPress={() => {
                 if (!checkInDone) return;
@@ -201,7 +277,6 @@ export default function StatusScreen() {
           </View>
         </BentoCard>
 
-        {/* AI Recommendation */}
         <BentoCard style={[styles.recommendCard, !checkInDone && styles.recommendLocked]}>
           <View style={styles.recommendHeader}>
             <View style={styles.recommendHeaderLeft}>
@@ -238,7 +313,6 @@ export default function StatusScreen() {
           </Pressable>
         </BentoCard>
 
-        {/* Workout Architect */}
         <Pressable
           style={({ pressed }) => [styles.card, styles.architectCard, { opacity: pressed ? 0.85 : 1 }]}
           onPress={() => {
@@ -256,19 +330,25 @@ export default function StatusScreen() {
           <Feather name="arrow-right" size={18} color={Colors.highlight} />
         </Pressable>
 
-        {/* Stats Row */}
         <View style={styles.statsRow}>
-          <BentoCard style={styles.statCard}>
-            <Feather name="activity" size={18} color={Colors.recovery} />
-            <Text style={styles.statValue}>78</Text>
-            <Text style={styles.statLabel}>Recovery</Text>
-          </BentoCard>
-          <BentoCard style={styles.statCard}>
+          <Pressable onPress={() => setReadinessInfoOpen(true)} style={{ flex: 1 }}>
+            <BentoCard style={styles.statCard}>
+              <Feather name="activity" size={18} color={Colors.recovery} />
+              <Text style={styles.statValue}>{checkInDone ? readinessScore : "—"}</Text>
+              <Text style={styles.statLabel}>Readiness</Text>
+              {checkInDone && (
+                <View style={styles.scoreInfoHint}>
+                  <Feather name="info" size={10} color={Colors.textSubtle} />
+                </View>
+              )}
+            </BentoCard>
+          </Pressable>
+          <BentoCard style={[styles.statCard, { flex: 1 }]}>
             <Feather name="zap" size={18} color={Colors.orange} />
             <Text style={styles.statValue}>{streak}</Text>
             <Text style={styles.statLabel}>Day Streak</Text>
           </BentoCard>
-          <BentoCard style={styles.statCard}>
+          <BentoCard style={[styles.statCard, { flex: 1 }]}>
             <Feather name="target" size={18} color={Colors.highlight} />
             <Text style={styles.statValue}>{profile?.workoutFrequency ?? 3}x</Text>
             <Text style={styles.statLabel}>/ Week</Text>
@@ -276,22 +356,42 @@ export default function StatusScreen() {
         </View>
       </ScrollView>
 
+      <OnboardingModal
+        visible={onboardingOpen}
+        onComplete={handleOnboardingComplete}
+      />
+
       <CheckInModal
         visible={checkInOpen}
         onClose={() => setCheckInOpen(false)}
         onComplete={handleCheckInComplete}
+        initialData={todayCheckIn ? {
+          energyLevel: todayCheckIn.energyLevel,
+          sleepQuality: todayCheckIn.sleepQuality,
+          stressLevel: todayCheckIn.stressLevel,
+          sorenessScore: todayCheckIn.sorenessScore,
+          soreMuscleGroups: todayCheckIn.soreMuscleGroups ?? [],
+          notes: todayCheckIn.notes ?? "",
+        } : null}
       />
 
       <ActivityImportModal
         visible={activityOpen}
         onClose={() => setActivityOpen(false)}
-        onComplete={handleActivityComplete}
+        onComplete={handleScreenshotComplete}
+        onManualSubmit={handleManualWorkout}
       />
 
       <InsightInfoModal
         visible={insightOpen}
         onClose={() => setInsightOpen(false)}
         insight={AI_SMART_LOAD_INFO}
+      />
+
+      <InsightInfoModal
+        visible={readinessInfoOpen}
+        onClose={() => setReadinessInfoOpen(false)}
+        insight={READINESS_INFO}
       />
     </>
   );
@@ -429,7 +529,12 @@ const styles = StyleSheet.create({
   architectTitle: { fontSize: 13, fontFamily: "Inter_700Bold", color: Colors.text, textTransform: "uppercase", letterSpacing: 0.5 },
   architectSub: { fontSize: 10, fontFamily: "Inter_400Regular", color: Colors.textSubtle, marginTop: 2 },
   statsRow: { flexDirection: "row", gap: 10 },
-  statCard: { flex: 1, alignItems: "center", gap: 8, paddingVertical: 16 },
+  statCard: { alignItems: "center", gap: 8, paddingVertical: 16, position: "relative" },
   statValue: { fontSize: 22, fontFamily: "Inter_900Black", color: Colors.text, fontStyle: "italic" },
   statLabel: { fontSize: 9, fontFamily: "Inter_700Bold", color: Colors.textSubtle, textTransform: "uppercase", letterSpacing: 1 },
+  scoreInfoHint: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+  },
 });

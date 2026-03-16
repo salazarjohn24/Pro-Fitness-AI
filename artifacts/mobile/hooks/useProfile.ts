@@ -38,6 +38,10 @@ export interface FitnessProfile {
   dailySyncProgress: number | null;
   checkInCompleted: boolean | null;
   activityImported: boolean | null;
+  equipment: string[] | null;
+  skillLevel: string | null;
+  injuries: string[] | null;
+  onboardingCompleted: boolean | null;
   updatedAt: string | null;
 }
 
@@ -70,4 +74,90 @@ export function useUpdateProfile() {
       queryClient.invalidateQueries({ queryKey: ["profile"] });
     },
   });
+}
+
+export interface DailyCheckIn {
+  id: number;
+  userId: string;
+  date: string;
+  energyLevel: number;
+  sleepQuality: number;
+  stressLevel: number;
+  sorenessScore: number;
+  soreMuscleGroups: string[];
+  notes: string | null;
+  createdAt: string;
+}
+
+export function useTodayCheckIn() {
+  return useQuery<DailyCheckIn | null>({
+    queryKey: ["checkin-today"],
+    queryFn: async () => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${getApiBase()}/api/checkins/today`, getFetchOptions(headers));
+      if (!res.ok) throw new Error("Failed to load check-in");
+      return res.json();
+    },
+  });
+}
+
+export function useSubmitCheckIn() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      energyLevel: number;
+      sleepQuality: number;
+      stressLevel: number;
+      sorenessScore: number;
+      soreMuscleGroups: string[];
+      notes: string;
+    }) => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${getApiBase()}/api/checkins`, {
+        ...getFetchOptions(headers),
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("Failed to submit check-in");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["checkin-today"] });
+      queryClient.invalidateQueries({ queryKey: ["profile"] });
+    },
+  });
+}
+
+export function useSubmitExternalWorkout() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      label: string;
+      duration: number;
+      workoutType: string;
+      source?: string;
+    }) => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${getApiBase()}/api/workouts/external`, {
+        ...getFetchOptions(headers),
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("Failed to log workout");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["profile"] });
+    },
+  });
+}
+
+export function computeReadinessScore(checkIn: DailyCheckIn | null | undefined): number {
+  if (!checkIn) return 0;
+  const energy = checkIn.energyLevel;
+  const sleep = checkIn.sleepQuality;
+  const stress = checkIn.stressLevel;
+  const soreness = checkIn.sorenessScore;
+  const weighted = (energy * 0.3 + sleep * 0.3 + stress * 0.2 + soreness * 0.2);
+  return Math.round((weighted / 5) * 100);
 }

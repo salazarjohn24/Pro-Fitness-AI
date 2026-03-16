@@ -33,7 +33,7 @@ router.put("/profile", async (req: Request, res: Response) => {
     return;
   }
 
-  const { streakDays, fitnessGoal, workoutFrequency, dailySyncProgress, checkInCompleted, activityImported } = req.body;
+  const { streakDays, fitnessGoal, workoutFrequency, dailySyncProgress, checkInCompleted, activityImported, equipment, skillLevel, injuries, onboardingCompleted } = req.body;
 
   const [updated] = await db
     .insert(userProfilesTable)
@@ -45,6 +45,10 @@ router.put("/profile", async (req: Request, res: Response) => {
       dailySyncProgress,
       checkInCompleted,
       activityImported,
+      equipment,
+      skillLevel,
+      injuries,
+      onboardingCompleted,
     })
     .onConflictDoUpdate({
       target: userProfilesTable.userId,
@@ -55,6 +59,10 @@ router.put("/profile", async (req: Request, res: Response) => {
         ...(dailySyncProgress !== undefined && { dailySyncProgress }),
         ...(checkInCompleted !== undefined && { checkInCompleted }),
         ...(activityImported !== undefined && { activityImported }),
+        ...(equipment !== undefined && { equipment }),
+        ...(skillLevel !== undefined && { skillLevel }),
+        ...(injuries !== undefined && { injuries }),
+        ...(onboardingCompleted !== undefined && { onboardingCompleted }),
         updatedAt: new Date(),
       },
     })

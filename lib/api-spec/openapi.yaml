@@ -13,6 +13,10 @@ tags:
     description: Browser and mobile authentication endpoints.
   - name: profile
     description: User fitness profile operations
+  - name: checkins
+    description: Daily check-in operations
+  - name: workouts
+    description: External workout logging
 paths:
   /healthz:
     get:
@@ -164,6 +168,72 @@ paths:
                 $ref: '#/components/schemas/UserProfile'
         '401':
           description: Unauthorized.
+  /checkins:
+    post:
+      tags: [checkins]
+      operationId: createDailyCheckIn
+      summary: Create or update today's daily check-in
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCheckInRequest'
+      responses:
+        '200':
+          description: Check-in saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DailyCheckIn'
+        '400':
+          description: Missing required fields.
+        '401':
+          description: Unauthorized.
+  /checkins/today:
+    get:
+      tags: [checkins]
+      operationId: getTodayCheckIn
+      summary: Get today's check-in for the current user
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+      responses:
+        '200':
+          description: Today's check-in or null.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/DailyCheckIn'
+                  - type: 'null'
+        '401':
+          description: Unauthorized.
+  /workouts/external:
+    post:
+      tags: [workouts]
+      operationId: logExternalWorkout
+      summary: Log an external workout (manual or screenshot)
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateExternalWorkoutRequest'
+      responses:
+        '200':
+          description: Workout logged.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExternalWorkout'
+        '400':
+          description: Missing required fields.
+        '401':
+          description: Unauthorized.
 components:
   parameters:
     AuthorizationSessionHeader:
@@ -274,6 +344,22 @@ components:
         activityImported:
           type: boolean
           nullable: true
+        equipment:
+          type: array
+          items:
+            type: string
+          nullable: true
+        skillLevel:
+          type: string
+          nullable: true
+        injuries:
+          type: array
+          items:
+            type: string
+          nullable: true
+        onboardingCompleted:
+          type: boolean
+          nullable: true
         updatedAt:
           type: string
           format: date-time
@@ -299,3 +385,106 @@ components:
         activityImported:
           type: boolean
           nullable: true
+        equipment:
+          type: array
+          items:
+            type: string
+          nullable: true
+        skillLevel:
+          type: string
+          nullable: true
+        injuries:
+          type: array
+          items:
+            type: string
+          nullable: true
+        onboardingCompleted:
+          type: boolean
+          nullable: true
+    CreateCheckInRequest:
+      type: object
+      required: [energyLevel, sleepQuality, stressLevel, sorenessScore]
+      properties:
+        energyLevel:
+          type: integer
+          minimum: 1
+          maximum: 5
+        sleepQuality:
+          type: integer
+          minimum: 1
+          maximum: 5
+        stressLevel:
+          type: integer
+          minimum: 1
+          maximum: 5
+        sorenessScore:
+          type: integer
+          minimum: 1
+          maximum: 5
+        soreMuscleGroups:
+          type: array
+          items:
+            type: string
+        notes:
+          type: string
+          nullable: true
+    DailyCheckIn:
+      type: object
+      required: [id, userId, date, energyLevel, sleepQuality, stressLevel, sorenessScore]
+      properties:
+        id:
+          type: integer
+        userId:
+          type: string
+        date:
+          type: string
+        energyLevel:
+          type: integer
+        sleepQuality:
+          type: integer
+        stressLevel:
+          type: integer
+        sorenessScore:
+          type: integer
+        soreMuscleGroups:
+          type: array
+          items:
+            type: string
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    CreateExternalWorkoutRequest:
+      type: object
+      required: [label, duration, workoutType]
+      properties:
+        label:
+          type: string
+        duration:
+          type: integer
+        workoutType:
+          type: string
+        source:
+          type: string
+    ExternalWorkout:
+      type: object
+      required: [id, userId, label, duration, workoutType]
+      properties:
+        id:
+          type: integer
+        userId:
+          type: string
+        label:
+          type: string
+        duration:
+          type: integer
+        workoutType:
+          type: string
+        source:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
