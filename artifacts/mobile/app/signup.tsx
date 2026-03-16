@@ -20,7 +20,7 @@ import { useAuth } from "@/lib/auth";
 import { Colors } from "@/constants/colors";
 
 export default function SignupScreen() {
-  const { signup, loginWithGoogle, loginWithGitHub, loginWithTwitter, loginWithApple, appleAvailable } = useAuth();
+  const { signup, loginWithGoogle, loginWithApple, appleAvailable } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -63,9 +63,7 @@ export default function SignupScreen() {
   };
 
   const socialProviders = [
-    { id: "google", label: "Google", icon: "globe", color: "#EA4335", fn: loginWithGoogle },
-    { id: "github", label: "GitHub", icon: "github", color: Colors.text, fn: loginWithGitHub },
-    { id: "twitter", label: "X / Twitter", icon: "twitter", color: "#1DA1F2", fn: loginWithTwitter },
+    { id: "google", label: "Continue with Google", icon: "globe", color: "#EA4335", fn: loginWithGoogle },
   ];
 
   return (
@@ -191,23 +189,21 @@ export default function SignupScreen() {
             />
           )}
 
-          <View style={styles.socialGrid}>
-            {socialProviders.map(({ id, label, icon, color, fn }) => (
-              <Pressable
-                key={id}
-                style={({ pressed }) => [styles.socialBtn, { opacity: pressed || !!socialLoading ? 0.7 : 1 }]}
-                onPress={() => handleSocial(id, fn)}
-                disabled={!!socialLoading || isLoading}
-              >
-                {socialLoading === id ? (
-                  <ActivityIndicator size="small" color={color} />
-                ) : (
-                  <Feather name={icon as any} size={18} color={color} />
-                )}
-                <Text style={styles.socialBtnText}>{label}</Text>
-              </Pressable>
-            ))}
-          </View>
+          {socialProviders.map(({ id, label, icon, color, fn }) => (
+            <Pressable
+              key={id}
+              style={({ pressed }) => [styles.socialBtn, { opacity: pressed || !!socialLoading ? 0.7 : 1 }]}
+              onPress={() => handleSocial(id, fn)}
+              disabled={!!socialLoading || isLoading}
+            >
+              {socialLoading === id ? (
+                <ActivityIndicator size="small" color={color} />
+              ) : (
+                <Feather name={icon as any} size={18} color={color} />
+              )}
+              <Text style={styles.socialBtnText}>{label}</Text>
+            </Pressable>
+          ))}
         </View>
 
         <View style={styles.footer}>
@@ -266,11 +262,10 @@ const styles = StyleSheet.create({
   divider: { flex: 1, height: 1, backgroundColor: Colors.border },
   dividerText: { fontSize: 12, color: Colors.textSubtle, fontFamily: "Inter_400Regular" },
   appleBtn: { width: "100%", height: 52 },
-  socialGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   socialBtn: {
-    flex: 1, minWidth: "45%", flexDirection: "row", alignItems: "center",
-    justifyContent: "center", gap: 8, backgroundColor: Colors.bgCard,
-    borderWidth: 1, borderColor: Colors.border, borderRadius: 14, paddingVertical: 13, paddingHorizontal: 12,
+    flexDirection: "row", alignItems: "center",
+    justifyContent: "center", gap: 10, backgroundColor: Colors.bgCard,
+    borderWidth: 1, borderColor: Colors.border, borderRadius: 14, paddingVertical: 15, paddingHorizontal: 16,
   },
   socialBtnText: { fontSize: 13, color: Colors.text, fontFamily: "Inter_700Bold" },
   footer: { flexDirection: "row", justifyContent: "center", marginTop: 28 },
