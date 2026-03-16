@@ -1,12 +1,12 @@
 import * as oidc from "openid-client";
+import bcrypt from "bcryptjs";
 import { Router, type IRouter, type Request, type Response } from "express";
 import {
   GetCurrentAuthUserResponse,
-  ExchangeMobileAuthorizationCodeBody,
-  ExchangeMobileAuthorizationCodeResponse,
   LogoutMobileSessionResponse,
 } from "@workspace/api-zod";
 import { db, usersTable } from "@workspace/db";
+import { eq, or } from "drizzle-orm";
 import {
   clearSession,
   getOidcConfig,
@@ -20,6 +20,7 @@ import {
 } from "../lib/auth";
 
 const OIDC_COOKIE_TTL = 10 * 60 * 1000;
+const SALT_ROUNDS = 12;
 
 const router: IRouter = Router();
 
@@ -66,6 +67,7 @@ async function upsertUser(claims: Record<string, unknown>) {
     profileImageUrl: (claims.profile_image_url || claims.picture) as
       | string
       | null,
+    authProvider: "oidc",
   };
 
   const [user] = await db
@@ -88,6 +90,123 @@ router.get("/auth/user", (req: Request, res: Response) => {
       user: req.isAuthenticated() ? req.user : null,
     }),
   );
+});
+
+router.post("/auth/signup", async (req: Request, res: Response) => {
+  const { username, email, password, firstName, lastName } = req.body;
+
+  if (!password || password.length < 8) {
+    res.status(400).json({ error: "Password must be at least 8 characters" });
+    return;
+  }
+
+  if (!username && !email) {
+    res.status(400).json({ error: "Username or email is required" });
+    return;
+  }
+
+  const identifier = username?.trim().toLowerCase() || email?.trim().toLowerCase();
+
+  try {
+    const existing = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(
+        or(
+          username ? eq(usersTable.username, identifier) : undefined,
+          email ? eq(usersTable.email, identifier) : undefined,
+        ),
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      res.status(409).json({ error: "An account with that username or email already exists" });
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+
+    const [user] = await db
+      .insert(usersTable)
+      .values({
+        email: email?.trim().toLowerCase() || null,
+        username: username?.trim().toLowerCase() || null,
+        passwordHash,
+        firstName: firstName?.trim() || null,
+        lastName: lastName?.trim() || null,
+        authProvider: "email",
+      })
+      .returning();
+
+    const sessionData: SessionData = {
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        profileImageUrl: user.profileImageUrl,
+      },
+      access_token: "",
+    };
+
+    const sid = await createSession(sessionData);
+    res.json({ token: sid });
+  } catch (err) {
+    console.error("Signup error:", err);
+    res.status(500).json({ error: "Failed to create account" });
+  }
+});
+
+router.post("/auth/signin", async (req: Request, res: Response) => {
+  const { identifier, password } = req.body;
+
+  if (!identifier || !password) {
+    res.status(400).json({ error: "Username/email and password are required" });
+    return;
+  }
+
+  const normalized = identifier.trim().toLowerCase();
+
+  try {
+    const [user] = await db
+      .select()
+      .from(usersTable)
+      .where(
+        or(
+          eq(usersTable.username, normalized),
+          eq(usersTable.email, normalized),
+        ),
+      )
+      .limit(1);
+
+    if (!user || !user.passwordHash) {
+      res.status(401).json({ error: "Invalid username or password" });
+      return;
+    }
+
+    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid) {
+      res.status(401).json({ error: "Invalid username or password" });
+      return;
+    }
+
+    const sessionData: SessionData = {
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        profileImageUrl: user.profileImageUrl,
+      },
+      access_token: "",
+    };
+
+    const sid = await createSession(sessionData);
+    res.json({ token: sid });
+  } catch (err) {
+    console.error("Signin error:", err);
+    res.status(500).json({ error: "Failed to sign in" });
+  }
 });
 
 router.get("/login", async (req: Request, res: Response) => {
@@ -119,8 +238,6 @@ router.get("/login", async (req: Request, res: Response) => {
   res.redirect(redirectTo.href);
 });
 
-// Query params are not validated because the OIDC provider may include
-// parameters not expressed in the schema.
 router.get("/callback", async (req: Request, res: Response) => {
   const config = await getOidcConfig();
   const callbackUrl = `${getOrigin(req)}/api/callback`;
@@ -201,65 +318,6 @@ router.get("/logout", async (req: Request, res: Response) => {
 
   res.redirect(endSessionUrl.href);
 });
-
-router.post(
-  "/mobile-auth/token-exchange",
-  async (req: Request, res: Response) => {
-    const parsed = ExchangeMobileAuthorizationCodeBody.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: "Missing or invalid required parameters" });
-      return;
-    }
-
-    const { code, code_verifier, redirect_uri, state, nonce } = parsed.data;
-
-    try {
-      const config = await getOidcConfig();
-
-      const callbackUrl = new URL(redirect_uri);
-      callbackUrl.searchParams.set("code", code);
-      callbackUrl.searchParams.set("state", state);
-      callbackUrl.searchParams.set("iss", ISSUER_URL);
-
-      const tokens = await oidc.authorizationCodeGrant(config, callbackUrl, {
-        pkceCodeVerifier: code_verifier,
-        expectedNonce: nonce ?? undefined,
-        expectedState: state,
-        idTokenExpected: true,
-      });
-
-      const claims = tokens.claims();
-      if (!claims) {
-        res.status(401).json({ error: "No claims in ID token" });
-        return;
-      }
-
-      const dbUser = await upsertUser(
-        claims as unknown as Record<string, unknown>,
-      );
-
-      const now = Math.floor(Date.now() / 1000);
-      const sessionData: SessionData = {
-        user: {
-          id: dbUser.id,
-          email: dbUser.email,
-          firstName: dbUser.firstName,
-          lastName: dbUser.lastName,
-          profileImageUrl: dbUser.profileImageUrl,
-        },
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token,
-        expires_at: tokens.expiresIn() ? now + tokens.expiresIn()! : claims.exp,
-      };
-
-      const sid = await createSession(sessionData);
-      res.json(ExchangeMobileAuthorizationCodeResponse.parse({ token: sid }));
-    } catch (err) {
-      console.error("Mobile token exchange error:", err);
-      res.status(500).json({ error: "Token exchange failed" });
-    }
-  },
-);
 
 router.post("/mobile-auth/logout", async (req: Request, res: Response) => {
   const sid = getSessionId(req);

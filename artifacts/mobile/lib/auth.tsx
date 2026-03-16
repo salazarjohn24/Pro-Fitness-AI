@@ -1,14 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
-import * as AuthSession from "expo-auth-session";
-import * as WebBrowser from "expo-web-browser";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
-WebBrowser.maybeCompleteAuthSession();
-
 const AUTH_TOKEN_KEY = "auth_session_token";
-const ISSUER_URL = process.env.EXPO_PUBLIC_ISSUER_URL ?? "https://replit.com/oidc";
-
 const IS_WEB = Platform.OS === "web";
 
 interface User {
@@ -23,15 +17,25 @@ interface AuthContextValue {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: () => Promise<void>;
+  signup: (params: SignupParams) => Promise<{ error?: string }>;
+  signin: (identifier: string, password: string) => Promise<{ error?: string }>;
   logout: () => Promise<void>;
+}
+
+interface SignupParams {
+  username?: string;
+  email?: string;
+  password: string;
+  firstName?: string;
+  lastName?: string;
 }
 
 const AuthContext = createContext<AuthContextValue>({
   user: null,
   isLoading: true,
   isAuthenticated: false,
-  login: async () => {},
+  signup: async () => ({}),
+  signin: async () => ({}),
   logout: async () => {},
 });
 
@@ -40,10 +44,6 @@ function getApiBaseUrl(): string {
     return `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
   }
   return "";
-}
-
-function getClientId(): string {
-  return process.env.EXPO_PUBLIC_REPL_ID || "placeholder";
 }
 
 async function getStoredToken(): Promise<string | null> {
@@ -64,19 +64,6 @@ async function clearStoredToken(): Promise<void> {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-
-  const discovery = AuthSession.useAutoDiscovery(ISSUER_URL);
-  const redirectUri = AuthSession.makeRedirectUri();
-
-  const [request, response, promptAsync] = AuthSession.useAuthRequest(
-    {
-      clientId: getClientId(),
-      scopes: ["openid", "email", "profile", "offline_access"],
-      redirectUri,
-      prompt: AuthSession.Prompt.Login,
-    },
-    discovery,
-  );
 
   const fetchUser = useCallback(async () => {
     try {
@@ -119,70 +106,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fetchUser();
   }, [fetchUser]);
 
-  useEffect(() => {
-    if (IS_WEB) return;
-    if (response?.type !== "success" || !request?.codeVerifier) return;
-
-    const { code, state } = response.params;
-
-    (async () => {
-      try {
-        const apiBase = getApiBaseUrl();
-        if (!apiBase) {
-          console.error("API base URL is not configured.");
-          return;
-        }
-
-        const exchangeRes = await fetch(`${apiBase}/api/mobile-auth/token-exchange`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            code,
-            code_verifier: request.codeVerifier,
-            redirect_uri: redirectUri,
-            state,
-            nonce: request.nonce,
-          }),
-        });
-
-        if (!exchangeRes.ok) {
-          console.error("Token exchange failed:", exchangeRes.status);
-          setIsLoading(false);
-          return;
-        }
-
-        const data = await exchangeRes.json();
-        if (data.token) {
-          await setStoredToken(data.token);
-          setIsLoading(true);
-          await fetchUser();
-        }
-      } catch (err) {
-        console.error("Token exchange error:", err);
-        setIsLoading(false);
-      }
-    })();
-  }, [response, request, redirectUri, fetchUser]);
-
-  const login = useCallback(async () => {
-    if (IS_WEB) {
-      const apiBase = getApiBaseUrl();
-      window.location.href = `${apiBase}/api/login`;
-      return;
-    }
+  const signup = useCallback(async (params: SignupParams): Promise<{ error?: string }> => {
     try {
-      await promptAsync();
-    } catch (err) {
-      console.error("Login error:", err);
+      const apiBase = getApiBaseUrl();
+      const res = await fetch(`${apiBase}/api/auth/signup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(params),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        return { error: data.error || "Failed to create account" };
+      }
+
+      if (data.token) {
+        await setStoredToken(data.token);
+        setIsLoading(true);
+        await fetchUser();
+      }
+      return {};
+    } catch {
+      return { error: "Network error. Please try again." };
     }
-  }, [promptAsync]);
+  }, [fetchUser]);
+
+  const signin = useCallback(async (identifier: string, password: string): Promise<{ error?: string }> => {
+    try {
+      const apiBase = getApiBaseUrl();
+      const res = await fetch(`${apiBase}/api/auth/signin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier, password }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        return { error: data.error || "Failed to sign in" };
+      }
+
+      if (data.token) {
+        await setStoredToken(data.token);
+        setIsLoading(true);
+        await fetchUser();
+      }
+      return {};
+    } catch {
+      return { error: "Network error. Please try again." };
+    }
+  }, [fetchUser]);
 
   const logout = useCallback(async () => {
-    if (IS_WEB) {
-      const apiBase = getApiBaseUrl();
-      window.location.href = `${apiBase}/api/logout`;
-      return;
-    }
     try {
       const token = await getStoredToken();
       if (token) {
@@ -200,7 +174,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: !!user, login, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: !!user, signup, signin, logout }}>
       {children}
     </AuthContext.Provider>
   );

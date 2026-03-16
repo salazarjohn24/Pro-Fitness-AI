@@ -13,7 +13,7 @@ pnpm workspace monorepo using TypeScript. Contains a Pro Fitness AI native mobil
 - **Mobile**: Expo (React Native) with Expo Router
 - **API framework**: Express 5
 - **Database**: PostgreSQL + Drizzle ORM
-- **Authentication**: Replit Auth (OIDC/PKCE) with mobile token exchange
+- **Authentication**: Email/password (bcryptjs) with custom sessions; social auth UI ready (Google, GitHub, X, Apple)
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
@@ -43,7 +43,9 @@ Pro Fitness AI — dark-themed fitness tracker with AI recommendations.
 
 ### Screens
 - `app/index.tsx` — Entry: redirects to welcome, onboarding, or tabs based on auth + onboarding state
-- `app/welcome.tsx` — Welcome/login screen with "Get Started" button
+- `app/welcome.tsx` — Landing screen with "Create Account" and "Sign In" options
+- `app/login.tsx` — Sign-in form (username/email + password) with social auth buttons
+- `app/signup.tsx` — Account creation form (username, email, password) with social auth buttons
 - `app/(tabs)/index.tsx` — Status tab: Daily Protocol Sync hub with tasks, onboarding trigger, auto check-in, readiness score, AI workout generation
 - `app/onboarding.tsx` — 5-step onboarding flow (Biometrics → Experience → Injury Vault → Goal → Review)
 - `app/gym-setup.tsx` — Post-onboarding gym environment setup (name, type, equipment checklist)

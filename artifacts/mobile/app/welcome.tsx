@@ -1,35 +1,36 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useRouter } from "expo-router";
 import React from "react";
 import {
-  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
 
-import { useAuth } from "@/lib/auth";
 import { Colors } from "@/constants/colors";
 
 export default function WelcomeScreen() {
-  const { login, isLoading } = useAuth();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
 
-  const handleLogin = async () => {
+  const handleGetStarted = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    await login();
+    router.push("/signup");
+  };
+
+  const handleSignIn = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push("/login");
   };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom + 24 }]}>
-      {/* Background gradient orb */}
       <View style={styles.bgOrb} />
 
       <View style={styles.content}>
-        {/* Logo area */}
         <View style={styles.logoArea}>
           <View style={styles.iconRing}>
             <View style={styles.iconInner}>
@@ -42,7 +43,6 @@ export default function WelcomeScreen() {
           <Text style={styles.tagline}>Your high-performance training partner</Text>
         </View>
 
-        {/* Feature bullets */}
         <View style={styles.features}>
           {[
             { icon: "cpu", text: "AI-powered workout recommendations" },
@@ -58,24 +58,26 @@ export default function WelcomeScreen() {
           ))}
         </View>
 
-        {/* CTA */}
         <View style={styles.ctaArea}>
           <Pressable
-            onPress={handleLogin}
-            disabled={isLoading}
+            onPress={handleGetStarted}
             style={({ pressed }) => [
-              styles.loginButton,
+              styles.primaryButton,
               { opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
             ]}
           >
-            {isLoading ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <>
-                <Feather name="log-in" size={18} color="#fff" />
-                <Text style={styles.loginButtonText}>GET STARTED</Text>
-              </>
-            )}
+            <Feather name="user-plus" size={18} color="#fff" />
+            <Text style={styles.primaryButtonText}>CREATE ACCOUNT</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={handleSignIn}
+            style={({ pressed }) => [
+              styles.secondaryButton,
+              { opacity: pressed ? 0.75 : 1 },
+            ]}
+          >
+            <Text style={styles.secondaryButtonText}>Already have an account? <Text style={styles.secondaryButtonAccent}>Sign In</Text></Text>
           </Pressable>
 
           <Text style={styles.legalText}>
@@ -179,9 +181,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   ctaArea: {
-    gap: 16,
+    gap: 14,
   },
-  loginButton: {
+  primaryButton: {
     backgroundColor: Colors.orange,
     borderRadius: 18,
     paddingVertical: 18,
@@ -190,12 +192,25 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 10,
   },
-  loginButtonText: {
+  primaryButtonText: {
     color: "#fff",
     fontSize: 15,
     fontFamily: "Inter_900Black",
     letterSpacing: 1.5,
     fontStyle: "italic",
+  },
+  secondaryButton: {
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  secondaryButtonText: {
+    fontSize: 14,
+    color: Colors.textMuted,
+    fontFamily: "Inter_400Regular",
+  },
+  secondaryButtonAccent: {
+    color: Colors.orange,
+    fontFamily: "Inter_700Bold",
   },
   legalText: {
     fontSize: 11,
