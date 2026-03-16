@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import type { ComponentProps } from "react";
 import React, { useState } from "react";
 import {
   Platform,
@@ -15,6 +16,8 @@ import { Colors } from "@/constants/colors";
 import { useProfile } from "@/hooks/useProfile";
 import { InsightInfoModal } from "@/components/InsightInfoModal";
 import { RebalancePlanModal } from "@/components/RebalancePlanModal";
+
+type FeatherIcon = ComponentProps<typeof Feather>["name"];
 
 const RANGES = ["1W", "1M", "3M", "6M"];
 
@@ -37,6 +40,19 @@ const MUSCLES = [
 ];
 
 const MAX_SESSIONS = Math.max(...MUSCLES.map((m) => m.sessions));
+
+const KPI_ITEMS: { label: string; value: string; unit: string; icon: FeatherIcon; color: string }[] = [
+  { label: "Streak", value: "0", unit: "days", icon: "zap", color: Colors.orange },
+  { label: "Recovery", value: "78", unit: "score", icon: "activity", color: Colors.recovery },
+  { label: "Volume", value: "24k", unit: "kg", icon: "trending-up", color: Colors.highlight },
+];
+
+const DNA_ITEMS: { label: string; value: string; icon: FeatherIcon }[] = [
+  { label: "Recovery Rate", value: "High", icon: "shield" },
+  { label: "Power Profile", value: "Moderate", icon: "zap" },
+  { label: "Endurance", value: "Building", icon: "trending-up" },
+  { label: "Mobility", value: "Average", icon: "refresh-cw" },
+];
 
 const AI_INSIGHTS = [
   {
@@ -69,22 +85,25 @@ function BarChart() {
   const maxVal = Math.max(...WEEK_DATA.map((d) => d.value));
   return (
     <View style={barStyles.container}>
-      {WEEK_DATA.map((d, i) => (
-        <View key={i} style={barStyles.barGroup}>
-          <View style={barStyles.barTrack}>
-            <View
-              style={[
-                barStyles.barFill,
-                {
-                  height: `${(d.value / maxVal) * 100}%` as any,
-                  backgroundColor: i === 3 ? Colors.orange : Colors.recovery + "80",
-                },
-              ]}
-            />
+      {WEEK_DATA.map((d, i) => {
+        const heightPct = (d.value / maxVal) * 100;
+        return (
+          <View key={i} style={barStyles.barGroup}>
+            <View style={barStyles.barTrack}>
+              <View
+                style={[
+                  barStyles.barFill,
+                  {
+                    height: `${heightPct}%`,
+                    backgroundColor: i === 3 ? Colors.orange : Colors.recovery + "80",
+                  },
+                ]}
+              />
+            </View>
+            <Text style={barStyles.dayLabel}>{d.day}</Text>
           </View>
-          <Text style={barStyles.dayLabel}>{d.day}</Text>
-        </View>
-      ))}
+        );
+      })}
     </View>
   );
 }
@@ -114,6 +133,10 @@ export default function ProgressScreen() {
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const botPad = Platform.OS === "web" ? 34 : insets.bottom;
 
+  const kpiItems = KPI_ITEMS.map((item) =>
+    item.label === "Streak" ? { ...item, value: `${profile?.streakDays ?? 0}` } : item
+  );
+
   return (
     <>
       <ScrollView
@@ -126,15 +149,10 @@ export default function ProgressScreen() {
           <Text style={styles.title}>Your <Text style={styles.titleAccent}>Progress</Text></Text>
         </View>
 
-        {/* KPI Row */}
         <View style={styles.kpiRow}>
-          {[
-            { label: "Streak", value: `${profile?.streakDays ?? 0}`, unit: "days", icon: "zap", color: Colors.orange },
-            { label: "Recovery", value: "78", unit: "score", icon: "activity", color: Colors.recovery },
-            { label: "Volume", value: "24k", unit: "kg", icon: "trending-up", color: Colors.highlight },
-          ].map(({ label, value, unit, icon, color }) => (
+          {kpiItems.map(({ label, value, unit, icon, color }) => (
             <View key={label} style={[styles.kpiCard, { borderColor: color + "30" }]}>
-              <Feather name={icon as any} size={16} color={color} />
+              <Feather name={icon} size={16} color={color} />
               <Text style={[styles.kpiValue, { color }]}>{value}</Text>
               <Text style={styles.kpiUnit}>{unit}</Text>
               <Text style={styles.kpiLabel}>{label}</Text>
@@ -142,7 +160,6 @@ export default function ProgressScreen() {
           ))}
         </View>
 
-        {/* Volume Chart */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle}>TRAINING VOLUME</Text>
@@ -171,28 +188,44 @@ export default function ProgressScreen() {
           </View>
         </View>
 
-        {/* Muscle Distribution */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>MUSCLE FOCUS</Text>
           <View style={styles.muscleList}>
-            {MUSCLES.map((m) => (
-              <View key={m.name} style={styles.muscleRow}>
-                <Text style={styles.muscleName}>{m.name}</Text>
-                <View style={styles.muscleBarTrack}>
-                  <View
-                    style={[
-                      styles.muscleBarFill,
-                      { width: `${(m.sessions / MAX_SESSIONS) * 100}%` as any, backgroundColor: m.color },
-                    ]}
-                  />
+            {MUSCLES.map((m) => {
+              const widthPct = `${(m.sessions / MAX_SESSIONS) * 100}%`;
+              return (
+                <View key={m.name} style={styles.muscleRow}>
+                  <Text style={styles.muscleName}>{m.name}</Text>
+                  <View style={styles.muscleBarTrack}>
+                    <View
+                      style={[
+                        styles.muscleBarFill,
+                        { width: widthPct, backgroundColor: m.color },
+                      ]}
+                    />
+                  </View>
+                  <Text style={[styles.muscleSessions, { color: m.color }]}>{m.sessions}</Text>
                 </View>
-                <Text style={[styles.muscleSessions, { color: m.color }]}>{m.sessions}</Text>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.auditHeader}>
+            <Text style={styles.cardTitle}>PERFORMANCE AUDIT</Text>
+          </View>
+          <View style={styles.dnaGrid}>
+            {DNA_ITEMS.map(({ label, value, icon }) => (
+              <View key={label} style={styles.dnaCard}>
+                <Feather name={icon} size={14} color={Colors.recovery} />
+                <Text style={styles.dnaValue}>{value}</Text>
+                <Text style={styles.dnaLabel}>{label}</Text>
               </View>
             ))}
           </View>
         </View>
 
-        {/* AI Insights */}
         {AI_INSIGHTS.map((insight) => (
           <View key={insight.id} style={styles.insightCard}>
             <View style={styles.insightHeader}>
@@ -287,6 +320,18 @@ const styles = StyleSheet.create({
   muscleBarTrack: { flex: 1, height: 6, backgroundColor: "rgba(255,255,255,0.06)", borderRadius: 6, overflow: "hidden" },
   muscleBarFill: { height: "100%", borderRadius: 6 },
   muscleSessions: { fontSize: 11, fontFamily: "Inter_900Black", width: 20, textAlign: "right" },
+  auditHeader: { borderLeftWidth: 2, borderLeftColor: Colors.orange, paddingLeft: 8 },
+  dnaGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  dnaCard: {
+    width: "47%",
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderRadius: 14,
+    padding: 14,
+    gap: 4,
+    alignItems: "center",
+  },
+  dnaValue: { fontSize: 14, fontFamily: "Inter_900Black", color: Colors.text, fontStyle: "italic" },
+  dnaLabel: { fontSize: 9, fontFamily: "Inter_700Bold", color: Colors.textSubtle, letterSpacing: 1 },
   insightCard: {
     backgroundColor: "rgba(246,234,152,0.06)",
     borderWidth: 1,

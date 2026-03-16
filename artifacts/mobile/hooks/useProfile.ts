@@ -40,8 +40,18 @@ export interface FitnessProfile {
   activityImported: boolean | null;
   equipment: string[] | null;
   skillLevel: string | null;
+  age: number | null;
+  weight: number | null;
+  height: number | null;
+  gender: string | null;
+  experienceLevel: string | null;
   injuries: string[] | null;
+  injuryNotes: string | null;
+  primaryGoal: string | null;
   onboardingCompleted: boolean | null;
+  insightDetailLevel: string | null;
+  syncPreferences: { appleHealth: boolean; strava: boolean; manualScreenshot: boolean } | null;
+  activeEnvironmentId: number | null;
   updatedAt: string | null;
 }
 
@@ -110,7 +120,7 @@ export function useSubmitCheckIn() {
       stressLevel: number;
       sorenessScore: number;
       soreMuscleGroups: string[];
-      notes: string;
+      notes?: string;
     }) => {
       const headers = await getAuthHeaders();
       const res = await fetch(`${getApiBase()}/api/checkins`, {
@@ -128,15 +138,48 @@ export function useSubmitCheckIn() {
   });
 }
 
+export function useUpdateCheckIn() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...data }: {
+      id: number;
+      energyLevel: number;
+      sleepQuality: number;
+      stressLevel: number;
+      sorenessScore: number;
+      soreMuscleGroups: string[];
+      notes?: string;
+    }) => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${getApiBase()}/api/checkins/${id}`, {
+        ...getFetchOptions(headers),
+        method: "PUT",
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("Failed to update check-in");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["checkin-today"] });
+      queryClient.invalidateQueries({ queryKey: ["profile"] });
+    },
+  });
+}
+
+export interface ExternalWorkout {
+  id: number;
+  userId: string;
+  label: string;
+  duration: number;
+  workoutType: string;
+  source: string;
+  createdAt: string;
+}
+
 export function useSubmitExternalWorkout() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: {
-      label: string;
-      duration: number;
-      workoutType: string;
-      source?: string;
-    }) => {
+    mutationFn: async (data: { label: string; duration: number; workoutType: string; source?: string }) => {
       const headers = await getAuthHeaders();
       const res = await fetch(`${getApiBase()}/api/workouts/external`, {
         ...getFetchOptions(headers),
@@ -161,3 +204,5 @@ export function computeReadinessScore(checkIn: DailyCheckIn | null | undefined):
   const weighted = (energy * 0.3 + sleep * 0.3 + stress * 0.2 + soreness * 0.2);
   return Math.round((weighted / 5) * 100);
 }
+
+export { getApiBase, getAuthHeaders, getFetchOptions };

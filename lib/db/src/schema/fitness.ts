@@ -15,9 +15,29 @@ export const userProfilesTable = pgTable("user_profiles", {
   activityImported: boolean("activity_imported").default(false),
   equipment: jsonb("equipment").$type<string[]>(),
   skillLevel: varchar("skill_level"),
-  injuries: jsonb("injuries").$type<string[]>(),
+  age: integer("age"),
+  weight: integer("weight"),
+  height: integer("height"),
+  gender: varchar("gender"),
+  experienceLevel: varchar("experience_level"),
+  injuries: jsonb("injuries").$type<string[]>().default([]),
+  injuryNotes: text("injury_notes"),
+  primaryGoal: varchar("primary_goal"),
   onboardingCompleted: boolean("onboarding_completed").default(false),
+  insightDetailLevel: varchar("insight_detail_level").default("simple"),
+  syncPreferences: jsonb("sync_preferences").$type<{ appleHealth: boolean; strava: boolean; manualScreenshot: boolean }>().default({ appleHealth: false, strava: false, manualScreenshot: false }),
+  activeEnvironmentId: integer("active_environment_id"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+export const gymEnvironmentsTable = pgTable("gym_environments", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  name: varchar("name").notNull(),
+  type: varchar("type").notNull(),
+  equipment: jsonb("equipment").$type<Record<string, string[]>>().default({}),
+  isActive: boolean("is_active").default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const insertUserProfileSchema = createInsertSchema(userProfilesTable).omit({ id: true });
@@ -52,3 +72,7 @@ export const externalWorkoutsTable = pgTable("external_workouts", {
 
 export type ExternalWorkout = typeof externalWorkoutsTable.$inferSelect;
 export type InsertExternalWorkout = typeof externalWorkoutsTable.$inferInsert;
+
+export const insertGymEnvironmentSchema = createInsertSchema(gymEnvironmentsTable).omit({ id: true });
+export type InsertGymEnvironment = z.infer<typeof insertGymEnvironmentSchema>;
+export type GymEnvironment = typeof gymEnvironmentsTable.$inferSelect;

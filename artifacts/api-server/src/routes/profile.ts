@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, userProfilesTable } from "@workspace/db";
+import { db, userProfilesTable, type InsertUserProfile } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
 const router: IRouter = Router();
@@ -33,38 +33,46 @@ router.put("/profile", async (req: Request, res: Response) => {
     return;
   }
 
-  const { streakDays, fitnessGoal, workoutFrequency, dailySyncProgress, checkInCompleted, activityImported, equipment, skillLevel, injuries, onboardingCompleted } = req.body;
+  const {
+    streakDays, fitnessGoal, workoutFrequency, dailySyncProgress,
+    checkInCompleted, activityImported,
+    age, weight, height, gender, experienceLevel,
+    injuries, injuryNotes, primaryGoal,
+    onboardingCompleted, insightDetailLevel, syncPreferences,
+    equipment, skillLevel,
+  } = req.body;
+
+  const setFields: Partial<InsertUserProfile> = { updatedAt: new Date() };
+
+  if (streakDays !== undefined) setFields.streakDays = streakDays;
+  if (fitnessGoal !== undefined) setFields.fitnessGoal = fitnessGoal;
+  if (workoutFrequency !== undefined) setFields.workoutFrequency = workoutFrequency;
+  if (dailySyncProgress !== undefined) setFields.dailySyncProgress = dailySyncProgress;
+  if (checkInCompleted !== undefined) setFields.checkInCompleted = checkInCompleted;
+  if (activityImported !== undefined) setFields.activityImported = activityImported;
+  if (age !== undefined) setFields.age = age;
+  if (weight !== undefined) setFields.weight = weight;
+  if (height !== undefined) setFields.height = height;
+  if (gender !== undefined) setFields.gender = gender;
+  if (experienceLevel !== undefined) setFields.experienceLevel = experienceLevel;
+  if (injuries !== undefined) setFields.injuries = injuries;
+  if (injuryNotes !== undefined) setFields.injuryNotes = injuryNotes;
+  if (primaryGoal !== undefined) setFields.primaryGoal = primaryGoal;
+  if (onboardingCompleted !== undefined) setFields.onboardingCompleted = onboardingCompleted;
+  if (insightDetailLevel !== undefined) setFields.insightDetailLevel = insightDetailLevel;
+  if (syncPreferences !== undefined) setFields.syncPreferences = syncPreferences;
+  if (equipment !== undefined) setFields.equipment = equipment;
+  if (skillLevel !== undefined) setFields.skillLevel = skillLevel;
 
   const [updated] = await db
     .insert(userProfilesTable)
     .values({
       userId: req.user.id,
-      streakDays,
-      fitnessGoal,
-      workoutFrequency,
-      dailySyncProgress,
-      checkInCompleted,
-      activityImported,
-      equipment,
-      skillLevel,
-      injuries,
-      onboardingCompleted,
+      ...setFields,
     })
     .onConflictDoUpdate({
       target: userProfilesTable.userId,
-      set: {
-        ...(streakDays !== undefined && { streakDays }),
-        ...(fitnessGoal !== undefined && { fitnessGoal }),
-        ...(workoutFrequency !== undefined && { workoutFrequency }),
-        ...(dailySyncProgress !== undefined && { dailySyncProgress }),
-        ...(checkInCompleted !== undefined && { checkInCompleted }),
-        ...(activityImported !== undefined && { activityImported }),
-        ...(equipment !== undefined && { equipment }),
-        ...(skillLevel !== undefined && { skillLevel }),
-        ...(injuries !== undefined && { injuries }),
-        ...(onboardingCompleted !== undefined && { onboardingCompleted }),
-        updatedAt: new Date(),
-      },
+      set: setFields,
     })
     .returning();
 

@@ -42,12 +42,14 @@ artifacts-monorepo/
 Pro Fitness AI — dark-themed fitness tracker with AI recommendations.
 
 ### Screens
-- `app/index.tsx` — Entry: redirects to welcome or tabs based on auth state
+- `app/index.tsx` — Entry: redirects to welcome, onboarding, or tabs based on auth + onboarding state
 - `app/welcome.tsx` — Welcome/login screen with "Get Started" button
 - `app/(tabs)/index.tsx` — Status tab: Daily Protocol Sync hub with tasks, onboarding trigger, auto check-in, readiness score
+- `app/onboarding.tsx` — 5-step onboarding flow (Biometrics → Experience → Injury Vault → Goal → Review)
+- `app/gym-setup.tsx` — Post-onboarding gym environment setup (name, type, equipment checklist)
 - `app/(tabs)/vault.tsx` — Workout Vault: exercise library with categories
 - `app/(tabs)/progress.tsx` — Progress: analytics, bar charts, muscle focus
-- `app/(tabs)/profile.tsx` — Profile: user info, fitness goals, settings
+- `app/(tabs)/profile.tsx` — Profile: user info, fitness goals, gym environments, insight preferences, settings
 
 ### Key Components
 - `components/OnboardingModal.tsx` — Multi-step onboarding: goal, skill level, equipment, injuries
@@ -58,7 +60,9 @@ Pro Fitness AI — dark-themed fitness tracker with AI recommendations.
 
 ### Key Files
 - `lib/auth.tsx` — Auth context (Replit OIDC mobile flow)
-- `hooks/useProfile.ts` — React Query hooks for profile, check-ins, external workouts, readiness score computation
+- `hooks/useProfile.ts` — React Query hooks for profile, check-ins, external workouts, readiness score computation, and fitness profile CRUD
+- `hooks/useEnvironments.ts` — React Query hooks for gym environment CRUD (list, create, activate, delete)
+- `components/EquipmentChecklist.tsx` — Reusable categorized equipment checklist component
 - `constants/colors.ts` — Design tokens (dark theme, orange #FC5200)
 
 ### Design System
@@ -77,13 +81,20 @@ Pro Fitness AI — dark-themed fitness tracker with AI recommendations.
 - `sid` (PK), `sess` (JSONB), `expire`
 
 ### `user_profiles` table (fitness data)
-- `id` (PK serial), `user_id` (FK → users), `streak_days`, `fitness_goal`, `workout_frequency`, `daily_sync_progress`, `check_in_completed`, `activity_imported`, `equipment` (JSONB string[]), `skill_level`, `injuries` (JSONB string[]), `onboarding_completed`, `updated_at`
+- `id` (PK serial), `user_id` (FK → users), `streak_days`, `fitness_goal`, `workout_frequency`, `daily_sync_progress`, `check_in_completed`, `activity_imported`
+- **Onboarding fields**: `age`, `weight`, `height`, `gender`, `experience_level`, `injuries` (JSON array), `injury_notes`, `primary_goal`, `onboarding_completed` (boolean)
+- **Preferences**: `insight_detail_level` (simple/granular), `sync_preferences` (JSON: appleHealth, strava, manualScreenshot booleans)
+- **Environment link**: `active_environment_id` (references gym_environments)
+- `updated_at`
 
 ### `daily_check_ins` table
 - `id` (PK serial), `user_id` (FK → users), `date`, `energy_level`, `sleep_quality`, `stress_level`, `soreness_score`, `sore_muscle_groups` (JSONB string[]), `notes`, `created_at`
 
 ### `external_workouts` table
 - `id` (PK serial), `user_id` (FK → users), `label`, `duration`, `workout_type`, `source`, `created_at`
+
+### `gym_environments` table
+- `id` (PK serial), `user_id` (FK → users), `name`, `type`, `equipment` (JSON: categorized equipment lists), `is_active` (boolean), `created_at`
 
 ## API Endpoints
 
@@ -94,10 +105,15 @@ Pro Fitness AI — dark-themed fitness tracker with AI recommendations.
 - `POST /api/mobile-auth/token-exchange` — Mobile PKCE code exchange
 - `POST /api/mobile-auth/logout` — Mobile logout
 - `GET /api/profile` — Get user fitness profile (creates if not exists)
-- `PUT /api/profile` — Update user fitness profile (includes equipment, skillLevel, injuries, onboardingCompleted)
+- `PUT /api/profile` — Update user fitness profile (supports all onboarding + preference fields)
 - `POST /api/checkins` — Create/update today's daily check-in
 - `GET /api/checkins/today` — Get today's check-in for current user
 - `POST /api/workouts/external` — Log an external workout (manual or screenshot)
+- `GET /api/environments` — List user's gym environments
+- `POST /api/environments` — Create new gym environment
+- `PUT /api/environments/:id` — Update gym environment
+- `DELETE /api/environments/:id` — Delete gym environment
+- `PATCH /api/environments/:id/activate` — Set environment as active (validates ownership first)
 
 ## TypeScript & Composite Projects
 
