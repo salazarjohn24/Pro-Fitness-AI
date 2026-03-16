@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
 import { useProfile, useUpdateProfile } from "@/hooks/useProfile";
+import { syncWithAppleHealth, isHealthKitAvailable } from "@/services/healthKit";
 import { useEnvironments, useCreateEnvironment, useUpdateEnvironment, useActivateEnvironment, useDeleteEnvironment } from "@/hooks/useEnvironments";
 import { EquipmentChecklist } from "@/components/EquipmentChecklist";
 
@@ -69,6 +70,7 @@ export default function ProfileScreen() {
   const [editEnvEquipment, setEditEnvEquipment] = useState<Record<string, string[]>>({});
 
   const [showInsightInfo, setShowInsightInfo] = useState(false);
+  const [healthSyncing, setHealthSyncing] = useState(false);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const botPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -96,6 +98,33 @@ export default function ProfileScreen() {
         },
       ]
     );
+  };
+
+  const handleHealthSync = async () => {
+    if (!isHealthKitAvailable()) {
+      Alert.alert("Not Available", "Apple Health is only available on iOS devices.");
+      return;
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setHealthSyncing(true);
+    try {
+      const result = await syncWithAppleHealth();
+      if (result.success) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert(
+          "Sync Complete",
+          `Last 7 days synced:\n• ${result.steps?.toLocaleString() ?? 0} steps\n• ${result.activeCalories?.toLocaleString() ?? 0} active calories\n• ${result.workoutCount ?? 0} workouts`
+        );
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert(
+          "Sync Failed",
+          "Could not connect to Apple Health. Please check your permissions in Settings > Privacy & Security > Health."
+        );
+      }
+    } finally {
+      setHealthSyncing(false);
+    }
   };
 
   const displayName = user?.firstName
@@ -505,6 +534,21 @@ export default function ProfileScreen() {
           </View>
         </View>
       </View>
+
+      <Pressable
+        style={({ pressed }) => [styles.healthSyncBtn, { opacity: pressed || healthSyncing ? 0.8 : 1 }]}
+        onPress={handleHealthSync}
+        disabled={healthSyncing}
+      >
+        {healthSyncing ? (
+          <ActivityIndicator size="small" color="#fff" />
+        ) : (
+          <Feather name="heart" size={16} color="#fff" />
+        )}
+        <Text style={styles.healthSyncText}>
+          {healthSyncing ? "SYNCING..." : "SYNC WITH APPLE HEALTH"}
+        </Text>
+      </Pressable>
 
       <Pressable
         style={({ pressed }) => [styles.logoutBtn, { opacity: pressed ? 0.8 : 1 }]}
@@ -934,6 +978,22 @@ const styles = StyleSheet.create({
   toggleBtnActive: { backgroundColor: Colors.orange, borderColor: Colors.orange },
   toggleBtnText: { fontSize: 12, fontFamily: "Inter_900Black", color: Colors.textMuted },
   toggleBtnTextActive: { color: "#fff" },
+  healthSyncBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    backgroundColor: "#E1306C",
+    borderRadius: 16,
+    paddingVertical: 16,
+  },
+  healthSyncText: {
+    fontSize: 12,
+    fontFamily: "Inter_900Black",
+    color: "#fff",
+    letterSpacing: 1,
+    fontStyle: "italic",
+  },
   logoutBtn: {
     flexDirection: "row",
     alignItems: "center",

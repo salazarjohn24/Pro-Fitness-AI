@@ -59,6 +59,7 @@
     "expo-apple-authentication": "^55.0.8",
     "expo-auth-session": "^7.0.10",
     "expo-crypto": "^15.0.8",
-    "expo-secure-store": "^15.0.8"
+    "expo-secure-store": "^15.0.8",
+    "react-native-health": "^1.19.0"
   }
 }

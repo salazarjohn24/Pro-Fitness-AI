@@ -15,7 +15,10 @@
     },
     "ios": {
       "supportsTablet": false,
-      "usesAppleSignIn": true
+      "usesAppleSignIn": true,
+      "infoPlist": {
+        "NSHealthShareUsageDescription": "Your fitness data is used to track your workout progress and provide personalized insights within the app."
+      }
     },
     "android": {
       "backgroundColor": "#1D1D1B"
