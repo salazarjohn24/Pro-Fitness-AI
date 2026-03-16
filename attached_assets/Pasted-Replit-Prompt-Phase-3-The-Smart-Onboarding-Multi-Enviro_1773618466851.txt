@@ -1,0 +1,55 @@
+Replit Prompt: Phase 3 – The Smart Onboarding & Multi-Environment Profile
+Objective: Build a multi-step, interactive onboarding flow and a comprehensive Profile section that supports multiple "Gym Environments."
+
+1. The "Interactive Questionnaire" Onboarding:
+
+Step 1: The Basics (Biometrics): Gather Age, Weight, Height, and Gender.
+
+Step 2: Experience Level: Use a 3-tier selection (Beginner, Intermediate, Advanced) with descriptions for each.
+
+Step 3: The "Injury Vault": A multi-select list of body parts (Lower Back, Knees, Shoulders, etc.) + a text area for "Specific medical notes."
+
+Step 4: Primary Goal: Single-select (Muscle Growth, Fat Loss, Strength, Flexibility/Longevity).
+
+Final Screen: A "Review & Confirm" summary page before landing on the Status home page.
+
+2. The "Gym Environment" Management (Profile):
+
+The Default Environment: Upon onboarding, prompt the user to set up their "Primary Gym" (e.g., "Home Gym" or "Commercial Gym").
+
+Add Environment Feature: In the Profile tab, allow users to create "New Environments" (e.g., "CrossFit Box," "Hotel Gym").
+
+Equipment Checklist: For each environment, provide a categorized checklist of standard equipment:
+
+Weights: Barbells, Dumbbells, Kettlebells, Plates.
+
+Machines: Cable Row, Smith Machine, Leg Press, Pec Deck, Lat Pulldown.
+
+Bodyweight/Rig: Pull-up Bar, Rings, Parallel Bars, Box.
+
+Environment Toggling: Ensure the back end stores an active_environment_id so the AI Workout Builder knows which equipment list to use by default.
+
+3. Insight Preferences (Profile Settings):
+
+Granularity Toggle: A setting for "Insight Detail Level":
+
+Simple: "Focus on the basics and keep me moving."
+
+Granular: "Give me deep-dives into muscle balance, recovery scores, and plateau predictions."
+
+Sync Preferences: Toggles for Apple Health, Strava, or manual screenshot reminders.
+
+4. UI/UX Requirements:
+
+Interactive Cards: Use tappable cards instead of dropdowns for a faster, modern feel.
+
+Progress Bar: Display a progress bar at the top of onboarding so the user knows they are only "30 seconds away."
+
+Accessibility: Ensure large tap targets and high-contrast text for use in a gym setting.
+
+What this solves for you:
+Eliminates Repetition: By saving the "CrossFit Box" environment, the user never has to tell the AI "I don't have cables today" ever again.
+
+Sets the Logic: The "Experience Level" and "Goals" now act as multipliers for the workout intensity logic in Agent 2.
+
+Efficiency: The 30-second onboarding keeps the "time-to-value" (the time it takes to see their first workout) extremely low.

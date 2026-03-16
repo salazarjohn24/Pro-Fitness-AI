@@ -1,0 +1,43 @@
+The Logic Strategy
+The Fatigue Filter: If a user taps "Quads" on the body map during check-in, the AI should calculate a "Fatigue Penalty." It will either lower the weight/reps for quad exercises or swap them for a secondary muscle group (e.g., swapping a Back Squat for a Leg Press or skipping quads entirely if soreness is > 7).
+
+The Equipment Environment: The builder must look at the "Current Gym Environment" selected in the Profile and only pull exercises that match that equipment list.
+
+Warm-up/Cool-down Logic: These aren't just random; they should be "Dynamic." If the workout is "Chest Day," the warm-up should focus on shoulder mobility and pec activation.
+
+Replit Prompt: Phase 2 – The AI Workout Builder Logic
+Objective: Build the generation engine that creates a custom workout based on the Daily Check-in data and the Exercise Library.
+
+1. Workout Generation Engine (Back-end Logic):
+
+The Input Bundle: The function should take: Current Environment Equipment, User Skill Level, User Goal, and Today's Fatigue Map.
+
+Filtering Logic: * Equipment: IF exercise.equipment NOT IN environment.equipment -> EXCLUDE.
+
+Fatigue: IF muscle_group.fatigue > 7 -> EXCLUDE primary exercises for that group. IF fatigue 4-7 -> DECREASE sets/intensity by 20%.
+
+Injury: Hard-filter any exercises tagged with a user's active injury area.
+
+Structure: Every generated workout must follow this array structure: [Dynamic Warm-up, Primary Compound Lift, Secondary Accessories, Core, Cool-down].
+
+2. The Workout UI (Front-end):
+
+"Generate Today's Workout" Button: A prominent action on the Status Page that triggers the logic.
+
+Active Workout View: A list of exercise cards. Each card shows:
+
+Exercise Name, Sets, Reps, and Target Weight.
+
+A "Swap" button (to trigger the 'Alternative' logic we discussed).
+
+A "Video" icon that opens the YouTube embed modal.
+
+The "Timer" Feature: A simple rest timer that pops up between sets (defaulting to 60-90s).
+
+3. The Alternatives (Variability Logic):
+
+If a user clicks "Swap," the AI should look for an exercise in the library with the same primary muscle group but a lower difficulty level or different equipment (e.g., Bench Press -> Push-ups).
+
+4. Data Recording:
+
+Add a "Finish Workout" button that saves the final reps/weight performed to a WorkoutHistory table so the AI can track "Progressive Overload" for the next session.

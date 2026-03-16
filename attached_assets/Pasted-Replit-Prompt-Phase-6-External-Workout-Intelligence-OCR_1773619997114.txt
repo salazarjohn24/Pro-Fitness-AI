@@ -1,0 +1,39 @@
+Replit Prompt: Phase 6 – External Workout Intelligence (OCR & Manual Logging)
+Objective: Build a robust system for users to input workouts completed outside the app (CrossFit, Apple Fitness, Strava) so that the data accurately updates the Body Balance Index and Recovery scores.
+
+1. The "Log External" Interface:
+
+Screenshot Upload: Create an image upload component that uses a placeholder for an OCR (Optical Character Recognition) service (like Tesseract.js or an AI Vision API).
+
+Manual "Quick Label" Form:
+
+Type: Dropdown (CrossFit, Running, Swimming, Yoga, Other).
+
+Duration: Minutes.
+
+Intensity (RPE): A 1–10 slider (Rate of Perceived Exertion).
+
+"Primary Focus" Tags: A multi-select list of muscle groups so the user can quickly tell the app: "This CrossFit WOD was heavy on Quads and Shoulders."
+
+2. Data Translation Logic (The "Bridge"):
+
+Stimulus Conversion: Create a function that converts "External Time + Intensity" into "Stimulus Points."
+
+Example: A 20-minute "High Intensity" CrossFit workout labeled "Quads/Shoulders" should add a standardized stimulus load to those muscle groups in the Performance Audit heat map.
+
+Volume Estimation: If the user doesn't provide specific weights/reps for a screenshot, use an "Average Volume" constant based on their skill level (Beginner/Int/Adv) to ensure the Progress Momentum line doesn't flatline just because they worked out elsewhere.
+
+3. The "AI Workout Interpreter" (Vision Placeholder):
+
+Create a text area where a user can paste a workout description (e.g., "5 Rounds: 10 Thrusters, 10 Pull-ups").
+
+Logic: Use a prompt-to-AI function that parses that text to identify the muscle groups involved and the likely stimulus level.
+
+4. UI Integration:
+
+Status Page Update: Once a workout is logged, the "Incomplete" reminder on the Status page should change to a "Workout Logged" success state.
+
+Feed Display: Add a "Recent Activity" list on the Status page showing both in-app and external workouts with distinct icons.
+
+Why this is the "missing link":
+Without this, your Body Balance Index would be inaccurate. If you do a heavy CrossFit leg day and the app doesn't know about it, it might recommend another heavy leg day the next morning. This prompt ensures the "Audit" and "Builder" are always working with a full deck of cards.

@@ -1,0 +1,44 @@
+Replit Prompt: Phase 1 – The "Status" Hub & Smart Onboarding
+Objective: Build the core landing experience (Status Page) for a highly intelligent AI Workout App. The goal is to create a frictionless, mandatory daily data-capture system that feeds an AI Workout Builder.
+
+1. Data Schema & Back-end Setup:
+
+User Profile: Create a schema to store: Equipment (checklist), Skill Level (Beginner/Int/Adv), Injuries (text/tags), and Goals.
+
+Daily Log Store: Create a table for "Daily Check-ins" including: Date, Sleep Quality (1-10), General Fatigue (1-10), and a "Soreness Map" (array of muscle groups).
+
+Workout History: Support a "Manual Entry" or "Screenshot Upload" feature where users can label external workouts (e.g., CrossFit, Strava) with duration and type.
+
+2. The Mandatory Daily Check-in (UI/UX):
+
+Trigger: Upon opening the app for the first time each day, trigger a 30-second "Smart Check-in" overlay.
+
+Inputs:
+
+Sleep & Energy: Simple sliders or 1-10 tappable buttons.
+
+Muscle Fatigue: A simple, interactive human body diagram (front/back) where users can tap muscle groups that feel sore/fatigued.
+
+Comments: A quick-tap "Voice-to-Text" or text box for "Any specific pains or notes?"
+
+Value Prop: Include a small "Info Card" explaining: "Why this matters: Your AI Coach uses this data to prevent overtraining and pick the right exercises for today."
+
+3. The Status Dashboard (Front-end):
+
+The "Daily Score" Card: A visual summary of their current readiness based on the check-in.
+
+External Workout Logger: A prominent button: "Log External Workout." This should allow a user to:
+
+Upload a screenshot (OCR placeholder).
+
+Input a label (e.g., "CrossFit WOD").
+
+Select duration.
+
+Navigation: A clean bottom nav bar with icons for: Status (Home), Workout Builder, The Vault (Library), and Profile.
+
+4. Tech Stack Preferences:
+
+Use React (or Next.js) for the front end and Supabase or Firebase for the back end to ensure persistent user data.
+
+Style with Tailwind CSS for a clean, modern, "Performance-focused" aesthetic (Dark mode preferred).

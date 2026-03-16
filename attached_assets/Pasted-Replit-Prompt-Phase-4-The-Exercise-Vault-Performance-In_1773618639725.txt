@@ -1,0 +1,51 @@
+Replit Prompt: Phase 4 – The Exercise Vault & Performance Intelligence
+Objective: Build a searchable, filterable "Exercise Vault" that acts as both a library and a personal performance tracker.
+
+1. Library UI & Filtering (Front-end):
+
+Search & Filter Bar: Allow users to filter the 300+ exercise database by:
+
+Muscle Group: (Chest, Back, Quads, etc. - use a dropdown or icon grid).
+
+Equipment: (Barbell, Dumbbell, Machine, Bodyweight).
+
+Goal: (Strength, Hypertrophy, Mobility).
+
+Exercise Cards: Each card displays a thumbnail/icon, the primary muscle worked, and a "Difficulty" tag (1-10).
+
+2. The "Exercise Detail" View (Deep Dive):
+
+Instructional Content: * Embed a YouTube Player (using a URL field from the database).
+
+Written "Step-by-Step" instructions and "Common Mistakes" cards.
+
+Stimulus Map: A visual breakdown of Primary, Secondary, and Tertiary muscle involvement.
+
+Alternative Recommendations: A "Similar Exercises" section at the bottom that suggests movements with the same stimulus (e.g., if viewing "Back Squat," suggest "Leg Press" or "Goblet Squat").
+
+3. AI Performance Insights (The Intelligence):
+
+Historical Data: Fetch the user's last 3 sessions for this specific exercise (Weight/Reps/Sets).
+
+Predictive Coaching: * Display a "Coach’s Note" card: "Based on your 5x5 at 250lb, your estimated 1-rep max is [X]."
+
+Rest Recommendation: "To hit your strength goal, rest 3 mins between sets; for growth, 60-90s."
+
+Plateau Alert: If progress has stalled for 3 sessions, surface a tip: "You've plateaued here. Try swapping to [Alternative Exercise] for 2 weeks to change the stimulus."
+
+4. Back-end Requirements:
+
+Database Integration: Connect to the ExerciseLibrary table (300+ entries) and the WorkoutHistory table.
+
+Relational Mapping: Ensure each exercise has an alternative_ids field to link similar movements.
+
+Analytics Logic: Create a helper function to calculate "Estimated 1RM" (One Rep Max) and "Total Volume" (Weight × Reps × Sets) per exercise.
+
+What we included from our brainstorm:
+The "Why": Connecting the exercise back to their specific goal.
+
+The "How": YouTube embeds and "What to watch out for" cards.
+
+The Variety: The stack-ranked alternatives to keep them excited and account for busy gyms.
+
+The Coach: AI-driven predictions and rest-time suggestions.
