@@ -41,31 +41,27 @@ async function upsertSocialUser(params: {
   firstName?: string | null;
   lastName?: string | null;
   profileImageUrl?: string | null;
+  emailVerified?: boolean;
 }) {
-  const existing = params.email
-    ? await db.select().from(usersTable).where(
-        or(
-          eq(usersTable.providerId, `${params.provider}:${params.providerId}`),
-          eq(usersTable.email, params.email),
-        ),
-      ).limit(1)
-    : await db.select().from(usersTable).where(
-        eq(usersTable.providerId, `${params.provider}:${params.providerId}`),
-      ).limit(1);
+  const compositeId = `${params.provider}:${params.providerId}`;
 
-  if (existing.length > 0) {
+  const [byProvider] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.providerId, compositeId))
+    .limit(1);
+
+  if (byProvider) {
     const [user] = await db
       .update(usersTable)
       .set({
-        email: params.email ?? existing[0].email,
-        firstName: params.firstName ?? existing[0].firstName,
-        lastName: params.lastName ?? existing[0].lastName,
-        profileImageUrl: params.profileImageUrl ?? existing[0].profileImageUrl,
-        providerId: `${params.provider}:${params.providerId}`,
-        authProvider: params.provider,
+        email: params.email ?? byProvider.email,
+        firstName: params.firstName ?? byProvider.firstName,
+        lastName: params.lastName ?? byProvider.lastName,
+        profileImageUrl: params.profileImageUrl ?? byProvider.profileImageUrl,
         updatedAt: new Date(),
       })
-      .where(eq(usersTable.id, existing[0].id))
+      .where(eq(usersTable.id, byProvider.id))
       .returning();
     return user;
   }
@@ -78,7 +74,7 @@ async function upsertSocialUser(params: {
       lastName: params.lastName ?? null,
       profileImageUrl: params.profileImageUrl ?? null,
       authProvider: params.provider,
-      providerId: `${params.provider}:${params.providerId}`,
+      providerId: compositeId,
     })
     .returning();
   return user;
@@ -194,10 +190,12 @@ router.get("/auth/social/:provider/callback", async (req: Request, res: Response
       const infoRes = await fetch(`https://www.googleapis.com/oauth2/v3/tokeninfo?id_token=${tokens.id_token}`);
       const info = await infoRes.json() as any;
       if (!infoRes.ok) { redirectError(res, "Failed to get Google user"); return; }
+      if (!info.email_verified) { redirectError(res, "Google account email is not verified"); return; }
       const user = await upsertSocialUser({
         provider: "google", providerId: info.sub,
         email: info.email, firstName: info.given_name,
         lastName: info.family_name, profileImageUrl: info.picture,
+        emailVerified: true,
       });
       const sid = await createSocialSession(user);
       redirectToApp(res, sid);

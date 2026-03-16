@@ -2,6 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, exerciseLibraryTable, workoutHistoryTable, userProfilesTable } from "@workspace/db";
 import { eq, and, ilike, inArray, desc } from "drizzle-orm";
 import { generateCoachNote } from "../services/aiService";
+import { aiRateLimit } from "../middlewares/rateLimitMiddleware";
 
 const router: IRouter = Router();
 
@@ -139,7 +140,7 @@ router.get("/exercises/:id/history", async (req: Request, res: Response) => {
   });
 });
 
-router.get("/exercises/:id/coach-note", async (req: Request, res: Response) => {
+router.get("/exercises/:id/coach-note", aiRateLimit, async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Unauthorized" });
     return;

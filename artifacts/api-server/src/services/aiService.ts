@@ -1,6 +1,14 @@
 import { openai } from "@workspace/integrations-openai-ai-server";
 import type { ExerciseData } from "../data/exercises";
 
+function sanitizeUserInput(input: string | null | undefined): string {
+  if (!input) return "";
+  return input
+    .replace(/[\r\n]+/g, " ")
+    .replace(/[<>]/g, "")
+    .slice(0, 500);
+}
+
 export interface AIWorkoutResult {
   workoutTitle: string;
   rationale: string;
@@ -105,7 +113,7 @@ RULES:
 - Moderate soreness (reduce volume): ${ctx.moderateSorenessGroups.join(", ") || "none"}
 - Injuries (AVOID): ${ctx.injuries.join(", ") || "none"}
 - Available equipment: ${ctx.equipment.join(", ") || "bodyweight only"}
-${ctx.checkInNotes ? `- User notes: ${ctx.checkInNotes}` : ""}
+${ctx.checkInNotes ? `- User notes: ${sanitizeUserInput(ctx.checkInNotes)}` : ""}
 
 Generate the ideal workout for this person today.`;
 
@@ -330,7 +338,7 @@ No markdown, no explanation, just the JSON.`,
       },
       {
         role: "user",
-        content: `Parse this workout description: "${description}"`,
+        content: `Parse this workout description: "${sanitizeUserInput(description)}"`,
       },
     ],
   });

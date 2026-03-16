@@ -3,6 +3,7 @@ import { db, workoutSessionsTable, workoutHistoryTable, exerciseLibraryTable, da
 import { eq, desc, and, gte } from "drizzle-orm";
 import { exerciseMap } from "../data/exercises";
 import { generateAuditInsight } from "../services/aiService";
+import { aiRateLimit } from "../middlewares/rateLimitMiddleware";
 
 const router: IRouter = Router();
 
@@ -388,7 +389,7 @@ router.get("/audit/volume-stats", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/audit/ai-insight", async (req: Request, res: Response) => {
+router.get("/audit/ai-insight", aiRateLimit, async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Unauthorized" });
     return;

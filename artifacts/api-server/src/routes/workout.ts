@@ -3,6 +3,7 @@ import { db, userProfilesTable, dailyCheckInsTable, workoutSessionsTable, workou
 import { eq, and, desc } from "drizzle-orm";
 import { EXERCISE_LIBRARY, exerciseMap, type ExerciseData } from "../data/exercises";
 import { generateAIWorkout, generateAIArchitectWorkout, parseWorkoutDescriptionAI } from "../services/aiService";
+import { aiRateLimit } from "../middlewares/rateLimitMiddleware";
 
 const router: IRouter = Router();
 
@@ -200,7 +201,7 @@ interface GeneratedExercise {
   youtubeKeyword: string;
 }
 
-router.post("/workout/generate", async (req: Request, res: Response) => {
+router.post("/workout/generate", aiRateLimit, async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Unauthorized" });
     return;
@@ -523,7 +524,7 @@ router.get("/workout/sessions", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/workout/architect-generate", async (req: Request, res: Response) => {
+router.post("/workout/architect-generate", aiRateLimit, async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Unauthorized" });
     return;
@@ -697,7 +698,7 @@ router.post("/workout/architect-generate", async (req: Request, res: Response) =
   }
 });
 
-router.post("/workout/parse-description", async (req: Request, res: Response) => {
+router.post("/workout/parse-description", aiRateLimit, async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Unauthorized" });
     return;
