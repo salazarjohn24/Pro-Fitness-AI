@@ -23,7 +23,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
 import { useProfile, useUpdateProfile } from "@/hooks/useProfile";
-import { useEnvironments, useCreateEnvironment, useActivateEnvironment, useDeleteEnvironment } from "@/hooks/useEnvironments";
+import { useEnvironments, useCreateEnvironment, useUpdateEnvironment, useActivateEnvironment, useDeleteEnvironment } from "@/hooks/useEnvironments";
 import { EquipmentChecklist } from "@/components/EquipmentChecklist";
 
 const FREQUENCIES = [2, 3, 4, 5, 6];
@@ -47,6 +47,7 @@ export default function ProfileScreen() {
   const { data: environments } = useEnvironments();
   const { mutate: activateEnv } = useActivateEnvironment();
   const { mutate: createEnv, isPending: isCreating } = useCreateEnvironment();
+  const { mutate: updateEnv, isPending: isUpdating } = useUpdateEnvironment();
   const { mutate: deleteEnv } = useDeleteEnvironment();
 
   const [editingGeneral, setEditingGeneral] = useState(false);
@@ -61,6 +62,11 @@ export default function ProfileScreen() {
   const [newEnvName, setNewEnvName] = useState("");
   const [newEnvType, setNewEnvType] = useState("");
   const [newEnvEquipment, setNewEnvEquipment] = useState<Record<string, string[]>>({});
+
+  const [editEnvId, setEditEnvId] = useState<number | null>(null);
+  const [editEnvName, setEditEnvName] = useState("");
+  const [editEnvType, setEditEnvType] = useState("");
+  const [editEnvEquipment, setEditEnvEquipment] = useState<Record<string, string[]>>({});
 
   const [showInsightInfo, setShowInsightInfo] = useState(false);
 
@@ -139,6 +145,38 @@ export default function ProfileScreen() {
           setNewEnvName("");
           setNewEnvType("");
           setNewEnvEquipment({});
+        },
+      }
+    );
+  };
+
+  const startEditEnv = (env: { id: number; name: string; type: string; equipment: Record<string, string[]> }) => {
+    setEditEnvId(env.id);
+    setEditEnvName(env.name);
+    setEditEnvType(env.type);
+    setEditEnvEquipment(env.equipment ?? {});
+  };
+
+  const toggleEditEquipment = (category: string, item: string) => {
+    setEditEnvEquipment((prev) => {
+      const catItems = prev[category] ?? [];
+      const updated = catItems.includes(item)
+        ? catItems.filter((i) => i !== item)
+        : [...catItems, item];
+      return { ...prev, [category]: updated };
+    });
+  };
+
+  const handleUpdateEnv = () => {
+    if (!editEnvId || !editEnvName.trim() || !editEnvType) return;
+    updateEnv(
+      { id: editEnvId, name: editEnvName.trim(), type: editEnvType, equipment: editEnvEquipment },
+      {
+        onSuccess: () => {
+          setEditEnvId(null);
+          setEditEnvName("");
+          setEditEnvType("");
+          setEditEnvEquipment({});
         },
       }
     );
@@ -385,15 +423,26 @@ export default function ProfileScreen() {
                     </View>
                   )}
                 </Pressable>
-                <Pressable
-                  style={styles.envDeleteBtn}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    deleteEnv(env.id);
-                  }}
-                >
-                  <Feather name="trash-2" size={14} color={Colors.textSubtle} />
-                </Pressable>
+                <View style={styles.envBtnsRow}>
+                  <Pressable
+                    style={styles.envEditBtn}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      startEditEnv(env);
+                    }}
+                  >
+                    <Feather name="edit-2" size={14} color={Colors.recovery} />
+                  </Pressable>
+                  <Pressable
+                    style={styles.envDeleteBtn}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      deleteEnv(env.id);
+                    }}
+                  >
+                    <Feather name="trash-2" size={14} color={Colors.textSubtle} />
+                  </Pressable>
+                </View>
               </View>
             ))}
           </View>
@@ -593,6 +642,79 @@ export default function ProfileScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={editEnvId !== null}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setEditEnvId(null)}
+      >
+        <View style={[styles.modalContainer, { paddingTop: topPad + 12 }]}>
+          <View style={styles.modalHeader}>
+            <Pressable onPress={() => setEditEnvId(null)}>
+              <Feather name="x" size={24} color={Colors.textMuted} />
+            </Pressable>
+            <Text style={styles.modalTitle}>EDIT ENVIRONMENT</Text>
+            <View style={{ width: 24 }} />
+          </View>
+          <ScrollView
+            contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: botPad + 100, gap: 20 }}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.modalInputGroup}>
+              <Text style={styles.modalInputLabel}>GYM NAME</Text>
+              <TextInput
+                style={styles.modalTextInput}
+                value={editEnvName}
+                onChangeText={setEditEnvName}
+                placeholder="e.g. Hotel Gym, CrossFit Box"
+                placeholderTextColor={Colors.textSubtle}
+              />
+            </View>
+
+            <View style={styles.modalInputGroup}>
+              <Text style={styles.modalInputLabel}>GYM TYPE</Text>
+              <View style={styles.modalTypeGrid}>
+                {GYM_TYPES.map((t) => (
+                  <Pressable
+                    key={t.label}
+                    style={[styles.modalTypeCard, editEnvType === t.label && styles.modalTypeCardActive]}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setEditEnvType(t.label);
+                    }}
+                  >
+                    <Feather
+                      name={t.icon}
+                      size={18}
+                      color={editEnvType === t.label ? Colors.orange : Colors.textMuted}
+                    />
+                    <Text style={[styles.modalTypeText, editEnvType === t.label && styles.modalTypeTextActive]}>
+                      {t.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.modalInputGroup}>
+              <Text style={styles.modalInputLabel}>EQUIPMENT</Text>
+              <EquipmentChecklist selected={editEnvEquipment} onToggle={toggleEditEquipment} />
+            </View>
+          </ScrollView>
+          <View style={[styles.modalFooter, { paddingBottom: botPad + 12 }]}>
+            <Pressable
+              style={[styles.modalSaveBtn, (!editEnvName.trim() || !editEnvType || isUpdating) && styles.modalSaveBtnDisabled]}
+              onPress={handleUpdateEnv}
+              disabled={!editEnvName.trim() || !editEnvType || isUpdating}
+            >
+              <Feather name="check" size={18} color="#fff" />
+              <Text style={styles.modalSaveBtnText}>{isUpdating ? "SAVING..." : "SAVE CHANGES"}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -771,7 +893,9 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   activeBadgeText: { fontSize: 8, fontFamily: "Inter_900Black", color: Colors.orange, letterSpacing: 1 },
-  envDeleteBtn: { padding: 8, marginLeft: 4 },
+  envBtnsRow: { flexDirection: "row", alignItems: "center", gap: 2 },
+  envEditBtn: { padding: 8 },
+  envDeleteBtn: { padding: 8 },
   emptyText: { fontSize: 13, fontFamily: "Inter_400Regular", color: Colors.textSubtle, textAlign: "center", paddingVertical: 8 },
   addEnvBtn: {
     flexDirection: "row",

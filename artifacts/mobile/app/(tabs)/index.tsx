@@ -14,7 +14,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { CheckInModal } from "@/components/CheckInModal";
+import { CheckInModal, type CheckInData } from "@/components/CheckInModal";
+import { ActivityImportModal } from "@/components/ActivityImportModal";
 import { InsightInfoModal } from "@/components/InsightInfoModal";
 import { OnboardingModal } from "@/components/OnboardingModal";
 import { Colors } from "@/constants/colors";
@@ -29,6 +30,7 @@ import {
   useRecentExternalWorkouts,
   computeReadinessScore,
 } from "@/hooks/useProfile";
+import { useGenerateWorkout, type GeneratedWorkout } from "@/hooks/useWorkout";
 
 const TODAY = new Date().toLocaleDateString("en-US", {
   weekday: "long",
@@ -73,12 +75,14 @@ export default function StatusScreen() {
   const { mutate: submitExternalWorkout } = useSubmitExternalWorkout();
   const { mutate: deleteExternalWorkout } = useDeleteExternalWorkout();
   const { data: recentExternalWorkouts } = useRecentExternalWorkouts();
+  const { mutate: generateWorkout, isPending: isGenerating } = useGenerateWorkout();
 
   const [checkInOpen, setCheckInOpen] = useState(false);
   const [insightOpen, setInsightOpen] = useState(false);
   const [readinessInfoOpen, setReadinessInfoOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [autoCheckInTriggered, setAutoCheckInTriggered] = useState(false);
+  const [generatedWorkout, setGeneratedWorkout] = useState<GeneratedWorkout | null>(null);
 
   const streak = profile?.streakDays ?? 0;
   const syncProgress = profile?.dailySyncProgress ?? 0;
@@ -119,6 +123,14 @@ export default function StatusScreen() {
     }
   }, [isLoading, checkInLoading, onboardingDone, checkInDone, autoCheckInTriggered]);
 
+  useEffect(() => {
+    if (!isLoading && !checkInLoading && checkInDone && !generatedWorkout && !isGenerating) {
+      generateWorkout(undefined, {
+        onSuccess: (workout) => setGeneratedWorkout(workout),
+      });
+    }
+  }, [isLoading, checkInLoading, checkInDone, generatedWorkout, isGenerating]);
+
   const handleOnboardingComplete = (data: {
     fitnessGoal: string;
     skillLevel: string;
@@ -136,14 +148,7 @@ export default function StatusScreen() {
     });
   };
 
-  const handleCheckInComplete = (data: {
-    energyLevel: number;
-    sleepQuality: number;
-    stressLevel: number;
-    sorenessScore: number;
-    soreMuscleGroups: string[];
-    notes: string;
-  }) => {
+  const handleCheckInComplete = (data: CheckInData) => {
     const wasAlreadyDone = checkInDone;
     submitCheckIn(data, {
       onSuccess: () => {
@@ -153,6 +158,11 @@ export default function StatusScreen() {
           const newProgress = Math.min(100, syncProgress + 50);
           updateProfile({ checkInCompleted: true, dailySyncProgress: newProgress, streakDays: streak + 1 });
         }
+        generateWorkout(undefined, {
+          onSuccess: (workout) => {
+            setGeneratedWorkout(workout);
+          },
+        });
       },
       onError: () => {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -193,6 +203,28 @@ export default function StatusScreen() {
     });
   };
 
+  const handleStartWorkout = () => {
+    if (!checkInDone) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+
+    if (generatedWorkout) {
+      router.push({
+        pathname: "/workout-session",
+        params: { workout: JSON.stringify(generatedWorkout) },
+      });
+    } else {
+      generateWorkout(undefined, {
+        onSuccess: (workout) => {
+          setGeneratedWorkout(workout);
+          router.push({
+            pathname: "/workout-session",
+            params: { workout: JSON.stringify(workout) },
+          });
+        },
+      });
+    }
+  };
+
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const botPad = Platform.OS === "web" ? 34 : insets.bottom;
 
@@ -203,6 +235,10 @@ export default function StatusScreen() {
       </View>
     );
   }
+
+  const workoutTitle = generatedWorkout?.workoutTitle ?? "Back & Arms\nFocus";
+  const workoutRationale = generatedWorkout?.rationale ??
+    "The AI suggests this to balance your recent volume and improve posture.";
 
   return (
     <>
@@ -286,7 +322,7 @@ export default function StatusScreen() {
                   activityDone && (isRestDay ? styles.taskTitleRest : styles.taskTitleDone),
                   !checkInDone && !activityDone && styles.taskTitleLocked,
                 ]}>
-                  {isRestDay ? "Recovery Day" : "Today's Training"}
+                {isRestDay ? "Recovery Day" : "Today's Training"}
                 </Text>
                 <Text style={styles.taskSub}>
                   {activityDone
@@ -305,6 +341,28 @@ export default function StatusScreen() {
                 <Feather name="check-circle" size={16} color={isRestDay ? Colors.recovery : Colors.highlight} />
               )}
             </View>
+
+            <Pressable
+              onPress={handleStartWorkout}
+              style={({ pressed }) => [
+                styles.taskItem,
+                checkInDone ? styles.taskPending : styles.taskLocked,
+                { opacity: checkInDone ? (pressed ? 0.85 : 1) : 0.5 },
+              ]}
+            >
+              <View style={[styles.taskIcon, checkInDone ? styles.taskIconHighlight : styles.taskIconLocked]}>
+                <Feather name="activity" size={16} color={checkInDone ? Colors.highlight : "#3C3C3A"} />
+              </View>
+              <View style={styles.taskInfo}>
+                <Text style={[styles.taskTitle, !checkInDone && styles.taskTitleLocked]}>Physique Protocol</Text>
+                <Text style={styles.taskSub}>{checkInDone ? "Generate AI workout" : "Locked: Complete check-in first"}</Text>
+              </View>
+              {checkInDone ? (
+                <Feather name="chevron-right" size={16} color={Colors.textMuted} />
+              ) : (
+                <Feather name="lock" size={16} color="#3C3C3A" />
+              )}
+            </Pressable>
           </View>
         </BentoCard>
 
@@ -320,26 +378,47 @@ export default function StatusScreen() {
               <Feather name="info" size={15} color={Colors.textSubtle} />
             </Pressable>
           </View>
-          <Text style={styles.recommendTitle}>Back & Arms{"\n"}Focus</Text>
-          <Text style={styles.recommendDesc}>
-            The AI suggests this to balance your recent volume and improve posture.
-          </Text>
+          {isGenerating ? (
+            <View style={styles.generatingBlock}>
+              <ActivityIndicator color={Colors.orange} size="small" />
+              <Text style={styles.generatingText}>Generating your workout...</Text>
+            </View>
+          ) : (
+            <>
+              <Text style={styles.recommendTitle}>
+                {generatedWorkout ? generatedWorkout.workoutTitle.replace(" & ", "\n& ").replace(" Focus", "\nFocus") : "Back & Arms\nFocus"}
+              </Text>
+              <Text style={styles.recommendDesc}>{workoutRationale}</Text>
+              {generatedWorkout && (
+                <View style={styles.workoutMeta}>
+                  <View style={styles.metaItem}>
+                    <Feather name="layers" size={12} color={Colors.recovery} />
+                    <Text style={styles.metaText}>{generatedWorkout.totalSets} sets</Text>
+                  </View>
+                  <View style={styles.metaItem}>
+                    <Feather name="clock" size={12} color={Colors.orange} />
+                    <Text style={styles.metaText}>~{generatedWorkout.estimatedMinutes} min</Text>
+                  </View>
+                  <View style={styles.metaItem}>
+                    <Feather name="list" size={12} color={Colors.highlight} />
+                    <Text style={styles.metaText}>{generatedWorkout.exercises.length} exercises</Text>
+                  </View>
+                </View>
+              )}
+            </>
+          )}
           <Pressable
             style={({ pressed }) => [
               styles.startButton,
               !checkInDone && styles.startButtonDisabled,
               { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
             ]}
-            onPress={() => {
-              if (!checkInDone) return;
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-              router.push("/workout-session");
-            }}
-            disabled={!checkInDone}
+            onPress={handleStartWorkout}
+            disabled={!checkInDone || isGenerating}
           >
             <Feather name="play" size={16} color="#fff" />
             <Text style={styles.startButtonText}>
-              {checkInDone ? "START WORKOUT" : "COMPLETE CHECK-IN FIRST"}
+              {isGenerating ? "GENERATING..." : checkInDone ? "START WORKOUT" : "COMPLETE CHECK-IN FIRST"}
             </Text>
           </Pressable>
         </BentoCard>
@@ -505,7 +584,7 @@ export default function StatusScreen() {
           sleepQuality: todayCheckIn.sleepQuality,
           stressLevel: todayCheckIn.stressLevel,
           sorenessScore: todayCheckIn.sorenessScore,
-          soreMuscleGroups: todayCheckIn.soreMuscleGroups ?? [],
+          soreMuscleGroups: (todayCheckIn.soreMuscleGroups as { muscle: string; severity: number }[]) ?? [],
           notes: todayCheckIn.notes ?? "",
         } : null}
       />
@@ -623,11 +702,42 @@ const styles = StyleSheet.create({
     fontSize: 30,
     fontFamily: "Inter_900Black",
     color: Colors.text,
-    lineHeight: 34,
     fontStyle: "italic",
     textTransform: "uppercase",
+    lineHeight: 34,
   },
-  recommendDesc: { fontSize: 13, fontFamily: "Inter_400Regular", color: Colors.textMuted, lineHeight: 20 },
+  recommendDesc: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textMuted,
+    lineHeight: 20,
+  },
+  generatingBlock: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 20,
+  },
+  generatingText: {
+    fontSize: 14,
+    fontFamily: "Inter_700Bold",
+    color: Colors.textMuted,
+  },
+  workoutMeta: {
+    flexDirection: "row",
+    gap: 16,
+    marginTop: 4,
+  },
+  metaItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  metaText: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    color: Colors.textSubtle,
+  },
   startButton: {
     backgroundColor: Colors.orange,
     borderRadius: 16,
@@ -636,21 +746,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    marginTop: 4,
   },
-  startButtonDisabled: { backgroundColor: "#3A3A38" },
-  startButtonText: { fontSize: 13, fontFamily: "Inter_900Black", color: "#fff", letterSpacing: 1, fontStyle: "italic" },
+  startButtonDisabled: { backgroundColor: "#2C2C2A" },
+  startButtonText: {
+    fontSize: 13,
+    fontFamily: "Inter_900Black",
+    color: "#fff",
+    letterSpacing: 1,
+    fontStyle: "italic",
+  },
   architectCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
-    borderColor: "rgba(246,234,152,0.3)",
+    borderColor: "rgba(246,234,152,0.15)",
+    backgroundColor: "rgba(246,234,152,0.04)",
   },
   architectIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: "rgba(246,234,152,0.1)",
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: "rgba(246,234,152,0.12)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -685,9 +801,9 @@ const styles = StyleSheet.create({
   secondaryTitle: { fontSize: 11, fontFamily: "Inter_700Bold", color: Colors.text, textTransform: "uppercase", letterSpacing: 0.5 },
   secondarySub: { fontSize: 9, fontFamily: "Inter_400Regular", color: Colors.textSubtle, marginTop: 2 },
   statsRow: { flexDirection: "row", gap: 10 },
-  statCard: { alignItems: "center", gap: 8, paddingVertical: 16, position: "relative" },
-  statValue: { fontSize: 22, fontFamily: "Inter_900Black", color: Colors.text, fontStyle: "italic" },
-  statLabel: { fontSize: 9, fontFamily: "Inter_700Bold", color: Colors.textSubtle, textTransform: "uppercase", letterSpacing: 1 },
+  statCard: { alignItems: "center", gap: 6, paddingVertical: 16 },
+  statValue: { fontSize: 28, fontFamily: "Inter_900Black", color: Colors.text, fontStyle: "italic" },
+  statLabel: { fontSize: 9, fontFamily: "Inter_700Bold", color: Colors.textSubtle, letterSpacing: 1, textTransform: "uppercase" },
   scoreInfoHint: {
     position: "absolute",
     top: 8,

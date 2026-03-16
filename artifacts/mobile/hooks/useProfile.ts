@@ -98,7 +98,7 @@ export interface DailyCheckIn {
   sleepQuality: number;
   stressLevel: number;
   sorenessScore: number;
-  soreMuscleGroups: string[];
+  soreMuscleGroups: { muscle: string; severity: number }[];
   notes: string | null;
   createdAt: string;
 }
@@ -127,7 +127,7 @@ export function useSubmitCheckIn() {
       sleepQuality: number;
       stressLevel: number;
       sorenessScore: number;
-      soreMuscleGroups: string[];
+      soreMuscleGroups: { muscle: string; severity: number }[];
       notes?: string;
     }) => {
       const headers = await getAuthHeaders();
@@ -155,7 +155,7 @@ export function useUpdateCheckIn() {
       sleepQuality: number;
       stressLevel: number;
       sorenessScore: number;
-      soreMuscleGroups: string[];
+      soreMuscleGroups: { muscle: string; severity: number }[];
       notes?: string;
     }) => {
       const headers = await getAuthHeaders();

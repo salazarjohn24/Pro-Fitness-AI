@@ -80,7 +80,7 @@ export interface CheckInData {
   sleepQuality: number;
   stressLevel: number;
   sorenessScore: number;
-  soreMuscleGroups: string[];
+  soreMuscleGroups: { muscle: string; severity: number }[];
   notes: string;
 }
 
@@ -108,7 +108,7 @@ export function CheckInModal({ visible, onClose, onComplete, initialData, isSubm
         soreness: initialData.sorenessScore,
         stress: initialData.stressLevel,
       });
-      setSoreMuscles(initialData.soreMuscleGroups ?? []);
+      setSoreMuscles((initialData.soreMuscleGroups ?? []).map(s => s.muscle));
       setNotes(initialData.notes ?? "");
       setInitialized(true);
     }
@@ -156,12 +156,18 @@ export function CheckInModal({ visible, onClose, onComplete, initialData, isSubm
   }, [visible]);
 
   const handleFinish = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    const sorenessVal = answers["soreness"] ?? 3;
+    const severity = sorenessVal === 1 ? 9 : sorenessVal === 2 ? 7 : sorenessVal === 3 ? 5 : sorenessVal === 4 ? 3 : 1;
+    const soreMuscleGroups = soreMuscles.map(muscle => ({ muscle, severity }));
+
     onComplete({
       energyLevel: answers["energy"] ?? 3,
       sleepQuality: answers["sleep"] ?? 3,
       stressLevel: answers["stress"] ?? 3,
       sorenessScore: answers["soreness"] ?? 3,
-      soreMuscleGroups: soreMuscles,
+      soreMuscleGroups,
       notes,
     });
   };

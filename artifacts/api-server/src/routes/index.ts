@@ -5,6 +5,8 @@ import profileRouter from "./profile";
 import checkinsRouter from "./checkins";
 import workoutsRouter from "./workouts";
 import environmentsRouter from "./environments";
+import workoutRouter from "./workout";
+import exercisesRouter from "./exercises";
 
 const router: IRouter = Router();
 
@@ -14,5 +16,7 @@ router.use(profileRouter);
 router.use(checkinsRouter);
 router.use(workoutsRouter);
 router.use(environmentsRouter);
+router.use(workoutRouter);
+router.use(exercisesRouter);
 
 export default router;

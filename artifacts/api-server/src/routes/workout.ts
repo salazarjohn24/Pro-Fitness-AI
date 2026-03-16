@@ -1,0 +1,538 @@
+import { Router, type IRouter, type Request, type Response } from "express";
+import { db, userProfilesTable, dailyCheckInsTable, workoutSessionsTable } from "@workspace/db";
+import { eq, and, desc } from "drizzle-orm";
+import { EXERCISE_LIBRARY, exerciseMap, type ExerciseData } from "../data/exercises";
+
+const router: IRouter = Router();
+
+const GOAL_ALIAS: Record<string, string> = {
+  muscle_gain: "muscle gain",
+  fat_loss: "fat loss",
+  general: "general fitness",
+  strength: "strength",
+  endurance: "endurance",
+};
+
+const EQUIPMENT_ALIAS: Record<string, string> = {
+  dumbbells: "dumbbell",
+  "pull-up bar": "pull-up bar",
+  "resistance bands": "resistance band",
+  "cable machine": "cable machine",
+  barbell: "barbell",
+  bench: "bench",
+  "squat rack": "squat rack",
+  "leg press": "leg press machine",
+  "leg curl": "leg curl machine",
+  "leg extension": "leg extension machine",
+  kettlebells: "dumbbell",
+  "ez bar": "ez bar",
+  "ez curl bar": "ez bar",
+  "foam roller": "foam roller",
+  "weight plates": "barbell",
+  "trap bar": "barbell",
+  "smith machine": "squat rack",
+  "lat pulldown": "cable machine",
+  "chest press machine": "bench",
+  "rowing machine": "cable machine",
+  "dip station": "dip station",
+  "gymnastics rings": "pull-up bar",
+  "trx / suspension": "resistance band",
+  "ab wheel": "bodyweight",
+  "plyo box": "bodyweight",
+  "battle ropes": "resistance band",
+  none: "",
+};
+
+const INJURY_MUSCLE_MAP: Record<string, string[]> = {
+  "lower back pain": ["back", "core"],
+  "lower back": ["back", "core"],
+  "back pain": ["back"],
+  "knee": ["quads", "hamstrings", "calves", "glutes"],
+  "knee pain": ["quads", "hamstrings", "calves", "glutes"],
+  "shoulder": ["shoulders", "chest"],
+  "shoulder pain": ["shoulders", "chest"],
+  "rotator cuff": ["shoulders", "chest"],
+  "wrist": ["biceps", "triceps", "chest", "shoulders"],
+  "wrist pain": ["biceps", "triceps", "chest", "shoulders"],
+  "elbow": ["biceps", "triceps"],
+  "elbow pain": ["biceps", "triceps"],
+  "ankle": ["calves", "quads"],
+  "ankle pain": ["calves", "quads"],
+  "hip": ["glutes", "hamstrings", "quads"],
+  "hip pain": ["glutes", "hamstrings", "quads"],
+  "neck": ["shoulders", "back"],
+  "neck pain": ["shoulders", "back"],
+};
+
+function normalizeInjuries(injuries: string[]): string[] {
+  const result: string[] = [];
+  for (const inj of injuries) {
+    const lower = inj.toLowerCase().trim();
+    const mapped = INJURY_MUSCLE_MAP[lower];
+    if (mapped) {
+      result.push(...mapped);
+    } else {
+      for (const [key, muscles] of Object.entries(INJURY_MUSCLE_MAP)) {
+        if (lower.includes(key) || key.includes(lower)) {
+          result.push(...muscles);
+          break;
+        }
+      }
+      const directMap = BODYMAP_MUSCLE_ALIAS[lower];
+      if (directMap) result.push(directMap);
+      else if (!result.includes(lower)) result.push(lower);
+    }
+  }
+  return [...new Set(result)];
+}
+
+const BODYMAP_MUSCLE_ALIAS: Record<string, string> = {
+  biceps_l: "biceps",
+  biceps_r: "biceps",
+  triceps_l: "triceps",
+  triceps_r: "triceps",
+  quads_l: "quads",
+  quads_r: "quads",
+  hamstrings_l: "hamstrings",
+  hamstrings_r: "hamstrings",
+  abs: "core",
+  upper_back: "back",
+  lower_back: "back",
+  lats: "back",
+  traps: "shoulders",
+  shins: "calves",
+};
+
+function normalizeGoal(goal: string | null): string {
+  const raw = (goal ?? "general fitness").toLowerCase().trim();
+  return GOAL_ALIAS[raw] ?? raw;
+}
+
+function normalizeEquipment(items: string[]): string[] {
+  return items
+    .map(e => {
+      const lower = e.toLowerCase().trim();
+      const alias = EQUIPMENT_ALIAS[lower];
+      return alias !== undefined ? alias : lower;
+    })
+    .filter(e => e.length > 0);
+}
+
+function normalizeMuscle(muscle: string): string {
+  const lower = muscle.toLowerCase().trim();
+  return BODYMAP_MUSCLE_ALIAS[lower] ?? lower;
+}
+
+const MUSCLE_GROUPS_FOR_GOAL: Record<string, string[]> = {
+  "muscle gain": ["chest", "back", "quads", "shoulders", "hamstrings", "glutes", "biceps", "triceps"],
+  "fat loss": ["quads", "back", "chest", "glutes", "hamstrings", "core", "shoulders"],
+  "strength": ["back", "quads", "chest", "shoulders", "hamstrings", "glutes"],
+  "endurance": ["quads", "hamstrings", "core", "glutes", "back", "shoulders"],
+  "general fitness": ["chest", "back", "quads", "shoulders", "core", "glutes"],
+};
+
+function pickPrimaryMuscleGroups(goal: string | null): string[] {
+  const key = normalizeGoal(goal);
+  return MUSCLE_GROUPS_FOR_GOAL[key] ?? MUSCLE_GROUPS_FOR_GOAL["general fitness"];
+}
+
+function shuffleArray<T>(arr: T[]): T[] {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+function getSetsForDifficulty(skillLevel: string, category: string, energyLevel: number): number {
+  let baseSets = 3;
+  if (category === "compound") baseSets = skillLevel === "advanced" ? 5 : skillLevel === "intermediate" ? 4 : 3;
+  if (category === "accessory") baseSets = skillLevel === "advanced" ? 4 : 3;
+  if (category === "core") baseSets = 3;
+
+  if (energyLevel <= 2) baseSets = Math.max(2, baseSets - 1);
+  return baseSets;
+}
+
+function getRepsForCategory(category: string, goal: string | null): number {
+  const g = (goal ?? "general fitness").toLowerCase();
+  if (category === "compound") {
+    if (g === "strength") return 5;
+    if (g === "muscle gain") return 8;
+    return 8;
+  }
+  if (category === "accessory") {
+    if (g === "strength") return 8;
+    if (g === "muscle gain") return 12;
+    return 10;
+  }
+  if (category === "core") return 15;
+  return 10;
+}
+
+function getWeightSuggestion(category: string, difficulty: string): string {
+  if (category === "warmup" || category === "cooldown") return "BW";
+  if (category === "core") {
+    if (difficulty === "beginner") return "BW";
+    return "Light";
+  }
+  if (category === "compound") {
+    if (difficulty === "beginner") return "Moderate";
+    if (difficulty === "intermediate") return "Heavy";
+    return "Max Effort";
+  }
+  if (difficulty === "beginner") return "Light";
+  if (difficulty === "intermediate") return "Moderate";
+  return "Heavy";
+}
+
+interface GeneratedExercise {
+  exerciseId: string;
+  name: string;
+  primaryMuscle: string;
+  secondaryMuscles: string[];
+  category: string;
+  sets: number;
+  reps: number;
+  weight: string;
+  youtubeKeyword: string;
+}
+
+router.post("/workout/generate", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  try {
+  const userId = req.user.id;
+
+  const [profile] = await db
+    .select()
+    .from(userProfilesTable)
+    .where(eq(userProfilesTable.userId, userId));
+
+  const today = new Date().toISOString().split("T")[0];
+  const [latestCheckin] = await db
+    .select()
+    .from(dailyCheckInsTable)
+    .where(and(eq(dailyCheckInsTable.userId, userId), eq(dailyCheckInsTable.date, today)));
+
+  const skillLevel = profile?.skillLevel ?? "intermediate";
+  const fitnessGoal = normalizeGoal(profile?.fitnessGoal ?? null);
+  const userEquipment = normalizeEquipment((profile?.equipment as string[]) ?? []);
+  const userInjuries = normalizeInjuries((profile?.injuries as string[]) ?? []);
+
+  const energyLevel = latestCheckin?.energyLevel ?? 3;
+  const soreMuscleGroups = (latestCheckin?.soreMuscleGroups as { muscle: string; severity: number }[]) ?? [];
+
+  const highSorenessGroups = [...new Set(soreMuscleGroups.filter(s => s.severity > 7).map(s => normalizeMuscle(s.muscle)))];
+  const moderateSorenessGroups = [...new Set(soreMuscleGroups.filter(s => s.severity >= 4 && s.severity <= 7).map(s => normalizeMuscle(s.muscle)))];
+
+  const excludedMuscles = new Set([...highSorenessGroups, ...userInjuries]);
+
+  function isExerciseAllowed(ex: ExerciseData): boolean {
+    if (excludedMuscles.has(ex.primaryMuscle.toLowerCase())) return false;
+    const hasEquipment = ex.equipment.every(eq =>
+      eq === "bodyweight" || userEquipment.includes(eq.toLowerCase())
+    );
+    if (!hasEquipment) return false;
+    if (skillLevel === "beginner" && ex.difficulty === "advanced") return false;
+    return true;
+  }
+
+  function applyVolumeReduction(sets: number, muscle: string): number {
+    if (moderateSorenessGroups.includes(muscle.toLowerCase())) {
+      return Math.max(2, Math.round(sets * 0.8));
+    }
+    return sets;
+  }
+
+  const muscleGroupPriority = pickPrimaryMuscleGroups(fitnessGoal);
+  const primaryFocusGroups = muscleGroupPriority.slice(0, 3);
+
+  function pickFromCategory(category: string, count: number, extraFilter?: (e: ExerciseData) => boolean): ExerciseData[] {
+    let pool = EXERCISE_LIBRARY.filter(e => e.category === category && isExerciseAllowed(e));
+    if (extraFilter) {
+      const filtered = pool.filter(extraFilter);
+      if (filtered.length > 0) pool = filtered;
+    }
+    return shuffleArray(pool).slice(0, count);
+  }
+
+  const warmups = pickFromCategory("warmup", 3, e =>
+    primaryFocusGroups.some(g => e.primaryMuscle.toLowerCase() === g || e.secondaryMuscles.some(s => s.toLowerCase() === g))
+  );
+
+  const compounds = pickFromCategory("compound", 3, e =>
+    primaryFocusGroups.includes(e.primaryMuscle.toLowerCase())
+  );
+
+  const accessories = pickFromCategory("accessory", 3);
+
+  const coreExercises = pickFromCategory("core", 2);
+
+  const cooldowns = pickFromCategory("cooldown", 2);
+
+  function mapToGenerated(exercises: ExerciseData[], cat: string): GeneratedExercise[] {
+    return exercises.map(ex => {
+      let sets = getSetsForDifficulty(skillLevel, cat, energyLevel);
+      sets = applyVolumeReduction(sets, ex.primaryMuscle);
+      const reps = getRepsForCategory(cat, fitnessGoal);
+      const weight = getWeightSuggestion(cat, ex.difficulty);
+      return {
+        exerciseId: ex.id,
+        name: ex.name,
+        primaryMuscle: ex.primaryMuscle,
+        secondaryMuscles: ex.secondaryMuscles,
+        category: cat,
+        sets,
+        reps,
+        weight,
+        youtubeKeyword: ex.youtubeKeyword,
+      };
+    });
+  }
+
+  const generatedExercises: GeneratedExercise[] = [
+    ...mapToGenerated(warmups, "warmup"),
+    ...mapToGenerated(compounds, "compound"),
+    ...mapToGenerated(accessories, "accessory"),
+    ...mapToGenerated(coreExercises, "core"),
+    ...mapToGenerated(cooldowns, "cooldown"),
+  ];
+
+  const focusMuscleNames = [...new Set(compounds.map(c => c.primaryMuscle))];
+  const titleMuscles = focusMuscleNames.slice(0, 2).map(m => m.charAt(0).toUpperCase() + m.slice(1)).join(" & ");
+  const workoutTitle = titleMuscles ? `${titleMuscles} Focus` : "Full Body Session";
+
+  let rationale = `Based on your ${fitnessGoal || "general fitness"} goal`;
+  if (highSorenessGroups.length > 0) {
+    rationale += `, avoiding ${highSorenessGroups.join(", ")} due to high soreness`;
+  }
+  if (moderateSorenessGroups.length > 0) {
+    rationale += `, reduced volume for ${moderateSorenessGroups.join(", ")}`;
+  }
+  if (energyLevel <= 2) {
+    rationale += `, adjusted for lower energy today`;
+  }
+  rationale += ".";
+
+  res.json({
+    workoutTitle,
+    subtitle: "AI Optimized · Today's Protocol",
+    rationale,
+    exercises: generatedExercises,
+    totalSets: generatedExercises.reduce((a, e) => a + e.sets, 0),
+    estimatedMinutes: Math.round(generatedExercises.reduce((a, e) => a + e.sets * 2.5, 0)),
+  });
+  } catch (err) {
+    console.error("Workout generation error:", err);
+    res.status(500).json({ error: "Failed to generate workout" });
+  }
+});
+
+router.post("/workout/sessions", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  try {
+    const { workoutTitle, durationSeconds, exercises, totalSetsCompleted, postWorkoutFeedback } = req.body;
+
+    if (!workoutTitle || !exercises || !Array.isArray(exercises)) {
+      res.status(400).json({ error: "workoutTitle and exercises array are required" });
+      return;
+    }
+
+    const [session] = await db
+      .insert(workoutSessionsTable)
+      .values({
+        userId: req.user.id,
+        workoutTitle,
+        durationSeconds: durationSeconds ?? 0,
+        exercises,
+        totalSetsCompleted: totalSetsCompleted ?? 0,
+        postWorkoutFeedback: postWorkoutFeedback ?? null,
+      })
+      .returning();
+
+    res.json(session);
+  } catch (err) {
+    console.error("Save workout error:", err);
+    res.status(500).json({ error: "Failed to save workout" });
+  }
+});
+
+router.get("/workout/sessions", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  try {
+    const sessions = await db
+      .select()
+      .from(workoutSessionsTable)
+      .where(eq(workoutSessionsTable.userId, req.user.id))
+      .orderBy(desc(workoutSessionsTable.createdAt))
+      .limit(20);
+
+    res.json(sessions);
+  } catch (err) {
+    console.error("Get sessions error:", err);
+    res.status(500).json({ error: "Failed to get workout sessions" });
+  }
+});
+
+router.post("/workout/architect-generate", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  try {
+    const userId = req.user.id;
+    const { muscleGroups, equipment: selectedEquipment } = req.body as {
+      muscleGroups: string[];
+      equipment: string[];
+    };
+
+    if (!muscleGroups || !Array.isArray(muscleGroups) || muscleGroups.length === 0) {
+      res.status(400).json({ error: "muscleGroups array is required" });
+      return;
+    }
+
+    const [profile] = await db
+      .select()
+      .from(userProfilesTable)
+      .where(eq(userProfilesTable.userId, userId));
+
+    const today = new Date().toISOString().split("T")[0];
+    const [latestCheckin] = await db
+      .select()
+      .from(dailyCheckInsTable)
+      .where(and(eq(dailyCheckInsTable.userId, userId), eq(dailyCheckInsTable.date, today)));
+
+    if (!latestCheckin) {
+      res.status(400).json({ error: "Daily check-in required before generating a workout" });
+      return;
+    }
+
+    const skillLevel = profile?.skillLevel ?? "intermediate";
+    const userInjuries = normalizeInjuries((profile?.injuries as string[]) ?? []);
+    const energyLevel = latestCheckin.energyLevel;
+    const soreMuscleGroups = (latestCheckin.soreMuscleGroups as { muscle: string; severity: number }[]) ?? [];
+
+    const highSorenessGroups = [...new Set(soreMuscleGroups.filter(s => s.severity > 7).map(s => normalizeMuscle(s.muscle)))];
+    const moderateSorenessGroups = [...new Set(soreMuscleGroups.filter(s => s.severity >= 4 && s.severity <= 7).map(s => normalizeMuscle(s.muscle)))];
+    const excludedMuscles = new Set([...highSorenessGroups, ...userInjuries]);
+    const requestedGroups = muscleGroups.map(m => normalizeMuscle(m));
+    const userEquipment = normalizeEquipment(selectedEquipment ?? []);
+
+    function isExerciseAllowed(ex: ExerciseData): boolean {
+      if (excludedMuscles.has(ex.primaryMuscle.toLowerCase())) return false;
+      const hasEquipment = ex.equipment.every(eq =>
+        eq === "bodyweight" || userEquipment.includes(eq.toLowerCase())
+      );
+      if (!hasEquipment) return false;
+      if (skillLevel === "beginner" && ex.difficulty === "advanced") return false;
+      return true;
+    }
+
+    function applyVolumeReduction(sets: number, muscle: string): number {
+      if (moderateSorenessGroups.includes(muscle.toLowerCase())) {
+        return Math.max(2, Math.round(sets * 0.8));
+      }
+      return sets;
+    }
+
+    function pickFromCategory(category: string, count: number, extraFilter?: (e: ExerciseData) => boolean): ExerciseData[] {
+      let pool = EXERCISE_LIBRARY.filter(e => e.category === category && isExerciseAllowed(e));
+      if (extraFilter) {
+        const filtered = pool.filter(extraFilter);
+        if (filtered.length > 0) pool = filtered;
+      }
+      return shuffleArray(pool).slice(0, count);
+    }
+
+    const warmups = pickFromCategory("warmup", 2, e =>
+      requestedGroups.some(g => e.primaryMuscle.toLowerCase() === g || e.secondaryMuscles.some(s => s.toLowerCase() === g))
+    );
+
+    const compounds = pickFromCategory("compound", 3, e =>
+      requestedGroups.includes(e.primaryMuscle.toLowerCase())
+    );
+
+    const accessories = pickFromCategory("accessory", 4, e =>
+      requestedGroups.includes(e.primaryMuscle.toLowerCase())
+    );
+
+    const coreExercises = requestedGroups.includes("core")
+      ? pickFromCategory("core", 2)
+      : pickFromCategory("core", 1);
+
+    const cooldowns = pickFromCategory("cooldown", 2);
+
+    const fitnessGoal = normalizeGoal(profile?.fitnessGoal ?? null);
+
+    function mapToGenerated(exercises: ExerciseData[], cat: string): GeneratedExercise[] {
+      return exercises.map(ex => {
+        let sets = getSetsForDifficulty(skillLevel, cat, energyLevel);
+        sets = applyVolumeReduction(sets, ex.primaryMuscle);
+        const reps = getRepsForCategory(cat, fitnessGoal);
+        const weight = getWeightSuggestion(cat, ex.difficulty);
+        return {
+          exerciseId: ex.id,
+          name: ex.name,
+          primaryMuscle: ex.primaryMuscle,
+          secondaryMuscles: ex.secondaryMuscles,
+          category: cat,
+          sets,
+          reps,
+          weight,
+          youtubeKeyword: ex.youtubeKeyword,
+        };
+      });
+    }
+
+    const generatedExercises: GeneratedExercise[] = [
+      ...mapToGenerated(warmups, "warmup"),
+      ...mapToGenerated(compounds, "compound"),
+      ...mapToGenerated(accessories, "accessory"),
+      ...mapToGenerated(coreExercises, "core"),
+      ...mapToGenerated(cooldowns, "cooldown"),
+    ];
+
+    const focusMuscleNames = requestedGroups.slice(0, 3).map(m => m.charAt(0).toUpperCase() + m.slice(1));
+    const workoutTitle = focusMuscleNames.join(" & ") + " Session";
+
+    let rationale = `Custom session targeting ${focusMuscleNames.join(", ").toLowerCase()}`;
+    if (highSorenessGroups.length > 0) {
+      rationale += `, avoiding ${highSorenessGroups.join(", ")} due to high soreness`;
+    }
+    if (moderateSorenessGroups.length > 0) {
+      rationale += `, reduced volume for ${moderateSorenessGroups.join(", ")}`;
+    }
+    if (energyLevel <= 2) {
+      rationale += `, adjusted for lower energy today`;
+    }
+    rationale += ".";
+
+    res.json({
+      workoutTitle,
+      subtitle: "Custom Architect · AI Optimized",
+      rationale,
+      exercises: generatedExercises,
+      totalSets: generatedExercises.reduce((a, e) => a + e.sets, 0),
+      estimatedMinutes: Math.round(generatedExercises.reduce((a, e) => a + e.sets * 2.5, 0)),
+    });
+  } catch (err) {
+    console.error("Architect generate error:", err);
+    res.status(500).json({ error: "Failed to generate architect workout" });
+  }
+});
+
+export default router;

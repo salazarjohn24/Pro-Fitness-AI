@@ -13,8 +13,8 @@ export const userProfilesTable = pgTable("user_profiles", {
   dailySyncProgress: integer("daily_sync_progress").default(0),
   checkInCompleted: boolean("check_in_completed").default(false),
   activityImported: boolean("activity_imported").default(false),
-  equipment: jsonb("equipment").$type<string[]>(),
-  skillLevel: varchar("skill_level"),
+  equipment: jsonb("equipment").$type<string[]>().default([]),
+  skillLevel: varchar("skill_level").default("intermediate"),
   age: integer("age"),
   weight: integer("weight"),
   height: integer("height"),
@@ -52,7 +52,7 @@ export const dailyCheckInsTable = pgTable("daily_check_ins", {
   sleepQuality: integer("sleep_quality").notNull(),
   stressLevel: integer("stress_level").notNull(),
   sorenessScore: integer("soreness_score").notNull(),
-  soreMuscleGroups: jsonb("sore_muscle_groups").$type<string[]>().default([]),
+  soreMuscleGroups: jsonb("sore_muscle_groups").$type<{ muscle: string; severity: number }[]>().default([]),
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [unique("daily_checkin_user_date").on(table.userId, table.date)]);
@@ -79,3 +79,27 @@ export type InsertExternalWorkout = typeof externalWorkoutsTable.$inferInsert;
 export const insertGymEnvironmentSchema = createInsertSchema(gymEnvironmentsTable).omit({ id: true });
 export type InsertGymEnvironment = z.infer<typeof insertGymEnvironmentSchema>;
 export type GymEnvironment = typeof gymEnvironmentsTable.$inferSelect;
+
+export const workoutSessionsTable = pgTable("workout_sessions", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  sessionDate: date("session_date").notNull().defaultNow(),
+  workoutTitle: text("workout_title").notNull(),
+  durationSeconds: integer("duration_seconds").default(0),
+  exercises: jsonb("exercises").$type<{
+    exerciseId: string;
+    name: string;
+    sets: { reps: number; weight: string; completed: boolean }[];
+  }[]>().default([]),
+  totalSetsCompleted: integer("total_sets_completed").default(0),
+  postWorkoutFeedback: jsonb("post_workout_feedback").$type<{
+    perceivedDifficulty: number;
+    energyAfter: number;
+    enjoyment: number;
+    notes: string;
+  }>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type WorkoutSession = typeof workoutSessionsTable.$inferSelect;
+export type InsertWorkoutSession = typeof workoutSessionsTable.$inferInsert;
