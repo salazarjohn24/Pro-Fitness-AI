@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import * as AppleAuthentication from "expo-apple-authentication";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
@@ -19,7 +20,7 @@ import { useAuth } from "@/lib/auth";
 import { Colors } from "@/constants/colors";
 
 export default function LoginScreen() {
-  const { signin } = useAuth();
+  const { signin, loginWithGoogle, loginWithGitHub, loginWithTwitter, loginWithApple, appleAvailable } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -27,6 +28,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [socialLoading, setSocialLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handleSignIn = async () => {
@@ -39,10 +41,23 @@ export default function LoginScreen() {
     setIsLoading(true);
     const result = await signin(identifier.trim(), password);
     setIsLoading(false);
-    if (result.error) {
-      setError(result.error);
-    }
+    if (result.error) setError(result.error);
   };
+
+  const handleSocial = async (provider: string, fn: () => Promise<{ error?: string }>) => {
+    setError(null);
+    setSocialLoading(provider);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const result = await fn();
+    setSocialLoading(null);
+    if (result.error) setError(result.error);
+  };
+
+  const socialProviders = [
+    { id: "google", label: "Google", icon: "globe", color: "#EA4335", fn: loginWithGoogle },
+    { id: "github", label: "GitHub", icon: "github", color: Colors.text, fn: loginWithGitHub },
+    { id: "twitter", label: "X / Twitter", icon: "twitter", color: "#1DA1F2", fn: loginWithTwitter },
+  ];
 
   return (
     <KeyboardAvoidingView
@@ -116,7 +131,7 @@ export default function LoginScreen() {
 
           <Pressable
             onPress={handleSignIn}
-            disabled={isLoading}
+            disabled={isLoading || !!socialLoading}
             style={({ pressed }) => [
               styles.submitBtn,
               { opacity: pressed || isLoading ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
@@ -135,19 +150,29 @@ export default function LoginScreen() {
             <View style={styles.divider} />
           </View>
 
+          {appleAvailable && (
+            <AppleAuthentication.AppleAuthenticationButton
+              buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+              buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+              cornerRadius={14}
+              style={styles.appleBtn}
+              onPress={() => handleSocial("apple", loginWithApple)}
+            />
+          )}
+
           <View style={styles.socialGrid}>
-            {[
-              { icon: "mail", label: "Google", color: "#EA4335" },
-              { icon: "github", label: "GitHub", color: Colors.text },
-              { icon: "twitter", label: "X / Twitter", color: "#1DA1F2" },
-              { icon: "smartphone", label: "Apple", color: Colors.text },
-            ].map(({ icon, label, color }) => (
+            {socialProviders.map(({ id, label, icon, color, fn }) => (
               <Pressable
-                key={label}
-                style={({ pressed }) => [styles.socialBtn, { opacity: pressed ? 0.7 : 1 }]}
-                onPress={() => setError(`${label} sign-in coming soon.`)}
+                key={id}
+                style={({ pressed }) => [styles.socialBtn, { opacity: pressed || !!socialLoading ? 0.7 : 1 }]}
+                onPress={() => handleSocial(id, fn)}
+                disabled={!!socialLoading || isLoading}
               >
-                <Feather name={icon as any} size={18} color={color} />
+                {socialLoading === id ? (
+                  <ActivityIndicator size="small" color={color} />
+                ) : (
+                  <Feather name={icon as any} size={18} color={color} />
+                )}
                 <Text style={styles.socialBtnText}>{label}</Text>
               </Pressable>
             ))}
@@ -292,6 +317,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textSubtle,
     fontFamily: "Inter_400Regular",
+  },
+  appleBtn: {
+    width: "100%",
+    height: 52,
   },
   socialGrid: {
     flexDirection: "row",

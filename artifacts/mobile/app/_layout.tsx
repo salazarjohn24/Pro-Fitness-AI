@@ -25,6 +25,7 @@ function RootLayoutNav() {
       <Stack.Screen name="welcome" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ headerShown: false, animation: "slide_from_right" }} />
       <Stack.Screen name="signup" options={{ headerShown: false, animation: "slide_from_right" }} />
+      <Stack.Screen name="auth-callback" options={{ headerShown: false, animation: "fade" }} />
       <Stack.Screen name="onboarding" options={{ headerShown: false, animation: "slide_from_right" }} />
       <Stack.Screen name="gym-setup" options={{ headerShown: false, animation: "slide_from_right" }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

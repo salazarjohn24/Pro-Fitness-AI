@@ -1,9 +1,15 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 import * as SecureStore from "expo-secure-store";
+import * as WebBrowser from "expo-web-browser";
+import * as Linking from "expo-linking";
+import * as AppleAuthentication from "expo-apple-authentication";
 import { Platform } from "react-native";
+
+WebBrowser.maybeCompleteAuthSession();
 
 const AUTH_TOKEN_KEY = "auth_session_token";
 const IS_WEB = Platform.OS === "web";
+const IS_IOS = Platform.OS === "ios";
 
 interface User {
   id: string;
@@ -19,6 +25,11 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   signup: (params: SignupParams) => Promise<{ error?: string }>;
   signin: (identifier: string, password: string) => Promise<{ error?: string }>;
+  loginWithGoogle: () => Promise<{ error?: string }>;
+  loginWithGitHub: () => Promise<{ error?: string }>;
+  loginWithTwitter: () => Promise<{ error?: string }>;
+  loginWithApple: () => Promise<{ error?: string }>;
+  appleAvailable: boolean;
   logout: () => Promise<void>;
 }
 
@@ -36,6 +47,11 @@ const AuthContext = createContext<AuthContextValue>({
   isAuthenticated: false,
   signup: async () => ({}),
   signin: async () => ({}),
+  loginWithGoogle: async () => ({}),
+  loginWithGitHub: async () => ({}),
+  loginWithTwitter: async () => ({}),
+  loginWithApple: async () => ({}),
+  appleAvailable: false,
   logout: async () => {},
 });
 
@@ -64,11 +80,17 @@ async function clearStoredToken(): Promise<void> {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [appleAvailable, setAppleAvailable] = useState(false);
+
+  useEffect(() => {
+    if (IS_IOS) {
+      AppleAuthentication.isAvailableAsync().then(setAppleAvailable).catch(() => setAppleAvailable(false));
+    }
+  }, []);
 
   const fetchUser = useCallback(async () => {
     try {
       const apiBase = getApiBaseUrl();
-
       if (IS_WEB) {
         const res = await fetch(`${apiBase}/api/auth/user`, { credentials: "include" });
         const data = await res.json();
@@ -76,19 +98,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
         return;
       }
-
       const token = await getStoredToken();
-      if (!token) {
-        setUser(null);
-        setIsLoading(false);
-        return;
-      }
-
+      if (!token) { setUser(null); setIsLoading(false); return; }
       const res = await fetch(`${apiBase}/api/auth/user`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-
       if (data.user) {
         setUser(data.user);
       } else {
@@ -102,9 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  useEffect(() => {
-    fetchUser();
-  }, [fetchUser]);
+  useEffect(() => { fetchUser(); }, [fetchUser]);
 
   const signup = useCallback(async (params: SignupParams): Promise<{ error?: string }> => {
     try {
@@ -115,20 +128,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify(params),
       });
       const data = await res.json();
-
-      if (!res.ok) {
-        return { error: data.error || "Failed to create account" };
-      }
-
-      if (data.token) {
-        await setStoredToken(data.token);
-        setIsLoading(true);
-        await fetchUser();
-      }
+      if (!res.ok) return { error: data.error || "Failed to create account" };
+      if (data.token) { await setStoredToken(data.token); setIsLoading(true); await fetchUser(); }
       return {};
-    } catch {
-      return { error: "Network error. Please try again." };
-    }
+    } catch { return { error: "Network error. Please try again." }; }
   }, [fetchUser]);
 
   const signin = useCallback(async (identifier: string, password: string): Promise<{ error?: string }> => {
@@ -140,19 +143,77 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ identifier, password }),
       });
       const data = await res.json();
+      if (!res.ok) return { error: data.error || "Failed to sign in" };
+      if (data.token) { await setStoredToken(data.token); setIsLoading(true); await fetchUser(); }
+      return {};
+    } catch { return { error: "Network error. Please try again." }; }
+  }, [fetchUser]);
 
-      if (!res.ok) {
-        return { error: data.error || "Failed to sign in" };
-      }
+  const loginWithSocial = useCallback(async (provider: "google" | "github" | "twitter"): Promise<{ error?: string }> => {
+    const apiBase = getApiBaseUrl();
+    if (!apiBase) return { error: "API not configured" };
 
-      if (data.token) {
-        await setStoredToken(data.token);
-        setIsLoading(true);
-        await fetchUser();
+    try {
+      const result = await WebBrowser.openAuthSessionAsync(
+        `${apiBase}/api/auth/social/${provider}`,
+        "mobile://auth-callback",
+        { showInRecents: true },
+      );
+
+      if (result.type === "success") {
+        const parsed = Linking.parse(result.url);
+        const token = parsed.queryParams?.token as string | undefined;
+        const error = parsed.queryParams?.error as string | undefined;
+        if (error) return { error: decodeURIComponent(error) };
+        if (token) {
+          await setStoredToken(token);
+          setIsLoading(true);
+          await fetchUser();
+        }
+      } else if (result.type === "cancel") {
+        return {};
       }
       return {};
-    } catch {
-      return { error: "Network error. Please try again." };
+    } catch (err) {
+      console.error(`${provider} login error:`, err);
+      return { error: "Authentication failed. Please try again." };
+    }
+  }, [fetchUser]);
+
+  const loginWithGoogle = useCallback(() => loginWithSocial("google"), [loginWithSocial]);
+  const loginWithGitHub = useCallback(() => loginWithSocial("github"), [loginWithSocial]);
+  const loginWithTwitter = useCallback(() => loginWithSocial("twitter"), [loginWithSocial]);
+
+  const loginWithApple = useCallback(async (): Promise<{ error?: string }> => {
+    if (!IS_IOS) return { error: "Apple Sign In is only available on iOS" };
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+
+      if (!credential.identityToken) return { error: "Apple did not return a valid token" };
+
+      const apiBase = getApiBaseUrl();
+      const res = await fetch(`${apiBase}/api/auth/social/apple`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          identityToken: credential.identityToken,
+          authorizationCode: credential.authorizationCode,
+          fullName: credential.fullName,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) return { error: data.error || "Apple sign in failed" };
+      if (data.token) { await setStoredToken(data.token); setIsLoading(true); await fetchUser(); }
+      return {};
+    } catch (err: any) {
+      if (err?.code === "ERR_CANCELED") return {};
+      console.error("Apple login error:", err);
+      return { error: "Apple sign in failed. Please try again." };
     }
   }, [fetchUser]);
 
@@ -174,7 +235,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: !!user, signup, signin, logout }}>
+    <AuthContext.Provider value={{
+      user, isLoading, isAuthenticated: !!user,
+      signup, signin, loginWithGoogle, loginWithGitHub, loginWithTwitter, loginWithApple,
+      appleAvailable, logout,
+    }}>
       {children}
     </AuthContext.Provider>
   );
