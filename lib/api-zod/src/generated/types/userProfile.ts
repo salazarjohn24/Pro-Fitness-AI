@@ -14,5 +14,9 @@ export interface UserProfile {
   dailySyncProgress?: number | null;
   checkInCompleted?: boolean | null;
   activityImported?: boolean | null;
+  equipment?: string[] | null;
+  skillLevel?: string | null;
+  injuries?: string[] | null;
+  onboardingCompleted?: boolean | null;
   updatedAt?: Date | null;
 }

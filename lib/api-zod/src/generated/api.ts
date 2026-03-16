@@ -94,6 +94,10 @@ export const GetUserProfileResponse = zod.object({
   dailySyncProgress: zod.number().nullish(),
   checkInCompleted: zod.boolean().nullish(),
   activityImported: zod.boolean().nullish(),
+  equipment: zod.array(zod.string()).nullish(),
+  skillLevel: zod.string().nullish(),
+  injuries: zod.array(zod.string()).nullish(),
+  onboardingCompleted: zod.boolean().nullish(),
   updatedAt: zod.date().nullish(),
 });
 
@@ -111,6 +115,10 @@ export const UpdateUserProfileBody = zod.object({
   dailySyncProgress: zod.number().nullish(),
   checkInCompleted: zod.boolean().nullish(),
   activityImported: zod.boolean().nullish(),
+  equipment: zod.array(zod.string()).nullish(),
+  skillLevel: zod.string().nullish(),
+  injuries: zod.array(zod.string()).nullish(),
+  onboardingCompleted: zod.boolean().nullish(),
 });
 
 export const UpdateUserProfileResponse = zod.object({
@@ -121,5 +129,209 @@ export const UpdateUserProfileResponse = zod.object({
   dailySyncProgress: zod.number().nullish(),
   checkInCompleted: zod.boolean().nullish(),
   activityImported: zod.boolean().nullish(),
+  equipment: zod.array(zod.string()).nullish(),
+  skillLevel: zod.string().nullish(),
+  injuries: zod.array(zod.string()).nullish(),
+  onboardingCompleted: zod.boolean().nullish(),
   updatedAt: zod.date().nullish(),
+});
+
+/**
+ * @summary Create or update today's daily check-in
+ */
+export const CreateDailyCheckInHeader = zod.object({
+  Authorization: zod.string().optional(),
+});
+
+export const createDailyCheckInBodyEnergyLevelMax = 5;
+
+export const createDailyCheckInBodySleepQualityMax = 5;
+
+export const createDailyCheckInBodyStressLevelMax = 5;
+
+export const createDailyCheckInBodySorenessScoreMax = 5;
+
+export const CreateDailyCheckInBody = zod.object({
+  energyLevel: zod.number().min(1).max(createDailyCheckInBodyEnergyLevelMax),
+  sleepQuality: zod.number().min(1).max(createDailyCheckInBodySleepQualityMax),
+  stressLevel: zod.number().min(1).max(createDailyCheckInBodyStressLevelMax),
+  sorenessScore: zod
+    .number()
+    .min(1)
+    .max(createDailyCheckInBodySorenessScoreMax),
+  soreMuscleGroups: zod.array(zod.string()).optional(),
+  notes: zod.string().nullish(),
+});
+
+export const CreateDailyCheckInResponse = zod.object({
+  id: zod.number(),
+  userId: zod.string(),
+  date: zod.string(),
+  energyLevel: zod.number(),
+  sleepQuality: zod.number(),
+  stressLevel: zod.number(),
+  sorenessScore: zod.number(),
+  soreMuscleGroups: zod.array(zod.string()).optional(),
+  notes: zod.string().nullish(),
+  createdAt: zod.date().optional(),
+});
+
+/**
+ * @summary Get today's check-in for the current user
+ */
+export const GetTodayCheckInHeader = zod.object({
+  Authorization: zod.string().optional(),
+});
+
+export const GetTodayCheckInResponse = zod.union([
+  zod.object({
+    id: zod.number(),
+    userId: zod.string(),
+    date: zod.string(),
+    energyLevel: zod.number(),
+    sleepQuality: zod.number(),
+    stressLevel: zod.number(),
+    sorenessScore: zod.number(),
+    soreMuscleGroups: zod.array(zod.string()).optional(),
+    notes: zod.string().nullish(),
+    createdAt: zod.date().optional(),
+  }),
+  zod.null(),
+]);
+
+/**
+ * @summary Log an external workout (manual or screenshot)
+ */
+export const LogExternalWorkoutHeader = zod.object({
+  Authorization: zod.string().optional(),
+});
+
+export const LogExternalWorkoutBody = zod.object({
+  label: zod.string(),
+  duration: zod.number(),
+  workoutType: zod.string(),
+  source: zod.string().optional(),
+});
+
+export const LogExternalWorkoutResponse = zod.object({
+  id: zod.number(),
+  userId: zod.string(),
+  label: zod.string(),
+  duration: zod.number(),
+  workoutType: zod.string(),
+  source: zod.string().nullish(),
+  createdAt: zod.date().optional(),
+});
+
+/**
+ * @summary Get filtered exercise library
+ */
+export const GetExercisesQueryParams = zod.object({
+  muscle_group: zod.coerce.string().optional(),
+  equipment: zod.coerce.string().optional(),
+  goal: zod.coerce.string().optional(),
+  search: zod.coerce.string().optional(),
+});
+
+export const GetExercisesResponseItem = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  muscleGroup: zod.string(),
+  equipment: zod.string(),
+  goal: zod.string(),
+  difficulty: zod.string(),
+  youtubeUrl: zod.string().nullish(),
+  primaryMuscles: zod.array(zod.string()).optional(),
+  secondaryMuscles: zod.array(zod.string()).optional(),
+  tertiaryMuscles: zod.array(zod.string()).optional(),
+});
+export const GetExercisesResponse = zod.array(GetExercisesResponseItem);
+
+/**
+ * @summary Get a single exercise with alternatives resolved
+ */
+export const GetExerciseByIdParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetExerciseByIdResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  muscleGroup: zod.string(),
+  equipment: zod.string(),
+  goal: zod.string(),
+  difficulty: zod.string(),
+  youtubeUrl: zod.string().nullish(),
+  instructions: zod.array(zod.string()),
+  commonMistakes: zod.array(zod.string()),
+  primaryMuscles: zod.array(zod.string()),
+  secondaryMuscles: zod.array(zod.string()),
+  tertiaryMuscles: zod.array(zod.string()),
+  alternatives: zod.array(
+    zod.object({
+      id: zod.number(),
+      name: zod.string(),
+      muscleGroup: zod.string(),
+      equipment: zod.string(),
+      goal: zod.string(),
+      difficulty: zod.string(),
+      youtubeUrl: zod.string().nullish(),
+      primaryMuscles: zod.array(zod.string()).optional(),
+      secondaryMuscles: zod.array(zod.string()).optional(),
+      tertiaryMuscles: zod.array(zod.string()).optional(),
+    }),
+  ),
+});
+
+/**
+ * @summary Get last 3 sessions of an exercise for the authenticated user
+ */
+export const GetExerciseHistoryParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetExerciseHistoryHeader = zod.object({
+  Authorization: zod.string().optional(),
+});
+
+export const GetExerciseHistoryResponse = zod.object({
+  sessions: zod.array(
+    zod.object({
+      performedAt: zod.date(),
+      totalVolume: zod.number(),
+      weight: zod.number(),
+      reps: zod.number(),
+      sets: zod.number(),
+    }),
+  ),
+  estimated1RM: zod.number().nullable(),
+  isPlateaued: zod.boolean(),
+  restRecommendation: zod.string().nullish(),
+});
+
+/**
+ * @summary Log a set for an exercise
+ */
+export const LogExerciseSetParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const LogExerciseSetHeader = zod.object({
+  Authorization: zod.string().optional(),
+});
+
+export const LogExerciseSetBody = zod.object({
+  weight: zod.number(),
+  reps: zod.number(),
+  sets: zod.number(),
+});
+
+export const LogExerciseSetResponse = zod.object({
+  id: zod.number(),
+  userId: zod.string(),
+  exerciseId: zod.number(),
+  weight: zod.number(),
+  reps: zod.number(),
+  sets: zod.number(),
+  performedAt: zod.date(),
 });

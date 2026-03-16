@@ -1,48 +1,186 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { EXERCISE_LIBRARY, exerciseMap, type ExerciseData } from "../data/exercises";
-
-const DIFFICULTY_RANK: Record<string, number> = {
-  beginner: 1,
-  intermediate: 2,
-  advanced: 3,
-};
+import { db, exerciseLibraryTable, workoutHistoryTable } from "@workspace/db";
+import { eq, and, ilike, inArray, desc } from "drizzle-orm";
 
 const router: IRouter = Router();
 
-router.get("/exercises", (_req: Request, res: Response) => {
-  res.json(EXERCISE_LIBRARY);
+router.get("/exercises", async (req: Request, res: Response) => {
+  const { muscle_group, equipment, goal, search } = req.query;
+
+  let query = db.select().from(exerciseLibraryTable).$dynamic();
+
+  const conditions = [];
+  if (muscle_group && typeof muscle_group === "string") {
+    conditions.push(eq(exerciseLibraryTable.muscleGroup, muscle_group));
+  }
+  if (equipment && typeof equipment === "string") {
+    conditions.push(eq(exerciseLibraryTable.equipment, equipment));
+  }
+  if (goal && typeof goal === "string") {
+    conditions.push(eq(exerciseLibraryTable.goal, goal));
+  }
+  if (search && typeof search === "string") {
+    conditions.push(ilike(exerciseLibraryTable.name, `%${search}%`));
+  }
+
+  if (conditions.length > 0) {
+    query = query.where(and(...conditions));
+  }
+
+  const exercises = await query;
+  res.json(exercises);
 });
 
-router.get("/exercises/:id/alternatives", (req: Request, res: Response) => {
-  const exercise = exerciseMap.get(req.params.id);
+router.get("/exercises/:id", async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) {
+    res.status(404).json({ error: "Exercise not found" });
+    return;
+  }
+
+  const [exercise] = await db
+    .select()
+    .from(exerciseLibraryTable)
+    .where(eq(exerciseLibraryTable.id, id));
+
   if (!exercise) {
     res.status(404).json({ error: "Exercise not found" });
     return;
   }
 
-  const sourceRank = DIFFICULTY_RANK[exercise.difficulty] ?? 2;
-
-  function isValidSwap(e: ExerciseData): boolean {
-    if (e.id === exercise!.id) return false;
-    if (e.primaryMuscle !== exercise!.primaryMuscle) return false;
-    const eRank = DIFFICULTY_RANK[e.difficulty] ?? 2;
-    const difficultyOk = eRank <= sourceRank;
-    const equipmentDiffers = !e.equipment.every(eq => exercise!.equipment.includes(eq));
-    return difficultyOk || equipmentDiffers;
+  let alternatives: typeof exercise[] = [];
+  const altIds = exercise.alternativeIds as number[] | null;
+  if (altIds && altIds.length > 0) {
+    alternatives = await db
+      .select()
+      .from(exerciseLibraryTable)
+      .where(inArray(exerciseLibraryTable.id, altIds));
   }
 
-  const directAlternatives = exercise.alternatives
-    .map(id => exerciseMap.get(id))
-    .filter((e): e is ExerciseData => !!e && isValidSwap(e));
+  res.json({
+    ...exercise,
+    alternatives,
+  });
+});
 
-  const sameMuscleAlts = EXERCISE_LIBRARY.filter(e =>
-    isValidSwap(e) &&
-    !exercise.alternatives.includes(e.id)
-  );
+function computeEstimated1RM(weight: number, reps: number): number {
+  return Math.round(weight * (1 + reps / 30));
+}
 
-  const allAlternatives = [...directAlternatives, ...sameMuscleAlts].slice(0, 5);
+function getRestRecommendation(goal: string): string {
+  switch (goal) {
+    case "strength":
+      return "3-5 minutes between sets for maximum strength recovery";
+    case "hypertrophy":
+      return "60-90 seconds between sets for optimal muscle growth stimulus";
+    default:
+      return "2-3 minutes between sets for balanced recovery";
+  }
+}
 
-  res.json(allAlternatives);
+router.get("/exercises/:id/history", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const exerciseId = parseInt(req.params.id, 10);
+  if (isNaN(exerciseId)) {
+    res.status(404).json({ error: "Exercise not found" });
+    return;
+  }
+
+  const [exercise] = await db
+    .select()
+    .from(exerciseLibraryTable)
+    .where(eq(exerciseLibraryTable.id, exerciseId));
+
+  const history = await db
+    .select()
+    .from(workoutHistoryTable)
+    .where(
+      and(
+        eq(workoutHistoryTable.userId, req.user.id),
+        eq(workoutHistoryTable.exerciseId, exerciseId)
+      )
+    )
+    .orderBy(desc(workoutHistoryTable.performedAt))
+    .limit(3);
+
+  const sessions = history.map((h) => ({
+    performedAt: h.performedAt.toISOString(),
+    totalVolume: h.weight * h.reps * h.sets,
+    weight: h.weight,
+    reps: h.reps,
+    sets: h.sets,
+  }));
+
+  let estimated1RM: number | null = null;
+  if (history.length > 0) {
+    const latest = history[0];
+    estimated1RM = computeEstimated1RM(latest.weight, latest.reps);
+  }
+
+  let isPlateaued = false;
+  if (sessions.length >= 3) {
+    const volumes = sessions.map((s) => s.totalVolume);
+    isPlateaued = volumes[0] <= volumes[1] && volumes[1] <= volumes[2];
+  }
+
+  const restRecommendation = exercise ? getRestRecommendation(exercise.goal) : null;
+
+  res.json({
+    sessions,
+    estimated1RM,
+    isPlateaued,
+    restRecommendation,
+  });
+});
+
+router.post("/exercises/:id/history", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const exerciseId = parseInt(req.params.id, 10);
+  if (isNaN(exerciseId)) {
+    res.status(400).json({ error: "Invalid exercise ID" });
+    return;
+  }
+
+  const [exerciseExists] = await db
+    .select({ id: exerciseLibraryTable.id })
+    .from(exerciseLibraryTable)
+    .where(eq(exerciseLibraryTable.id, exerciseId));
+
+  if (!exerciseExists) {
+    res.status(404).json({ error: "Exercise not found" });
+    return;
+  }
+
+  const { weight, reps, sets } = req.body;
+  if (
+    typeof weight !== "number" || weight < 0 ||
+    typeof reps !== "number" || reps < 1 ||
+    typeof sets !== "number" || sets < 1
+  ) {
+    res.status(400).json({ error: "weight (>=0), reps (>=1), and sets (>=1) are required as numbers" });
+    return;
+  }
+
+  const [entry] = await db
+    .insert(workoutHistoryTable)
+    .values({
+      userId: req.user.id,
+      exerciseId,
+      weight: Math.round(weight),
+      reps: Math.round(reps),
+      sets: Math.round(sets),
+    })
+    .returning();
+
+  res.json(entry);
 });
 
 export default router;

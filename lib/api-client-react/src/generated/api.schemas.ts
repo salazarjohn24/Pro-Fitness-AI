@@ -54,6 +54,10 @@ export interface UserProfile {
   dailySyncProgress?: number | null;
   checkInCompleted?: boolean | null;
   activityImported?: boolean | null;
+  equipment?: string[] | null;
+  skillLevel?: string | null;
+  injuries?: string[] | null;
+  onboardingCompleted?: boolean | null;
   updatedAt?: string | null;
 }
 
@@ -64,6 +68,125 @@ export interface UpdateUserProfileRequest {
   dailySyncProgress?: number | null;
   checkInCompleted?: boolean | null;
   activityImported?: boolean | null;
+  equipment?: string[] | null;
+  skillLevel?: string | null;
+  injuries?: string[] | null;
+  onboardingCompleted?: boolean | null;
+}
+
+export interface CreateCheckInRequest {
+  /**
+   * @minimum 1
+   * @maximum 5
+   */
+  energyLevel: number;
+  /**
+   * @minimum 1
+   * @maximum 5
+   */
+  sleepQuality: number;
+  /**
+   * @minimum 1
+   * @maximum 5
+   */
+  stressLevel: number;
+  /**
+   * @minimum 1
+   * @maximum 5
+   */
+  sorenessScore: number;
+  soreMuscleGroups?: string[];
+  notes?: string | null;
+}
+
+export interface DailyCheckIn {
+  id: number;
+  userId: string;
+  date: string;
+  energyLevel: number;
+  sleepQuality: number;
+  stressLevel: number;
+  sorenessScore: number;
+  soreMuscleGroups?: string[];
+  notes?: string | null;
+  createdAt?: string;
+}
+
+export interface CreateExternalWorkoutRequest {
+  label: string;
+  duration: number;
+  workoutType: string;
+  source?: string;
+}
+
+export interface ExternalWorkout {
+  id: number;
+  userId: string;
+  label: string;
+  duration: number;
+  workoutType: string;
+  source?: string | null;
+  createdAt?: string;
+}
+
+export interface Exercise {
+  id: number;
+  name: string;
+  muscleGroup: string;
+  equipment: string;
+  goal: string;
+  difficulty: string;
+  youtubeUrl?: string | null;
+  primaryMuscles?: string[];
+  secondaryMuscles?: string[];
+  tertiaryMuscles?: string[];
+}
+
+export interface ExerciseDetail {
+  id: number;
+  name: string;
+  muscleGroup: string;
+  equipment: string;
+  goal: string;
+  difficulty: string;
+  youtubeUrl?: string | null;
+  instructions: string[];
+  commonMistakes: string[];
+  primaryMuscles: string[];
+  secondaryMuscles: string[];
+  tertiaryMuscles: string[];
+  alternatives: Exercise[];
+}
+
+export interface WorkoutHistoryEntry {
+  id: number;
+  userId: string;
+  exerciseId: number;
+  weight: number;
+  reps: number;
+  sets: number;
+  performedAt: string;
+}
+
+export interface SessionVolume {
+  performedAt: string;
+  totalVolume: number;
+  weight: number;
+  reps: number;
+  sets: number;
+}
+
+export interface ExerciseHistoryResponse {
+  sessions: SessionVolume[];
+  estimated1RM: number | null;
+  isPlateaued: boolean;
+  restRecommendation?: string | null;
+}
+
+export interface LogExerciseSetRequest {
+  weight: number;
+  reps: number;
+  sets: number;
 }
 
 export type AuthorizationSessionHeaderParameter = string;
@@ -75,4 +198,11 @@ export type BeginBrowserLoginParams = {
 export type HandleBrowserLoginCallbackParams = {
   code?: string;
   state?: string;
+};
+
+export type GetExercisesParams = {
+  muscle_group?: string;
+  equipment?: string;
+  goal?: string;
+  search?: string;
 };

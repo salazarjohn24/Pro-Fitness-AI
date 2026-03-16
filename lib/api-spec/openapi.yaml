@@ -17,6 +17,8 @@ tags:
     description: Daily check-in operations
   - name: workouts
     description: External workout logging
+  - name: exercises
+    description: Exercise library and workout history
 paths:
   /healthz:
     get:
@@ -232,6 +234,112 @@ paths:
                 $ref: '#/components/schemas/ExternalWorkout'
         '400':
           description: Missing required fields.
+        '401':
+          description: Unauthorized.
+  /exercises:
+    get:
+      tags: [exercises]
+      operationId: getExercises
+      summary: Get filtered exercise library
+      parameters:
+        - name: muscle_group
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: equipment
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: goal
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of exercises.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Exercise'
+  /exercises/{id}:
+    get:
+      tags: [exercises]
+      operationId: getExerciseById
+      summary: Get a single exercise with alternatives resolved
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Exercise with alternatives.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExerciseDetail'
+        '404':
+          description: Exercise not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /exercises/{id}/history:
+    get:
+      tags: [exercises]
+      operationId: getExerciseHistory
+      summary: Get last 3 sessions of an exercise for the authenticated user
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Exercise history with computed analytics.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExerciseHistoryResponse'
+        '401':
+          description: Unauthorized.
+    post:
+      tags: [exercises]
+      operationId: logExerciseSet
+      summary: Log a set for an exercise
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogExerciseSetRequest'
+      responses:
+        '200':
+          description: Set logged.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutHistoryEntry'
         '401':
           description: Unauthorized.
 components:
@@ -488,3 +596,137 @@ components:
         createdAt:
           type: string
           format: date-time
+    Exercise:
+      type: object
+      required: [id, name, muscleGroup, equipment, goal, difficulty]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        muscleGroup:
+          type: string
+        equipment:
+          type: string
+        goal:
+          type: string
+        difficulty:
+          type: string
+        youtubeUrl:
+          type: string
+          nullable: true
+        primaryMuscles:
+          type: array
+          items:
+            type: string
+        secondaryMuscles:
+          type: array
+          items:
+            type: string
+        tertiaryMuscles:
+          type: array
+          items:
+            type: string
+    ExerciseDetail:
+      type: object
+      required: [id, name, muscleGroup, equipment, goal, difficulty, instructions, commonMistakes, primaryMuscles, secondaryMuscles, tertiaryMuscles, alternatives]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        muscleGroup:
+          type: string
+        equipment:
+          type: string
+        goal:
+          type: string
+        difficulty:
+          type: string
+        youtubeUrl:
+          type: string
+          nullable: true
+        instructions:
+          type: array
+          items:
+            type: string
+        commonMistakes:
+          type: array
+          items:
+            type: string
+        primaryMuscles:
+          type: array
+          items:
+            type: string
+        secondaryMuscles:
+          type: array
+          items:
+            type: string
+        tertiaryMuscles:
+          type: array
+          items:
+            type: string
+        alternatives:
+          type: array
+          items:
+            $ref: '#/components/schemas/Exercise'
+    WorkoutHistoryEntry:
+      type: object
+      required: [id, userId, exerciseId, weight, reps, sets, performedAt]
+      properties:
+        id:
+          type: integer
+        userId:
+          type: string
+        exerciseId:
+          type: integer
+        weight:
+          type: integer
+        reps:
+          type: integer
+        sets:
+          type: integer
+        performedAt:
+          type: string
+          format: date-time
+    SessionVolume:
+      type: object
+      required: [performedAt, totalVolume, weight, reps, sets]
+      properties:
+        performedAt:
+          type: string
+          format: date-time
+        totalVolume:
+          type: integer
+        weight:
+          type: integer
+        reps:
+          type: integer
+        sets:
+          type: integer
+    ExerciseHistoryResponse:
+      type: object
+      required: [sessions, estimated1RM, isPlateaued]
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionVolume'
+        estimated1RM:
+          type: number
+          nullable: true
+        isPlateaued:
+          type: boolean
+        restRecommendation:
+          type: string
+          nullable: true
+    LogExerciseSetRequest:
+      type: object
+      required: [weight, reps, sets]
+      properties:
+        weight:
+          type: integer
+        reps:
+          type: integer
+        sets:
+          type: integer

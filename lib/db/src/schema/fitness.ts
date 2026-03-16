@@ -103,3 +103,40 @@ export const workoutSessionsTable = pgTable("workout_sessions", {
 
 export type WorkoutSession = typeof workoutSessionsTable.$inferSelect;
 export type InsertWorkoutSession = typeof workoutSessionsTable.$inferInsert;
+
+export const exerciseLibraryTable = pgTable("exercise_library", {
+  id: serial("id").primaryKey(),
+  name: varchar("name").notNull(),
+  muscleGroup: varchar("muscle_group").notNull(),
+  equipment: varchar("equipment").notNull(),
+  goal: varchar("goal").notNull(),
+  difficulty: varchar("difficulty").notNull(),
+  youtubeUrl: varchar("youtube_url"),
+  instructions: jsonb("instructions").$type<string[]>().default([]),
+  commonMistakes: jsonb("common_mistakes").$type<string[]>().default([]),
+  primaryMuscles: jsonb("primary_muscles").$type<string[]>().default([]),
+  secondaryMuscles: jsonb("secondary_muscles").$type<string[]>().default([]),
+  tertiaryMuscles: jsonb("tertiary_muscles").$type<string[]>().default([]),
+  alternativeIds: jsonb("alternative_ids").$type<number[]>().default([]),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type ExerciseLibrary = typeof exerciseLibraryTable.$inferSelect;
+export type InsertExerciseLibrary = typeof exerciseLibraryTable.$inferInsert;
+
+export const workoutHistoryTable = pgTable("workout_history", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  exerciseId: integer("exercise_id").notNull().references(() => exerciseLibraryTable.id, { onDelete: "cascade" }),
+  weight: integer("weight").notNull(),
+  reps: integer("reps").notNull(),
+  sets: integer("sets").notNull(),
+  performedAt: timestamp("performed_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type WorkoutHistory = typeof workoutHistoryTable.$inferSelect;
+export type InsertWorkoutHistory = typeof workoutHistoryTable.$inferInsert;
+
+export const insertWorkoutSessionSchema = createInsertSchema(workoutSessionsTable).omit({ id: true });
+export const insertExerciseLibrarySchema = createInsertSchema(exerciseLibraryTable).omit({ id: true });
+export const insertWorkoutHistorySchema = createInsertSchema(workoutHistoryTable).omit({ id: true });

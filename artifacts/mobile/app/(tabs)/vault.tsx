@@ -3,97 +3,92 @@ import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
+  ActivityIndicator,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Colors } from "@/constants/colors";
+import { useExercises, type Exercise } from "@/hooks/useExercises";
 
-const CATEGORIES = [
-  { id: "all", label: "ALL" },
+const MUSCLE_GROUPS = [
+  { id: "", label: "ALL" },
+  { id: "chest", label: "CHEST" },
+  { id: "back", label: "BACK" },
+  { id: "legs", label: "LEGS" },
+  { id: "shoulders", label: "SHOULDERS" },
+  { id: "arms", label: "ARMS" },
+  { id: "core", label: "CORE" },
+];
+
+const EQUIPMENT_OPTIONS = [
+  { id: "", label: "ALL" },
+  { id: "barbell", label: "BARBELL" },
+  { id: "dumbbell", label: "DUMBBELL" },
+  { id: "cable", label: "CABLE" },
+  { id: "machine", label: "MACHINE" },
+  { id: "bodyweight", label: "BODYWEIGHT" },
+];
+
+const GOAL_OPTIONS = [
+  { id: "", label: "ALL" },
   { id: "strength", label: "STRENGTH" },
   { id: "hypertrophy", label: "HYPERTROPHY" },
-  { id: "mobility", label: "MOBILITY" },
 ];
 
-const WORKOUTS = [
-  {
-    id: "1",
-    category: "strength",
-    title: "Heavy Compound Day",
-    subtitle: "Squat · Deadlift · Press",
-    duration: "75 min",
-    sets: 18,
-    tag: "Power",
-    tagColor: Colors.orange,
-  },
-  {
-    id: "2",
-    category: "hypertrophy",
-    title: "Back & Bicep Hypertrophy",
-    subtitle: "Pull-Up · Row · Curl",
-    duration: "60 min",
-    sets: 24,
-    tag: "Volume",
-    tagColor: Colors.recovery,
-  },
-  {
-    id: "3",
-    category: "hypertrophy",
-    title: "Chest & Shoulder Pump",
-    subtitle: "Press · Fly · Lateral",
-    duration: "55 min",
-    sets: 21,
-    tag: "Volume",
-    tagColor: Colors.recovery,
-  },
-  {
-    id: "4",
-    category: "strength",
-    title: "Leg Power Protocol",
-    subtitle: "Squat · Lunge · GHD",
-    duration: "80 min",
-    sets: 20,
-    tag: "Power",
-    tagColor: Colors.orange,
-  },
-  {
-    id: "5",
-    category: "mobility",
-    title: "Hip & Thoracic Flow",
-    subtitle: "Stretch · Rotations · Core",
-    duration: "30 min",
-    sets: 12,
-    tag: "Recovery",
-    tagColor: "#779CAF",
-  },
-  {
-    id: "6",
-    category: "hypertrophy",
-    title: "Arm Isolation Session",
-    subtitle: "Curl · Extension · Forearm",
-    duration: "45 min",
-    sets: 18,
-    tag: "Volume",
-    tagColor: Colors.recovery,
-  },
-];
+const DIFFICULTY_COLORS: Record<string, string> = {
+  beginner: "#4ADE80",
+  intermediate: Colors.orange,
+  advanced: "#EF4444",
+};
+
+const EQUIPMENT_ICONS: Record<string, string> = {
+  barbell: "target",
+  dumbbell: "box",
+  cable: "link",
+  machine: "settings",
+  bodyweight: "user",
+};
 
 export default function VaultScreen() {
   const insets = useSafeAreaInsets();
-  const [activeCategory, setActiveCategory] = useState("all");
+  const [searchText, setSearchText] = useState("");
+  const [muscleGroup, setMuscleGroup] = useState("");
+  const [equipment, setEquipment] = useState("");
+  const [goal, setGoal] = useState("");
+  const [activeFilter, setActiveFilter] = useState<"muscle" | "equipment" | "goal">("muscle");
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const botPad = Platform.OS === "web" ? 34 : insets.bottom;
 
-  const filtered = activeCategory === "all"
-    ? WORKOUTS
-    : WORKOUTS.filter((w) => w.category === activeCategory);
+  const { data: exercises, isLoading } = useExercises({
+    muscle_group: muscleGroup || undefined,
+    equipment: equipment || undefined,
+    goal: goal || undefined,
+    search: searchText || undefined,
+  });
+
+  const filterOptions = activeFilter === "muscle" ? MUSCLE_GROUPS
+    : activeFilter === "equipment" ? EQUIPMENT_OPTIONS
+    : GOAL_OPTIONS;
+
+  const activeValue = activeFilter === "muscle" ? muscleGroup
+    : activeFilter === "equipment" ? equipment
+    : goal;
+
+  const setActiveValue = (val: string) => {
+    if (activeFilter === "muscle") setMuscleGroup(val);
+    else if (activeFilter === "equipment") setEquipment(val);
+    else setGoal(val);
+  };
+
+  const activeFilterCount = [muscleGroup, equipment, goal].filter(Boolean).length;
 
   return (
     <ScrollView
@@ -102,23 +97,70 @@ export default function VaultScreen() {
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.header}>
-        <Text style={styles.dateText}>WORKOUT VAULT</Text>
+        <Text style={styles.dateText}>EXERCISE VAULT</Text>
         <Text style={styles.title}>Exercise{"\n"}<Text style={styles.titleAccent}>Library</Text></Text>
       </View>
 
-      {/* Categories */}
+      <View style={styles.searchContainer}>
+        <Feather name="search" size={16} color={Colors.textMuted} style={styles.searchIcon} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search exercises..."
+          placeholderTextColor={Colors.textMuted}
+          value={searchText}
+          onChangeText={setSearchText}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        {searchText.length > 0 && (
+          <Pressable onPress={() => setSearchText("")}>
+            <Feather name="x" size={16} color={Colors.textMuted} />
+          </Pressable>
+        )}
+      </View>
+
+      <View style={styles.filterTabs}>
+        {(["muscle", "equipment", "goal"] as const).map((f) => (
+          <Pressable
+            key={f}
+            onPress={() => {
+              Haptics.selectionAsync();
+              setActiveFilter(f);
+            }}
+            style={[styles.filterTab, activeFilter === f && styles.filterTabActive]}
+          >
+            <Text style={[styles.filterTabText, activeFilter === f && styles.filterTabTextActive]}>
+              {f === "muscle" ? "MUSCLE" : f === "equipment" ? "EQUIP" : "GOAL"}
+            </Text>
+          </Pressable>
+        ))}
+        {activeFilterCount > 0 && (
+          <Pressable
+            onPress={() => {
+              setMuscleGroup("");
+              setEquipment("");
+              setGoal("");
+            }}
+            style={styles.clearBtn}
+          >
+            <Feather name="x" size={12} color={Colors.orange} />
+            <Text style={styles.clearText}>CLEAR</Text>
+          </Pressable>
+        )}
+      </View>
+
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
         <View style={styles.categories}>
-          {CATEGORIES.map((c) => (
+          {filterOptions.map((c) => (
             <Pressable
               key={c.id}
               onPress={() => {
                 Haptics.selectionAsync();
-                setActiveCategory(c.id);
+                setActiveValue(c.id);
               }}
-              style={[styles.categoryBtn, activeCategory === c.id && styles.categoryBtnActive]}
+              style={[styles.categoryBtn, activeValue === c.id && styles.categoryBtnActive]}
             >
-              <Text style={[styles.categoryLabel, activeCategory === c.id && styles.categoryLabelActive]}>
+              <Text style={[styles.categoryLabel, activeValue === c.id && styles.categoryLabelActive]}>
                 {c.label}
               </Text>
             </Pressable>
@@ -126,7 +168,6 @@ export default function VaultScreen() {
         </View>
       </ScrollView>
 
-      {/* AI Build button */}
       <Pressable
         style={({ pressed }) => [styles.aiBuildBtn, { opacity: pressed ? 0.85 : 1 }]}
         onPress={() => {
@@ -144,43 +185,55 @@ export default function VaultScreen() {
         <Feather name="arrow-right" size={18} color={Colors.highlight} />
       </Pressable>
 
-      {/* Workout List */}
-      <View style={styles.workoutList}>
-        {filtered.map((workout) => (
-          <Pressable
-            key={workout.id}
-            style={({ pressed }) => [styles.workoutCard, { opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.99 : 1 }] }]}
-            onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
-          >
-            <View style={styles.workoutTop}>
-              <View style={[styles.workoutTag, { borderColor: workout.tagColor + "40", backgroundColor: workout.tagColor + "15" }]}>
-                <Text style={[styles.workoutTagText, { color: workout.tagColor }]}>{workout.tag}</Text>
-              </View>
-              <View style={styles.workoutMeta}>
-                <Feather name="clock" size={11} color={Colors.textSubtle} />
-                <Text style={styles.workoutMetaText}>{workout.duration}</Text>
-                <Text style={styles.workoutMetaDot}>·</Text>
-                <Text style={styles.workoutMetaText}>{workout.sets} sets</Text>
-              </View>
-            </View>
-            <Text style={styles.workoutTitle}>{workout.title}</Text>
-            <Text style={styles.workoutSub}>{workout.subtitle}</Text>
-            <View style={styles.workoutFooter}>
-              <Pressable
-                style={({ pressed }) => [styles.startSmallBtn, { opacity: pressed ? 0.85 : 1 }]}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-                  router.push({ pathname: "/workout-session", params: { workoutId: workout.id } });
-                }}
-              >
-                <Feather name="play" size={12} color="#fff" />
-                <Text style={styles.startSmallText}>START</Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        ))}
-      </View>
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.orange} />
+          <Text style={styles.loadingText}>Loading exercises...</Text>
+        </View>
+      ) : (
+        <>
+          <Text style={styles.resultCount}>
+            {exercises?.length ?? 0} exercise{(exercises?.length ?? 0) !== 1 ? "s" : ""}
+          </Text>
+          <View style={styles.exerciseGrid}>
+            {exercises?.map((exercise) => (
+              <ExerciseCard key={exercise.id} exercise={exercise} />
+            ))}
+          </View>
+        </>
+      )}
     </ScrollView>
+  );
+}
+
+function ExerciseCard({ exercise }: { exercise: Exercise }) {
+  const iconName = EQUIPMENT_ICONS[exercise.equipment] || "activity";
+  const diffColor = DIFFICULTY_COLORS[exercise.difficulty] || Colors.textMuted;
+
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.exerciseCard, { opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
+      onPress={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        router.push({ pathname: "/exercise/[id]" as any, params: { id: String(exercise.id) } });
+      }}
+    >
+      <View style={styles.cardIconContainer}>
+        <Feather name={iconName as any} size={24} color={Colors.orange} />
+      </View>
+      <View style={styles.cardContent}>
+        <Text style={styles.cardName} numberOfLines={2}>{exercise.name}</Text>
+        <Text style={styles.cardMuscle}>{exercise.primaryMuscles?.[0] || exercise.muscleGroup}</Text>
+      </View>
+      <View style={styles.cardFooter}>
+        <View style={[styles.diffBadge, { borderColor: diffColor + "40", backgroundColor: diffColor + "15" }]}>
+          <Text style={[styles.diffText, { color: diffColor }]}>{exercise.difficulty.toUpperCase()}</Text>
+        </View>
+        <View style={styles.equipBadge}>
+          <Text style={styles.equipText}>{exercise.equipment.toUpperCase()}</Text>
+        </View>
+      </View>
+    </Pressable>
   );
 }
 
@@ -191,6 +244,63 @@ const styles = StyleSheet.create({
   dateText: { fontSize: 9, fontFamily: "Inter_700Bold", color: Colors.textSubtle, letterSpacing: 2 },
   title: { fontSize: 32, fontFamily: "Inter_900Black", color: Colors.text, fontStyle: "italic", lineHeight: 36 },
   titleAccent: { color: Colors.orange },
+  searchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.bgCard,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 10,
+  },
+  searchIcon: {},
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+    color: Colors.text,
+    padding: 0,
+  },
+  filterTabs: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+  },
+  filterTab: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: Colors.bgCard,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  filterTabActive: {
+    backgroundColor: "rgba(252,82,0,0.15)",
+    borderColor: Colors.orange + "60",
+  },
+  filterTabText: {
+    fontSize: 9,
+    fontFamily: "Inter_900Black",
+    color: Colors.textMuted,
+    letterSpacing: 1,
+  },
+  filterTabTextActive: {
+    color: Colors.orange,
+  },
+  clearBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginLeft: "auto",
+  },
+  clearText: {
+    fontSize: 9,
+    fontFamily: "Inter_700Bold",
+    color: Colors.orange,
+    letterSpacing: 0.5,
+  },
   catScroll: { marginHorizontal: -20 },
   categories: { flexDirection: "row", gap: 8, paddingHorizontal: 20, paddingVertical: 4 },
   categoryBtn: {
@@ -225,37 +335,85 @@ const styles = StyleSheet.create({
   aiBuildInfo: { flex: 1 },
   aiBuildTitle: { fontSize: 13, fontFamily: "Inter_700Bold", color: Colors.text, textTransform: "uppercase", letterSpacing: 0.5 },
   aiBuildSub: { fontSize: 10, fontFamily: "Inter_400Regular", color: Colors.textSubtle, marginTop: 2 },
-  workoutList: { gap: 12 },
-  workoutCard: {
+  loadingContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 40,
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textMuted,
+  },
+  resultCount: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    color: Colors.textMuted,
+    letterSpacing: 0.5,
+  },
+  exerciseGrid: {
+    gap: 12,
+  },
+  exerciseCard: {
     backgroundColor: Colors.bgCard,
     borderWidth: 1,
     borderColor: Colors.border,
     borderRadius: 20,
     padding: 18,
+    gap: 12,
+  },
+  cardIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: "rgba(252,82,0,0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardContent: {
+    gap: 4,
+  },
+  cardName: {
+    fontSize: 15,
+    fontFamily: "Inter_900Black",
+    color: Colors.text,
+    fontStyle: "italic",
+    textTransform: "uppercase",
+  },
+  cardMuscle: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textMuted,
+    textTransform: "capitalize",
+  },
+  cardFooter: {
+    flexDirection: "row",
     gap: 8,
   },
-  workoutTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  workoutTag: {
+  diffBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 100,
     borderWidth: 1,
   },
-  workoutTagText: { fontSize: 9, fontFamily: "Inter_900Black", letterSpacing: 1 },
-  workoutMeta: { flexDirection: "row", alignItems: "center", gap: 4 },
-  workoutMetaText: { fontSize: 10, fontFamily: "Inter_400Regular", color: Colors.textSubtle },
-  workoutMetaDot: { color: Colors.textSubtle },
-  workoutTitle: { fontSize: 17, fontFamily: "Inter_900Black", color: Colors.text, fontStyle: "italic", textTransform: "uppercase" },
-  workoutSub: { fontSize: 11, fontFamily: "Inter_400Regular", color: Colors.textMuted },
-  workoutFooter: { flexDirection: "row", marginTop: 4 },
-  startSmallBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: Colors.orange,
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+  diffText: {
+    fontSize: 8,
+    fontFamily: "Inter_900Black",
+    letterSpacing: 1,
   },
-  startSmallText: { fontSize: 10, fontFamily: "Inter_900Black", color: "#fff", letterSpacing: 1 },
+  equipBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 100,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  equipText: {
+    fontSize: 8,
+    fontFamily: "Inter_900Black",
+    color: Colors.textSubtle,
+    letterSpacing: 1,
+  },
 });
