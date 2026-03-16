@@ -2,6 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import React, { useState } from "react";
 import {
+  ActivityIndicator,
   Modal,
   Pressable,
   ScrollView,
@@ -88,9 +89,10 @@ interface Props {
   onClose: () => void;
   onComplete: (data: CheckInData) => void;
   initialData?: CheckInData | null;
+  isSubmitting?: boolean;
 }
 
-export function CheckInModal({ visible, onClose, onComplete, initialData }: Props) {
+export function CheckInModal({ visible, onClose, onComplete, initialData, isSubmitting }: Props) {
   const [questionStep, setQuestionStep] = useState(0);
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [phase, setPhase] = useState<Step>("questions");
@@ -138,8 +140,22 @@ export function CheckInModal({ visible, onClose, onComplete, initialData }: Prop
     );
   };
 
+  const resetWizard = () => {
+    setQuestionStep(0);
+    setAnswers({});
+    setPhase("questions");
+    setSoreMuscles([]);
+    setNotes("");
+  };
+
+  React.useEffect(() => {
+    if (!visible) {
+      const timer = setTimeout(resetWizard, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [visible]);
+
   const handleFinish = () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     onComplete({
       energyLevel: answers["energy"] ?? 3,
       sleepQuality: answers["sleep"] ?? 3,
@@ -148,24 +164,11 @@ export function CheckInModal({ visible, onClose, onComplete, initialData }: Prop
       soreMuscleGroups: soreMuscles,
       notes,
     });
-    setTimeout(() => {
-      setQuestionStep(0);
-      setAnswers({});
-      setPhase("questions");
-      setSoreMuscles([]);
-      setNotes("");
-    }, 300);
   };
 
   const handleClose = () => {
+    if (isSubmitting) return;
     onClose();
-    setTimeout(() => {
-      setQuestionStep(0);
-      setAnswers({});
-      setPhase("questions");
-      setSoreMuscles([]);
-      setNotes("");
-    }, 300);
   };
 
   const handleBack = () => {
@@ -294,9 +297,13 @@ export function CheckInModal({ visible, onClose, onComplete, initialData }: Prop
                   <Feather name="arrow-left" size={14} color={Colors.textSubtle} />
                   <Text style={styles.backBtnText}>Back</Text>
                 </Pressable>
-                <Pressable onPress={handleFinish} style={styles.continueBtn}>
-                  <Feather name="check" size={14} color="#fff" />
-                  <Text style={styles.continueBtnText}>COMPLETE</Text>
+                <Pressable onPress={handleFinish} style={[styles.continueBtn, isSubmitting && { opacity: 0.6 }]} disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Feather name="check" size={14} color="#fff" />
+                  )}
+                  <Text style={styles.continueBtnText}>{isSubmitting ? "SAVING..." : "COMPLETE"}</Text>
                 </Pressable>
               </View>
             </>

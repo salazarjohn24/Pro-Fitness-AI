@@ -14,6 +14,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Colors } from "@/constants/colors";
+import { useSubmitExternalWorkout, useProfile } from "@/hooks/useProfile";
+import { computeStimulusPoints, type SkillLevel } from "@/utils/stimulus";
 
 const WORKOUT_TEMPLATES: Record<string, { title: string; subtitle: string; exercises: Exercise[] }> = {
   "1": {
@@ -68,6 +70,9 @@ export default function WorkoutSessionScreen() {
   const insets = useSafeAreaInsets();
   const { workoutId } = useLocalSearchParams<{ workoutId?: string }>();
   const workout = WORKOUT_TEMPLATES[workoutId ?? "default"] ?? WORKOUT_TEMPLATES["default"];
+  const { mutate: submitExternalWorkout } = useSubmitExternalWorkout();
+  const { data: profile } = useProfile();
+  const userSkillLevel: SkillLevel = (profile?.skillLevel === "Beginner" || profile?.skillLevel === "Intermediate" || profile?.skillLevel === "Advanced") ? profile.skillLevel : "Intermediate";
 
   const [setLogs, setSetLogs] = useState<Record<string, SetLog[]>>(() => {
     const logs: Record<string, SetLog[]> = {};
@@ -116,6 +121,23 @@ export default function WorkoutSessionScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     if (timerRef.current) clearInterval(timerRef.current);
     setFinished(true);
+    const durationMin = Math.max(1, Math.round(elapsed / 60));
+    const muscleGroups = [...new Set(
+      workout.exercises.flatMap((ex) =>
+        ex.muscles.split("·").map((m) => m.trim()).filter(Boolean)
+      )
+    )];
+    const intensity = Math.min(10, Math.max(1, Math.round((pct / 100) * 8) + 2));
+    const stimulusPoints = computeStimulusPoints({ duration: durationMin, intensity, muscleGroups, skillLevel: userSkillLevel });
+    submitExternalWorkout({
+      label: workout.title,
+      duration: durationMin,
+      workoutType: "Strength",
+      source: "in-app",
+      intensity,
+      muscleGroups,
+      stimulusPoints,
+    });
   };
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;

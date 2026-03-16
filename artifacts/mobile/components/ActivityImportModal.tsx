@@ -15,15 +15,38 @@ import {
   View,
 } from "react-native";
 import { Colors } from "@/constants/colors";
+import {
+  MUSCLE_GROUPS,
+  computeStimulusPoints,
+  inferMuscleGroupsFromType,
+  parseWorkoutDescription,
+  type SkillLevel,
+} from "@/utils/stimulus";
 
 interface Props {
   visible: boolean;
   onClose: () => void;
-  onComplete: () => void;
-  onManualSubmit?: (data: { label: string; duration: number; workoutType: string }) => void;
+  skillLevel?: string | null;
+  onComplete: (data: {
+    label: string;
+    duration: number;
+    workoutType: string;
+    source: string;
+    intensity: number;
+    muscleGroups: string[];
+    stimulusPoints: number;
+  }) => void;
+  onManualSubmit?: (data: {
+    label: string;
+    duration: number;
+    workoutType: string;
+    intensity: number;
+    muscleGroups: string[];
+    stimulusPoints: number;
+  }) => void;
 }
 
-type Step = "choose" | "screenshot_prompt" | "scanning" | "screenshot_done" | "manual";
+type Step = "choose" | "screenshot_prompt" | "scanning" | "screenshot_done" | "manual" | "ai_interpreter";
 
 const WORKOUT_TYPES = [
   "Strength", "Cardio", "HIIT", "CrossFit", "Yoga",
@@ -32,13 +55,33 @@ const WORKOUT_TYPES = [
 
 const DURATION_OPTIONS = [15, 20, 30, 45, 60, 75, 90, 120];
 
-export function ActivityImportModal({ visible, onClose, onComplete, onManualSubmit }: Props) {
+function resolveSkillLevel(raw?: string | null): SkillLevel {
+  if (raw === "Beginner" || raw === "Intermediate" || raw === "Advanced") return raw;
+  return "Intermediate";
+}
+
+export function ActivityImportModal({ visible, onClose, onComplete, onManualSubmit, skillLevel: rawSkillLevel }: Props) {
+  const userSkillLevel = resolveSkillLevel(rawSkillLevel);
   const [step, setStep] = useState<Step>("choose");
   const [imageUri, setImageUri] = useState<string | null>(null);
 
   const [manualLabel, setManualLabel] = useState("");
   const [manualDuration, setManualDuration] = useState(30);
   const [manualType, setManualType] = useState("Strength");
+  const [manualIntensity, setManualIntensity] = useState(5);
+  const [manualMuscleGroups, setManualMuscleGroups] = useState<string[]>([]);
+
+  const [aiText, setAiText] = useState("");
+  const [aiParsed, setAiParsed] = useState<{ muscleGroups: string[]; suggestedIntensity: number } | null>(null);
+  const [aiLabel, setAiLabel] = useState("");
+  const [aiDuration, setAiDuration] = useState(30);
+
+  const [screenshotData, setScreenshotData] = useState<{
+    duration: number;
+    intensity: number;
+    muscleGroups: string[];
+    stimulusPoints: number;
+  } | null>(null);
 
   const handlePickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -53,6 +96,11 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
       setImageUri(result.assets[0].uri);
       setStep("scanning");
       setTimeout(() => {
+        const duration = 47;
+        const intensity = 6;
+        const muscleGroups = ["Full Body"];
+        const stimulusPoints = computeStimulusPoints({ duration, intensity, muscleGroups, skillLevel: userSkillLevel });
+        setScreenshotData({ duration, intensity, muscleGroups, stimulusPoints });
         setStep("screenshot_done");
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }, 2200);
@@ -75,23 +123,100 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
       setImageUri(result.assets[0].uri);
       setStep("scanning");
       setTimeout(() => {
+        const duration = 47;
+        const intensity = 6;
+        const muscleGroups = ["Full Body"];
+        const stimulusPoints = computeStimulusPoints({ duration, intensity, muscleGroups, skillLevel: userSkillLevel });
+        setScreenshotData({ duration, intensity, muscleGroups, stimulusPoints });
         setStep("screenshot_done");
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }, 2200);
     }
   };
 
+  const toggleMuscleGroup = (group: string, setter: React.Dispatch<React.SetStateAction<string[]>>, current: string[]) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (current.includes(group)) {
+      setter(current.filter((g) => g !== group));
+    } else {
+      setter([...current, group]);
+    }
+  };
+
   const handleManualSubmit = () => {
     if (!manualLabel.trim()) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const groups = manualMuscleGroups.length > 0 ? manualMuscleGroups : inferMuscleGroupsFromType(manualType);
+    const stimulusPoints = computeStimulusPoints({
+      duration: manualDuration,
+      intensity: manualIntensity,
+      muscleGroups: groups,
+      skillLevel: userSkillLevel,
+    });
     if (onManualSubmit) {
-      onManualSubmit({ label: manualLabel.trim(), duration: manualDuration, workoutType: manualType });
+      onManualSubmit({
+        label: manualLabel.trim(),
+        duration: manualDuration,
+        workoutType: manualType,
+        intensity: manualIntensity,
+        muscleGroups: groups,
+        stimulusPoints,
+      });
+    }
+    resetState();
+  };
+
+  const handleAiParse = () => {
+    if (!aiText.trim()) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const parsed = parseWorkoutDescription(aiText);
+    setAiParsed(parsed);
+  };
+
+  const handleAiSubmit = () => {
+    if (!aiParsed || !aiLabel.trim()) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const stimulusPoints = computeStimulusPoints({
+      duration: aiDuration,
+      intensity: aiParsed.suggestedIntensity,
+      muscleGroups: aiParsed.muscleGroups,
+      skillLevel: userSkillLevel,
+    });
+    if (onManualSubmit) {
+      onManualSubmit({
+        label: aiLabel.trim(),
+        duration: aiDuration,
+        workoutType: "Custom",
+        intensity: aiParsed.suggestedIntensity,
+        muscleGroups: aiParsed.muscleGroups,
+        stimulusPoints,
+      });
     }
     resetState();
   };
 
   const handleFinish = () => {
-    onComplete();
+    if (screenshotData) {
+      onComplete({
+        label: "Screenshot Import",
+        duration: screenshotData.duration,
+        workoutType: "Imported",
+        source: "screenshot",
+        intensity: screenshotData.intensity,
+        muscleGroups: screenshotData.muscleGroups,
+        stimulusPoints: screenshotData.stimulusPoints,
+      });
+    } else {
+      onComplete({
+        label: "Screenshot Import",
+        duration: 47,
+        workoutType: "Imported",
+        source: "screenshot",
+        intensity: 6,
+        muscleGroups: ["Full Body"],
+        stimulusPoints: computeStimulusPoints({ duration: 47, intensity: 6, muscleGroups: ["Full Body"], skillLevel: userSkillLevel }),
+      });
+    }
     resetState();
   };
 
@@ -107,6 +232,13 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
       setManualLabel("");
       setManualDuration(30);
       setManualType("Strength");
+      setManualIntensity(5);
+      setManualMuscleGroups([]);
+      setAiText("");
+      setAiParsed(null);
+      setAiLabel("");
+      setAiDuration(30);
+      setScreenshotData(null);
     }, 300);
   };
 
@@ -147,6 +279,20 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
                   <View style={styles.choiceInfo}>
                     <Text style={styles.choiceTitle}>Manual Entry</Text>
                     <Text style={styles.choiceDesc}>Type in workout details</Text>
+                  </View>
+                  <Feather name="chevron-right" size={18} color={Colors.textMuted} />
+                </Pressable>
+
+                <Pressable
+                  style={({ pressed }) => [styles.choiceBtn, { opacity: pressed ? 0.9 : 1 }]}
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setStep("ai_interpreter"); }}
+                >
+                  <View style={[styles.choiceIcon, { backgroundColor: "rgba(252,82,0,0.08)" }]}>
+                    <Feather name="cpu" size={20} color={Colors.orange} />
+                  </View>
+                  <View style={styles.choiceInfo}>
+                    <Text style={styles.choiceTitle}>AI Interpreter</Text>
+                    <Text style={styles.choiceDesc}>Paste a workout description to parse</Text>
                   </View>
                   <Feather name="chevron-right" size={18} color={Colors.textMuted} />
                 </Pressable>
@@ -225,17 +371,22 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
                 <View style={styles.extractedRow}>
                   <Feather name="clock" size={14} color={Colors.recovery} />
                   <Text style={styles.extractedLabel}>Duration</Text>
-                  <Text style={styles.extractedVal}>47 min</Text>
+                  <Text style={styles.extractedVal}>{screenshotData?.duration ?? 47} min</Text>
                 </View>
                 <View style={styles.extractedRow}>
                   <Feather name="zap" size={14} color={Colors.orange} />
-                  <Text style={styles.extractedLabel}>Calories</Text>
-                  <Text style={styles.extractedVal}>412 kcal</Text>
+                  <Text style={styles.extractedLabel}>Intensity</Text>
+                  <Text style={styles.extractedVal}>{screenshotData?.intensity ?? 6} / 10</Text>
+                </View>
+                <View style={styles.extractedRow}>
+                  <Feather name="target" size={14} color={Colors.highlight} />
+                  <Text style={styles.extractedLabel}>Muscle Groups</Text>
+                  <Text style={styles.extractedVal}>{(screenshotData?.muscleGroups ?? ["Full Body"]).join(", ")}</Text>
                 </View>
                 <View style={styles.extractedRow}>
                   <Feather name="trending-up" size={14} color={Colors.highlight} />
-                  <Text style={styles.extractedLabel}>Effort Score</Text>
-                  <Text style={styles.extractedVal}>82 / 100</Text>
+                  <Text style={styles.extractedLabel}>Stimulus Points</Text>
+                  <Text style={styles.extractedVal}>{screenshotData?.stimulusPoints ?? 0} pts</Text>
                 </View>
               </View>
 
@@ -249,8 +400,112 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
             </View>
           )}
 
+          {step === "ai_interpreter" && (
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 520 }}>
+              <Text style={styles.overline}>AI INTERPRETER</Text>
+              <Text style={styles.title}>Paste your{"\n"}<Text style={styles.titleAccent}>workout</Text></Text>
+              <Text style={styles.desc}>
+                Paste a workout description and we'll identify muscle groups and intensity.
+              </Text>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.fieldLabel}>WORKOUT DESCRIPTION</Text>
+                <TextInput
+                  style={[styles.textInput, { height: 100, textAlignVertical: "top", paddingTop: 12 }]}
+                  placeholder='e.g. "5 Rounds: 10 Thrusters, 10 Pull-ups, 400m Run"'
+                  placeholderTextColor={Colors.textSubtle}
+                  value={aiText}
+                  onChangeText={(t) => { setAiText(t); setAiParsed(null); }}
+                  multiline
+                />
+              </View>
+
+              {!aiParsed && (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.secondaryBtn,
+                    !aiText.trim() && styles.primaryBtnDisabled,
+                    { opacity: pressed ? 0.9 : 1, marginTop: 12 },
+                  ]}
+                  onPress={handleAiParse}
+                  disabled={!aiText.trim()}
+                >
+                  <Feather name="cpu" size={16} color={Colors.text} />
+                  <Text style={styles.secondaryBtnText}>Analyze Workout</Text>
+                </Pressable>
+              )}
+
+              {aiParsed && (
+                <>
+                  <View style={[styles.extractedCard, { marginTop: 12 }]}>
+                    <Text style={[styles.fieldLabel, { marginBottom: 4 }]}>DETECTED MUSCLE GROUPS</Text>
+                    <View style={styles.muscleTagRow}>
+                      {aiParsed.muscleGroups.map((g) => (
+                        <View key={g} style={[styles.typeChip, styles.typeChipSelected]}>
+                          <Text style={[styles.typeChipText, styles.typeChipTextSelected]}>{g}</Text>
+                        </View>
+                      ))}
+                    </View>
+                    <View style={styles.extractedRow}>
+                      <Feather name="zap" size={14} color={Colors.orange} />
+                      <Text style={styles.extractedLabel}>Suggested Intensity</Text>
+                      <Text style={styles.extractedVal}>{aiParsed.suggestedIntensity} / 10</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.formGroup}>
+                    <Text style={styles.fieldLabel}>WORKOUT NAME</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder='e.g. "CrossFit WOD"'
+                      placeholderTextColor={Colors.textSubtle}
+                      value={aiLabel}
+                      onChangeText={setAiLabel}
+                    />
+                  </View>
+
+                  <View style={styles.formGroup}>
+                    <Text style={styles.fieldLabel}>DURATION (MINUTES)</Text>
+                    <View style={styles.durationRow}>
+                      {DURATION_OPTIONS.map((d) => {
+                        const selected = aiDuration === d;
+                        return (
+                          <Pressable
+                            key={d}
+                            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setAiDuration(d); }}
+                            style={[styles.durationChip, selected && styles.durationChipSelected]}
+                          >
+                            <Text style={[styles.durationChipText, selected && styles.durationChipTextSelected]}>{d}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.primaryBtn,
+                      !aiLabel.trim() && styles.primaryBtnDisabled,
+                      { opacity: pressed ? 0.9 : 1, marginTop: 8 },
+                    ]}
+                    onPress={handleAiSubmit}
+                    disabled={!aiLabel.trim()}
+                  >
+                    <Feather name="check-circle" size={16} color="#fff" />
+                    <Text style={styles.primaryBtnText}>LOG WORKOUT</Text>
+                  </Pressable>
+                </>
+              )}
+
+              <Pressable onPress={() => { setStep("choose"); setAiParsed(null); setAiText(""); }} style={[styles.backLink, { marginTop: 12 }]}>
+                <Feather name="arrow-left" size={14} color={Colors.textSubtle} />
+                <Text style={styles.backLinkText}>Back</Text>
+              </Pressable>
+            </ScrollView>
+          )}
+
           {step === "manual" && (
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 480 }}>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 520 }}>
               <Text style={styles.overline}>MANUAL ENTRY</Text>
               <Text style={styles.title}>Log your{"\n"}<Text style={styles.titleAccent}>workout</Text></Text>
 
@@ -297,6 +552,45 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
                         style={[styles.durationChip, selected && styles.durationChipSelected]}
                       >
                         <Text style={[styles.durationChipText, selected && styles.durationChipTextSelected]}>{d}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.fieldLabel}>RPE / INTENSITY (1–10)</Text>
+                <View style={styles.rpeRow}>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((v) => {
+                    const selected = manualIntensity === v;
+                    return (
+                      <Pressable
+                        key={v}
+                        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setManualIntensity(v); }}
+                        style={[styles.rpeChip, selected && styles.rpeChipSelected]}
+                      >
+                        <Text style={[styles.rpeChipText, selected && styles.rpeChipTextSelected]}>{v}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <Text style={styles.rpeHint}>
+                  {manualIntensity <= 3 ? "Light effort" : manualIntensity <= 5 ? "Moderate effort" : manualIntensity <= 7 ? "Hard effort" : manualIntensity <= 9 ? "Very hard" : "Max effort"}
+                </Text>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.fieldLabel}>PRIMARY FOCUS (MUSCLE GROUPS)</Text>
+                <View style={styles.muscleTagRow}>
+                  {MUSCLE_GROUPS.map((group) => {
+                    const selected = manualMuscleGroups.includes(group);
+                    return (
+                      <Pressable
+                        key={group}
+                        onPress={() => toggleMuscleGroup(group, setManualMuscleGroups, manualMuscleGroups)}
+                        style={[styles.typeChip, selected && styles.muscleChipSelected]}
+                      >
+                        <Text style={[styles.typeChipText, selected && styles.muscleChipTextSelected]}>{group}</Text>
                       </Pressable>
                     );
                   })}
@@ -595,6 +889,18 @@ const styles = StyleSheet.create({
   typeChipTextSelected: {
     color: Colors.orange,
   },
+  muscleChipSelected: {
+    borderColor: Colors.highlight,
+    backgroundColor: "rgba(246,234,152,0.12)",
+  },
+  muscleChipTextSelected: {
+    color: Colors.highlight,
+  },
+  muscleTagRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
   durationRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -622,5 +928,39 @@ const styles = StyleSheet.create({
   },
   durationChipTextSelected: {
     color: Colors.highlight,
+  },
+  rpeRow: {
+    flexDirection: "row",
+    gap: 4,
+    flexWrap: "wrap",
+  },
+  rpeChip: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.bgCard,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rpeChipSelected: {
+    borderColor: Colors.orange,
+    backgroundColor: "rgba(252,82,0,0.15)",
+  },
+  rpeChipText: {
+    fontSize: 13,
+    fontFamily: "Inter_900Black",
+    color: Colors.textMuted,
+    fontStyle: "italic",
+  },
+  rpeChipTextSelected: {
+    color: Colors.orange,
+  },
+  rpeHint: {
+    fontSize: 10,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
+    letterSpacing: 0.5,
   },
 });

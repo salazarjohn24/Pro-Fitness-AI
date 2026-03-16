@@ -55,14 +55,16 @@ Pro Fitness AI — dark-themed fitness tracker with AI recommendations.
 - `components/OnboardingModal.tsx` — Multi-step onboarding: goal, skill level, equipment, injuries
 - `components/CheckInModal.tsx` — Daily check-in with 4 questions + body map (sore muscles) + notes
 - `components/BodyMap.tsx` — Interactive front/back SVG body diagram for tapping sore muscle groups
-- `components/ActivityImportModal.tsx` — External workout logger with screenshot import OR manual entry (label, duration, type)
+- `components/ActivityImportModal.tsx` — External workout logger modal with screenshot import, manual entry (label, duration, type, RPE intensity, muscle groups), and AI interpreter (paste workout description → auto-parsed muscle groups & intensity)
+- `app/external-workouts.tsx` — Dedicated screen for viewing, editing, and deleting external workouts with add button
 - `components/InsightInfoModal.tsx` — Info popup for AI insights and readiness score explanation
 
 ### Key Files
 - `lib/auth.tsx` — Auth context (Replit OIDC mobile flow)
-- `hooks/useProfile.ts` — React Query hooks for profile, check-ins, external workouts, readiness score computation, and fitness profile CRUD
+- `hooks/useProfile.ts` — React Query hooks for profile, check-ins, external workouts (submit, recent, update, delete), readiness score computation, and fitness profile CRUD
 - `hooks/useEnvironments.ts` — React Query hooks for gym environment CRUD (list, create, activate, delete)
 - `components/EquipmentChecklist.tsx` — Reusable categorized equipment checklist component
+- `utils/stimulus.ts` — Stimulus point calculation, workout description parser, muscle group inference
 - `constants/colors.ts` — Design tokens (dark theme, orange #FC5200)
 
 ### Design System
@@ -91,7 +93,7 @@ Pro Fitness AI — dark-themed fitness tracker with AI recommendations.
 - `id` (PK serial), `user_id` (FK → users), `date`, `energy_level`, `sleep_quality`, `stress_level`, `soreness_score`, `sore_muscle_groups` (JSONB string[]), `notes`, `created_at`
 
 ### `external_workouts` table
-- `id` (PK serial), `user_id` (FK → users), `label`, `duration`, `workout_type`, `source`, `created_at`
+- `id` (PK serial), `user_id` (FK → users), `label`, `duration`, `workout_type`, `source`, `intensity` (1-10), `muscle_groups` (JSONB string[]), `stimulus_points` (integer), `created_at`
 
 ### `gym_environments` table
 - `id` (PK serial), `user_id` (FK → users), `name`, `type`, `equipment` (JSON: categorized equipment lists), `is_active` (boolean), `created_at`
@@ -108,7 +110,10 @@ Pro Fitness AI — dark-themed fitness tracker with AI recommendations.
 - `PUT /api/profile` — Update user fitness profile (supports all onboarding + preference fields)
 - `POST /api/checkins` — Create/update today's daily check-in
 - `GET /api/checkins/today` — Get today's check-in for current user
-- `POST /api/workouts/external` — Log an external workout (manual or screenshot)
+- `POST /api/workouts/external` — Log an external workout (manual, screenshot, or AI-parsed) with intensity, muscle groups, stimulus points
+- `GET /api/workouts/external` — Get recent external workouts (last 10, newest first)
+- `PUT /api/workouts/external/:id` — Update an external workout
+- `DELETE /api/workouts/external/:id` — Delete an external workout
 - `GET /api/environments` — List user's gym environments
 - `POST /api/environments` — Create new gym environment
 - `PUT /api/environments/:id` — Update gym environment

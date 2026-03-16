@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import React, { useState, useEffect } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -14,7 +15,6 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CheckInModal } from "@/components/CheckInModal";
-import { ActivityImportModal } from "@/components/ActivityImportModal";
 import { InsightInfoModal } from "@/components/InsightInfoModal";
 import { OnboardingModal } from "@/components/OnboardingModal";
 import { Colors } from "@/constants/colors";
@@ -25,6 +25,8 @@ import {
   useTodayCheckIn,
   useSubmitCheckIn,
   useSubmitExternalWorkout,
+  useDeleteExternalWorkout,
+  useRecentExternalWorkouts,
   computeReadinessScore,
 } from "@/hooks/useProfile";
 
@@ -67,11 +69,12 @@ export default function StatusScreen() {
   const { data: profile, isLoading } = useProfile();
   const { mutate: updateProfile } = useUpdateProfile();
   const { data: todayCheckIn, isLoading: checkInLoading } = useTodayCheckIn();
-  const { mutate: submitCheckIn } = useSubmitCheckIn();
+  const { mutate: submitCheckIn, isPending: isSubmittingCheckIn } = useSubmitCheckIn();
   const { mutate: submitExternalWorkout } = useSubmitExternalWorkout();
+  const { mutate: deleteExternalWorkout } = useDeleteExternalWorkout();
+  const { data: recentExternalWorkouts } = useRecentExternalWorkouts();
 
   const [checkInOpen, setCheckInOpen] = useState(false);
-  const [activityOpen, setActivityOpen] = useState(false);
   const [insightOpen, setInsightOpen] = useState(false);
   const [readinessInfoOpen, setReadinessInfoOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
@@ -83,10 +86,22 @@ export default function StatusScreen() {
   const activityDone = profile?.activityImported ?? false;
   const onboardingDone = profile?.onboardingCompleted ?? false;
 
+  const now = new Date();
+  const todayRestWorkout = recentExternalWorkouts?.find((w: any) => {
+    if (w.workoutType !== "rest") return false;
+    const d = new Date(w.createdAt);
+    return (
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate()
+    );
+  });
+  const isRestDay = !!todayRestWorkout;
+
   const readinessScore = computeReadinessScore(todayCheckIn);
 
-  const completedTasks = [checkInDone, activityDone, false].filter(Boolean).length;
-  const pct = Math.round((completedTasks / 3) * 100);
+  const completedTasks = [checkInDone, activityDone].filter(Boolean).length;
+  const pct = Math.round((completedTasks / 2) * 100);
 
   useEffect(() => {
     if (!isLoading && !checkInLoading && profile && !onboardingDone) {
@@ -130,34 +145,52 @@ export default function StatusScreen() {
     notes: string;
   }) => {
     const wasAlreadyDone = checkInDone;
-    setCheckInOpen(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     submitCheckIn(data, {
       onSuccess: () => {
+        setCheckInOpen(false);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         if (!wasAlreadyDone) {
-          const newProgress = Math.min(100, syncProgress + 33);
+          const newProgress = Math.min(100, syncProgress + 50);
           updateProfile({ checkInCompleted: true, dailySyncProgress: newProgress, streakDays: streak + 1 });
         }
+      },
+      onError: () => {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert("Check-in Failed", "Could not save your check-in. Tap COMPLETE to try again.");
       },
     });
   };
 
-  const markActivityDone = () => {
+  const handleRestDay = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const newProgress = Math.min(100, syncProgress + 34);
-    updateProfile({ activityImported: true, dailySyncProgress: newProgress });
+    submitExternalWorkout(
+      {
+        label: "Rest & Recovery Day",
+        duration: 0,
+        workoutType: "rest",
+        source: "manual",
+        intensity: 0,
+        muscleGroups: [],
+        stimulusPoints: 0,
+      },
+      {
+        onSuccess: () => {
+          const newProgress = Math.min(100, syncProgress + 50);
+          updateProfile({ activityImported: true, dailySyncProgress: newProgress });
+        },
+      }
+    );
   };
 
-  const handleScreenshotComplete = () => {
-    setActivityOpen(false);
-    markActivityDone();
-    submitExternalWorkout({ label: "Screenshot Import", duration: 47, workoutType: "Imported", source: "screenshot" });
-  };
-
-  const handleManualWorkout = (data: { label: string; duration: number; workoutType: string }) => {
-    setActivityOpen(false);
-    markActivityDone();
-    submitExternalWorkout(data);
+  const handleUndoRestDay = () => {
+    if (!todayRestWorkout) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    deleteExternalWorkout(todayRestWorkout.id, {
+      onSuccess: () => {
+        const newProgress = Math.max(0, syncProgress - 50);
+        updateProfile({ activityImported: false, dailySyncProgress: newProgress });
+      },
+    });
   };
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -226,54 +259,52 @@ export default function StatusScreen() {
               <Feather name={checkInDone ? "edit-2" : "chevron-right"} size={16} color={checkInDone ? Colors.highlight : Colors.textMuted} />
             </Pressable>
 
-            <Pressable
-              onPress={() => {
-                if (activityDone) return;
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                setActivityOpen(true);
-              }}
-              style={({ pressed }) => [
+            <View
+              style={[
                 styles.taskItem,
-                styles.taskInactive,
-                activityDone && styles.taskDone,
-                { opacity: pressed ? 0.85 : 1 },
+                activityDone
+                  ? (isRestDay ? styles.taskRest : styles.taskDone)
+                  : (!checkInDone ? styles.taskLocked : styles.taskPending),
+                !checkInDone && !activityDone ? { opacity: 0.5 } : undefined,
               ]}
             >
-              <View style={[styles.taskIcon, activityDone ? styles.taskIconDone : styles.taskIconNeutral]}>
-                <Feather name="camera" size={16} color={activityDone ? Colors.bgPrimary : Colors.textMuted} />
+              <View style={[
+                styles.taskIcon,
+                activityDone
+                  ? (isRestDay ? styles.taskIconRest : styles.taskIconDone)
+                  : (checkInDone ? styles.taskIconHighlight : styles.taskIconLocked),
+              ]}>
+                <Feather
+                  name={activityDone ? (isRestDay ? "moon" : "check") : "target"}
+                  size={16}
+                  color={activityDone ? (isRestDay ? Colors.recovery : Colors.bgPrimary) : (checkInDone ? Colors.highlight : "#3C3C3A")}
+                />
               </View>
               <View style={styles.taskInfo}>
-                <Text style={[styles.taskTitle, !activityDone && styles.taskTitleMuted, activityDone && styles.taskTitleDone]}>
-                  Log External Workout
+                <Text style={[
+                  styles.taskTitle,
+                  activityDone && (isRestDay ? styles.taskTitleRest : styles.taskTitleDone),
+                  !checkInDone && !activityDone && styles.taskTitleLocked,
+                ]}>
+                  {isRestDay ? "Recovery Day" : "Today's Training"}
                 </Text>
-                <Text style={styles.taskSub}>{activityDone ? "Workout logged" : "Screenshot or manual entry"}</Text>
-              </View>
-              <Feather name={activityDone ? "check-circle" : "plus"} size={16} color={activityDone ? Colors.highlight : "#3C3C3A"} />
-            </Pressable>
-
-            <Pressable
-              onPress={() => {
-                if (!checkInDone) return;
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-                router.push("/workout-session");
-              }}
-              style={({ pressed }) => [
-                styles.taskItem,
-                checkInDone ? styles.taskPending : styles.taskLocked,
-                { opacity: checkInDone ? (pressed ? 0.85 : 1) : 0.5 },
-              ]}
-            >
-              <View style={[styles.taskIcon, checkInDone ? styles.taskIconHighlight : styles.taskIconLocked]}>
-                <Feather name="activity" size={16} color={checkInDone ? Colors.highlight : "#3C3C3A"} />
-              </View>
-              <View style={styles.taskInfo}>
-                <Text style={[styles.taskTitle, !checkInDone && styles.taskTitleLocked]}>Physique Protocol</Text>
                 <Text style={styles.taskSub}>
-                  {checkInDone ? "Tap to begin today's workout" : "Locked: Complete check-in first"}
+                  {activityDone
+                    ? isRestDay
+                      ? "Stay hydrated & eat enough protein"
+                      : "Completed — great work today"
+                    : checkInDone
+                      ? "Workout, log external, or rest below"
+                      : "Locked: Complete check-in first"}
                 </Text>
               </View>
-              <Feather name={checkInDone ? "chevron-right" : "lock"} size={16} color={checkInDone ? Colors.textMuted : "#3C3C3A"} />
-            </Pressable>
+              {!checkInDone && !activityDone && (
+                <Feather name="lock" size={16} color="#3C3C3A" />
+              )}
+              {activityDone && (
+                <Feather name="check-circle" size={16} color={isRestDay ? Colors.recovery : Colors.highlight} />
+              )}
+            </View>
           </View>
         </BentoCard>
 
@@ -314,11 +345,13 @@ export default function StatusScreen() {
         </BentoCard>
 
         <Pressable
-          style={({ pressed }) => [styles.card, styles.architectCard, { opacity: pressed ? 0.85 : 1 }]}
+          style={({ pressed }) => [styles.card, styles.architectCard, { opacity: checkInDone ? (pressed ? 0.85 : 1) : 0.4 }]}
           onPress={() => {
+            if (!checkInDone) return;
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             router.push("/workout-architect");
           }}
+          disabled={!checkInDone}
         >
           <View style={styles.architectIcon}>
             <Feather name="cpu" size={20} color={Colors.highlight} />
@@ -329,6 +362,67 @@ export default function StatusScreen() {
           </View>
           <Feather name="arrow-right" size={18} color={Colors.highlight} />
         </Pressable>
+
+        <View style={styles.secondaryActions}>
+          <Pressable
+            style={({ pressed }) => [styles.secondaryCard, { opacity: checkInDone ? (pressed ? 0.85 : 1) : 0.4 }]}
+            onPress={() => {
+              if (!checkInDone) return;
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              router.push("/external-workouts");
+            }}
+            disabled={!checkInDone}
+          >
+            <View style={styles.secondaryIcon}>
+              <Feather name="upload" size={16} color={Colors.orange} />
+            </View>
+            <View style={styles.secondaryInfo}>
+              <Text style={styles.secondaryTitle}>Log External Workout</Text>
+              <Text style={styles.secondarySub}>Trained outside the app? Log it here</Text>
+            </View>
+            <Feather name="chevron-right" size={16} color={Colors.textMuted} />
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => {
+              const canTap = checkInDone && (isRestDay || !activityDone);
+              return [
+                styles.secondaryCard,
+                isRestDay ? styles.secondaryCardDone : undefined,
+                { opacity: canTap ? (pressed ? 0.85 : 1) : 0.4 },
+              ];
+            }}
+            onPress={() => {
+              if (!checkInDone) return;
+              if (isRestDay) {
+                handleUndoRestDay();
+              } else if (!activityDone) {
+                handleRestDay();
+              }
+            }}
+          >
+            <View style={[styles.secondaryIcon, styles.secondaryIconRecovery]}>
+              <Feather name="moon" size={16} color={Colors.recovery} />
+            </View>
+            <View style={styles.secondaryInfo}>
+              <Text style={styles.secondaryTitle}>Rest & Recovery Day</Text>
+              <Text style={styles.secondarySub}>
+                {isRestDay
+                  ? "Tap to undo rest day"
+                  : activityDone
+                    ? "Already logged today"
+                    : "Take a recovery day"}
+              </Text>
+            </View>
+            {isRestDay ? (
+              <Feather name="x-circle" size={16} color={Colors.recovery} />
+            ) : activityDone ? (
+              <Feather name="check-circle" size={16} color={Colors.recovery} />
+            ) : (
+              <Feather name="chevron-right" size={16} color={Colors.textMuted} />
+            )}
+          </Pressable>
+        </View>
 
         <View style={styles.statsRow}>
           <Pressable onPress={() => setReadinessInfoOpen(true)} style={{ flex: 1 }}>
@@ -354,6 +448,46 @@ export default function StatusScreen() {
             <Text style={styles.statLabel}>/ Week</Text>
           </BentoCard>
         </View>
+
+        {(recentExternalWorkouts && recentExternalWorkouts.length > 0) && (
+          <BentoCard>
+            <Text style={styles.sectionLabel}>Recent Activity</Text>
+            <View style={styles.recentList}>
+              {recentExternalWorkouts.slice(0, 5).map((workout: any) => {
+                const isRest = workout.workoutType === "rest";
+                const isExternal = workout.source !== "in-app";
+                const dateStr = new Date(workout.createdAt).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                });
+                const iconName = isRest ? "moon" : isExternal ? "globe" : "award";
+                const iconColor = isRest ? Colors.recovery : isExternal ? Colors.orange : Colors.highlight;
+                const iconBg = isRest ? styles.recentIconRest : isExternal ? styles.recentIconExternal : styles.recentIconInApp;
+                const sourceLabel = isRest ? "Rest Day" : isExternal ? "External" : "In-App";
+                return (
+                  <View key={workout.id} style={styles.recentItem}>
+                    <View style={[styles.recentIcon, iconBg]}>
+                      <Feather name={iconName} size={14} color={iconColor} />
+                    </View>
+                    <View style={styles.recentInfo}>
+                      <Text style={styles.recentTitle}>{workout.label}</Text>
+                      <Text style={styles.recentSub}>
+                        {isRest
+                          ? "Recovery day"
+                          : `${workout.duration} min${workout.intensity ? ` · RPE ${workout.intensity}` : ""}${workout.stimulusPoints ? ` · ${workout.stimulusPoints} pts` : ""}`
+                        }
+                      </Text>
+                    </View>
+                    <View style={styles.recentRight}>
+                      <Text style={styles.recentDate}>{dateStr}</Text>
+                      <Text style={styles.recentSource}>{sourceLabel}</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </BentoCard>
+        )}
       </ScrollView>
 
       <OnboardingModal
@@ -365,6 +499,7 @@ export default function StatusScreen() {
         visible={checkInOpen}
         onClose={() => setCheckInOpen(false)}
         onComplete={handleCheckInComplete}
+        isSubmitting={isSubmittingCheckIn}
         initialData={todayCheckIn ? {
           energyLevel: todayCheckIn.energyLevel,
           sleepQuality: todayCheckIn.sleepQuality,
@@ -373,13 +508,6 @@ export default function StatusScreen() {
           soreMuscleGroups: todayCheckIn.soreMuscleGroups ?? [],
           notes: todayCheckIn.notes ?? "",
         } : null}
-      />
-
-      <ActivityImportModal
-        visible={activityOpen}
-        onClose={() => setActivityOpen(false)}
-        onComplete={handleScreenshotComplete}
-        onManualSubmit={handleManualWorkout}
       />
 
       <InsightInfoModal
@@ -450,16 +578,17 @@ const styles = StyleSheet.create({
   },
   taskPending: { borderColor: "rgba(246,234,152,0.3)", backgroundColor: "rgba(246,234,152,0.04)" },
   taskDone: { borderColor: "rgba(246,234,152,0.2)", backgroundColor: "rgba(246,234,152,0.07)" },
-  taskInactive: { borderColor: Colors.border, backgroundColor: "rgba(255,255,255,0.02)" },
+  taskRest: { borderColor: "rgba(119,156,175,0.3)", backgroundColor: "rgba(119,156,175,0.07)" },
   taskLocked: { borderColor: "#2C2C2A", backgroundColor: "transparent" },
   taskIcon: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
   taskIconHighlight: { backgroundColor: "rgba(246,234,152,0.12)" },
   taskIconDone: { backgroundColor: Colors.highlight },
-  taskIconNeutral: { backgroundColor: "#2C2C2A" },
+  taskIconRest: { backgroundColor: "rgba(119,156,175,0.2)" },
   taskIconLocked: { backgroundColor: "#222220" },
   taskInfo: { flex: 1 },
   taskTitle: { fontSize: 12, fontFamily: "Inter_700Bold", color: Colors.text, textTransform: "uppercase", letterSpacing: 0.5 },
   taskTitleDone: { color: Colors.highlight },
+  taskTitleRest: { color: Colors.recovery },
   taskTitleMuted: { color: "#A8A29E" },
   taskTitleLocked: { fontSize: 12, fontFamily: "Inter_700Bold", color: "#78716C", textTransform: "uppercase", letterSpacing: 0.5 },
   taskSub: { fontSize: 9, fontFamily: "Inter_400Regular", color: Colors.textSubtle, marginTop: 2, letterSpacing: 0.5 },
@@ -528,6 +657,33 @@ const styles = StyleSheet.create({
   architectInfo: { flex: 1 },
   architectTitle: { fontSize: 13, fontFamily: "Inter_700Bold", color: Colors.text, textTransform: "uppercase", letterSpacing: 0.5 },
   architectSub: { fontSize: 10, fontFamily: "Inter_400Regular", color: Colors.textSubtle, marginTop: 2 },
+  secondaryActions: { gap: 8 },
+  secondaryCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: Colors.bgCard,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  secondaryCardDone: { borderColor: "rgba(119,156,175,0.3)", backgroundColor: "rgba(119,156,175,0.05)" },
+  secondaryIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "rgba(252,82,0,0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  secondaryIconRecovery: {
+    backgroundColor: "rgba(119,156,175,0.1)",
+  },
+  secondaryInfo: { flex: 1 },
+  secondaryTitle: { fontSize: 11, fontFamily: "Inter_700Bold", color: Colors.text, textTransform: "uppercase", letterSpacing: 0.5 },
+  secondarySub: { fontSize: 9, fontFamily: "Inter_400Regular", color: Colors.textSubtle, marginTop: 2 },
   statsRow: { flexDirection: "row", gap: 10 },
   statCard: { alignItems: "center", gap: 8, paddingVertical: 16, position: "relative" },
   statValue: { fontSize: 22, fontFamily: "Inter_900Black", color: Colors.text, fontStyle: "italic" },
@@ -536,5 +692,56 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 8,
     right: 8,
+  },
+  recentList: { gap: 8, marginTop: 12 },
+  recentItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  recentIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  recentIconExternal: {
+    backgroundColor: "rgba(252,82,0,0.1)",
+  },
+  recentIconInApp: {
+    backgroundColor: "rgba(246,234,152,0.1)",
+  },
+  recentIconRest: {
+    backgroundColor: "rgba(119,156,175,0.1)",
+  },
+  recentInfo: { flex: 1 },
+  recentTitle: {
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
+    color: Colors.text,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  recentSub: {
+    fontSize: 10,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
+    marginTop: 2,
+  },
+  recentRight: { alignItems: "flex-end" },
+  recentDate: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    color: Colors.textMuted,
+  },
+  recentSource: {
+    fontSize: 9,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
+    marginTop: 2,
   },
 });

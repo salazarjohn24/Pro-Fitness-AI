@@ -61,8 +61,12 @@ export function useProfile() {
     queryFn: async () => {
       const headers = await getAuthHeaders();
       const res = await fetch(`${getApiBase()}/api/profile`, getFetchOptions(headers));
-      if (!res.ok) throw new Error("Failed to load profile");
+      if (!res.ok) throw new Error(`Failed to load profile: ${res.status}`);
       return res.json();
+    },
+    retry: (count, error) => {
+      if (error?.message?.includes("401")) return false;
+      return count < 2;
     },
   });
 }
@@ -105,8 +109,12 @@ export function useTodayCheckIn() {
     queryFn: async () => {
       const headers = await getAuthHeaders();
       const res = await fetch(`${getApiBase()}/api/checkins/today`, getFetchOptions(headers));
-      if (!res.ok) throw new Error("Failed to load check-in");
+      if (!res.ok) throw new Error(`Failed to load check-in: ${res.status}`);
       return res.json();
+    },
+    retry: (count, error) => {
+      if (error?.message?.includes("401")) return false;
+      return count < 2;
     },
   });
 }
@@ -172,14 +180,25 @@ export interface ExternalWorkout {
   label: string;
   duration: number;
   workoutType: string;
-  source: string;
+  source: string | null;
+  intensity: number | null;
+  muscleGroups: string[] | null;
+  stimulusPoints: number | null;
   createdAt: string;
 }
 
 export function useSubmitExternalWorkout() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: { label: string; duration: number; workoutType: string; source?: string }) => {
+    mutationFn: async (data: {
+      label: string;
+      duration: number;
+      workoutType: string;
+      source?: string;
+      intensity?: number;
+      muscleGroups?: string[];
+      stimulusPoints?: number;
+    }) => {
       const headers = await getAuthHeaders();
       const res = await fetch(`${getApiBase()}/api/workouts/external`, {
         ...getFetchOptions(headers),
@@ -190,6 +209,69 @@ export function useSubmitExternalWorkout() {
       return res.json();
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["profile"] });
+      queryClient.invalidateQueries({ queryKey: ["recent-external-workouts"] });
+    },
+  });
+}
+
+export function useRecentExternalWorkouts() {
+  return useQuery<ExternalWorkout[]>({
+    queryKey: ["recent-external-workouts"],
+    queryFn: async () => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${getApiBase()}/api/workouts/external`, getFetchOptions(headers));
+      if (!res.ok) throw new Error(`Failed to load external workouts: ${res.status}`);
+      return res.json();
+    },
+    retry: (count, error) => {
+      if (error?.message?.includes("401")) return false;
+      return count < 2;
+    },
+  });
+}
+
+export function useUpdateExternalWorkout() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...data }: {
+      id: number;
+      label?: string;
+      duration?: number;
+      workoutType?: string;
+      intensity?: number | null;
+      muscleGroups?: string[] | null;
+      stimulusPoints?: number | null;
+    }) => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${getApiBase()}/api/workouts/external/${id}`, {
+        ...getFetchOptions(headers),
+        method: "PUT",
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("Failed to update workout");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["recent-external-workouts"] });
+    },
+  });
+}
+
+export function useDeleteExternalWorkout() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${getApiBase()}/api/workouts/external/${id}`, {
+        ...getFetchOptions(headers),
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Failed to delete workout");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["recent-external-workouts"] });
       queryClient.invalidateQueries({ queryKey: ["profile"] });
     },
   });

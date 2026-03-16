@@ -67,6 +67,9 @@ export const externalWorkoutsTable = pgTable("external_workouts", {
   duration: integer("duration").notNull(),
   workoutType: varchar("workout_type").notNull(),
   source: varchar("source").default("manual"),
+  intensity: integer("intensity"),
+  muscleGroups: jsonb("muscle_groups").$type<string[]>().default([]),
+  stimulusPoints: integer("stimulus_points"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
