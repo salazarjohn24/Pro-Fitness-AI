@@ -18,7 +18,7 @@ import { useProfile } from "@/hooks/useProfile";
 import { InsightInfoModal } from "@/components/InsightInfoModal";
 import { RebalancePlanModal } from "@/components/RebalancePlanModal";
 import { AccordionCard } from "@/components/AccordionCard";
-import { useAuditAlerts } from "@/hooks/useAuditAlerts";
+import { useAuditAlerts, useAIAuditInsight } from "@/hooks/useAuditAlerts";
 import { useRecoveryCorrelation } from "@/hooks/useRecoveryCorrelation";
 import { useVolumeStats, type VolumeTimelinePoint, type MuscleFocusItem } from "@/hooks/useVolumeStats";
 
@@ -342,6 +342,7 @@ export default function ProgressScreen() {
   const [rebalanceOpen, setRebalanceOpen] = useState(false);
   const { data: profile } = useProfile();
   const { data: alerts } = useAuditAlerts();
+  const { data: aiInsight, isLoading: aiInsightLoading } = useAIAuditInsight();
   const { data: recoveryCorrelation } = useRecoveryCorrelation();
   const { data: volumeStats, isLoading: volumeLoading } = useVolumeStats(activeRange);
 
@@ -532,39 +533,37 @@ export default function ProgressScreen() {
           </AccordionCard>
         )}
 
-        {hasEnoughData && AI_INSIGHTS.map((insight) => (
-          <View key={insight.id} style={styles.insightCard}>
-            <View style={styles.insightHeader}>
-              <View style={styles.insightIconWrap}>
-                <Feather name="star" size={16} color={Colors.highlight} />
-              </View>
-              <Text style={styles.insightTitle}>{insight.title.toUpperCase()}</Text>
-              <Pressable
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  setInfoInsight(insight.info);
-                }}
-                style={styles.infoBtn}
-              >
-                <Feather name="info" size={14} color={Colors.textSubtle} />
-              </Pressable>
+        <View style={styles.insightCard}>
+          <View style={styles.insightHeader}>
+            <View style={styles.insightIconWrap}>
+              <Feather name="zap" size={16} color={Colors.highlight} />
             </View>
-            <Text style={styles.insightText}>{insight.text}</Text>
-            {insight.hasRebalance && (
-              <Pressable
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  setRebalanceOpen(true);
-                }}
-                style={({ pressed }) => [styles.insightAction, { opacity: pressed ? 0.7 : 1 }]}
-              >
-                <Feather name="refresh-cw" size={12} color={Colors.highlight} />
-                <Text style={styles.insightActionText}>Rebalance plan</Text>
-                <Feather name="arrow-right" size={12} color={Colors.highlight} />
-              </Pressable>
-            )}
+            <Text style={styles.insightTitle}>AI PERFORMANCE ANALYSIS</Text>
           </View>
-        ))}
+          {aiInsightLoading ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 }}>
+              <ActivityIndicator size="small" color={Colors.highlight} />
+              <Text style={[styles.insightText, { color: Colors.textMuted }]}>Generating your personalized insight...</Text>
+            </View>
+          ) : aiInsight?.insight ? (
+            <Text style={styles.insightText}>{aiInsight.insight}</Text>
+          ) : (
+            <Text style={styles.insightText}>Log more workouts to unlock your personalized AI performance analysis.</Text>
+          )}
+          {hasEnoughData && (
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setRebalanceOpen(true);
+              }}
+              style={({ pressed }) => [styles.insightAction, { opacity: pressed ? 0.7 : 1 }]}
+            >
+              <Feather name="refresh-cw" size={12} color={Colors.highlight} />
+              <Text style={styles.insightActionText}>Rebalance plan</Text>
+              <Feather name="arrow-right" size={12} color={Colors.highlight} />
+            </Pressable>
+          )}
+        </View>
       </ScrollView>
 
       <InsightInfoModal

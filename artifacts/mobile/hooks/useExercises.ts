@@ -86,6 +86,23 @@ export function useExerciseHistory(id: number) {
   });
 }
 
+export function useExerciseCoachNote(id: number) {
+  return useQuery<{ coachNote: string }>({
+    queryKey: ["exercise-coach-note", id],
+    queryFn: async () => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(
+        `${getApiBase()}/api/exercises/${id}/coach-note`,
+        getFetchOptions(headers)
+      );
+      if (!res.ok) throw new Error(`Failed to load coach note: ${res.status}`);
+      return res.json();
+    },
+    enabled: id > 0,
+    staleTime: 1000 * 60 * 5,
+  });
+}
+
 export function useLogExerciseSet(exerciseId: number) {
   const queryClient = useQueryClient();
   return useMutation({

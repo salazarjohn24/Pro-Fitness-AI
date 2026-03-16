@@ -158,6 +158,23 @@ Pro Fitness AI — dark-themed fitness tracker with AI recommendations.
 - `GET /api/audit/recovery-correlation` — Get recovery-to-load correlation (high vs low sleep score volume comparison)
 - `GET /api/audit/volume-stats?range=1M|3M|6M` — Get time-range filtered training volume timeline + muscle focus breakdown
 
+## AI Integration (OpenAI via Replit AI Integrations)
+
+- **Provider**: OpenAI via Replit AI Integrations proxy (no API key required, billed to credits)
+- **Package**: `@workspace/integrations-openai-ai-server` (lib/integrations-openai-ai-server)
+- **Model**: `gpt-5-mini` for all fitness AI features
+- **AI Features**:
+  - `POST /api/workout/generate` — AI selects exercises from library, sets sets/reps, writes rationale (falls back to rule-based)
+  - `POST /api/workout/architect-generate` — AI generates custom workout for requested muscle groups (falls back to rule-based)
+  - `POST /api/workout/parse-description` — AI parses natural language workout descriptions into structured data (muscleGroups, intensity, duration, type, label)
+  - `GET /api/exercises/:id/coach-note` — AI generates personalized coach's note based on user's history, injuries, and goals
+  - `GET /api/audit/ai-insight` — AI generates a personalized performance analysis paragraph from training data, alerts, and recovery patterns
+- **Service**: `artifacts/api-server/src/services/aiService.ts` — all OpenAI calls with rule-based fallbacks
+- **Mobile hooks**:
+  - `useExerciseCoachNote(id)` — fetches AI coach note for exercise detail screen
+  - `useAIAuditInsight()` — fetches AI performance analysis for the progress/audit screen
+- **Fallbacks**: All AI endpoints fall back to rule-based logic if the API call fails
+
 ## TypeScript & Composite Projects
 
 Every package extends `tsconfig.base.json` which sets `composite: true`. The root `tsconfig.json` lists all packages as project references.

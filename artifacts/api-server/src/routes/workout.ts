@@ -2,6 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, userProfilesTable, dailyCheckInsTable, workoutSessionsTable, workoutHistoryTable, exerciseLibraryTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { EXERCISE_LIBRARY, exerciseMap, type ExerciseData } from "../data/exercises";
+import { generateAIWorkout, generateAIArchitectWorkout, parseWorkoutDescriptionAI } from "../services/aiService";
 
 const router: IRouter = Router();
 
@@ -295,7 +296,7 @@ router.post("/workout/generate", async (req: Request, res: Response) => {
     });
   }
 
-  const generatedExercises: GeneratedExercise[] = [
+  const fallbackExercises: GeneratedExercise[] = [
     ...mapToGenerated(warmups, "warmup"),
     ...mapToGenerated(compounds, "compound"),
     ...mapToGenerated(accessories, "accessory"),
@@ -303,30 +304,58 @@ router.post("/workout/generate", async (req: Request, res: Response) => {
     ...mapToGenerated(cooldowns, "cooldown"),
   ];
 
-  const focusMuscleNames = [...new Set(compounds.map(c => c.primaryMuscle))];
-  const titleMuscles = focusMuscleNames.slice(0, 2).map(m => m.charAt(0).toUpperCase() + m.slice(1)).join(" & ");
-  const workoutTitle = titleMuscles ? `${titleMuscles} Focus` : "Full Body Session";
+  const availableForAI = EXERCISE_LIBRARY.filter(e => isExerciseAllowed(e));
 
-  let rationale = `Based on your ${fitnessGoal || "general fitness"} goal`;
-  if (highSorenessGroups.length > 0) {
-    rationale += `, avoiding ${highSorenessGroups.join(", ")} due to high soreness`;
-  }
-  if (moderateSorenessGroups.length > 0) {
-    rationale += `, reduced volume for ${moderateSorenessGroups.join(", ")}`;
-  }
-  if (energyLevel <= 2) {
-    rationale += `, adjusted for lower energy today`;
-  }
-  rationale += ".";
+  try {
+    const aiResult = await generateAIWorkout(
+      {
+        skillLevel,
+        fitnessGoal,
+        energyLevel,
+        sleepQuality: latestCheckin?.sleepQuality ?? 3,
+        stressLevel: latestCheckin?.stressLevel ?? 3,
+        highSorenessGroups,
+        moderateSorenessGroups,
+        injuries: userInjuries,
+        equipment: userEquipment,
+        checkInNotes: latestCheckin?.notes,
+      },
+      availableForAI,
+      exerciseMap
+    );
 
-  res.json({
-    workoutTitle,
-    subtitle: "AI Optimized · Today's Protocol",
-    rationale,
-    exercises: generatedExercises,
-    totalSets: generatedExercises.reduce((a, e) => a + e.sets, 0),
-    estimatedMinutes: Math.round(generatedExercises.reduce((a, e) => a + e.sets * 2.5, 0)),
-  });
+    const aiExercises = aiResult.exercises.length >= 3 ? aiResult.exercises : fallbackExercises;
+
+    res.json({
+      workoutTitle: aiResult.workoutTitle,
+      subtitle: "AI Optimized · Today's Protocol",
+      rationale: aiResult.rationale,
+      exercises: aiExercises,
+      totalSets: aiExercises.reduce((a: number, e: GeneratedExercise) => a + e.sets, 0),
+      estimatedMinutes: Math.round(aiExercises.reduce((a: number, e: GeneratedExercise) => a + e.sets * 2.5, 0)),
+    });
+  } catch (aiErr) {
+    console.error("AI workout generation failed, falling back to rule-based:", aiErr);
+
+    const focusMuscleNames = [...new Set(compounds.map(c => c.primaryMuscle))];
+    const titleMuscles = focusMuscleNames.slice(0, 2).map(m => m.charAt(0).toUpperCase() + m.slice(1)).join(" & ");
+    const workoutTitle = titleMuscles ? `${titleMuscles} Focus` : "Full Body Session";
+
+    let rationale = `Based on your ${fitnessGoal || "general fitness"} goal`;
+    if (highSorenessGroups.length > 0) rationale += `, avoiding ${highSorenessGroups.join(", ")} due to high soreness`;
+    if (moderateSorenessGroups.length > 0) rationale += `, reduced volume for ${moderateSorenessGroups.join(", ")}`;
+    if (energyLevel <= 2) rationale += `, adjusted for lower energy today`;
+    rationale += ".";
+
+    res.json({
+      workoutTitle,
+      subtitle: "AI Optimized · Today's Protocol",
+      rationale,
+      exercises: fallbackExercises,
+      totalSets: fallbackExercises.reduce((a, e) => a + e.sets, 0),
+      estimatedMinutes: Math.round(fallbackExercises.reduce((a, e) => a + e.sets * 2.5, 0)),
+    });
+  }
   } catch (err) {
     console.error("Workout generation error:", err);
     res.status(500).json({ error: "Failed to generate workout" });
@@ -605,7 +634,7 @@ router.post("/workout/architect-generate", async (req: Request, res: Response) =
       });
     }
 
-    const generatedExercises: GeneratedExercise[] = [
+    const fallbackExercises: GeneratedExercise[] = [
       ...mapToGenerated(warmups, "warmup"),
       ...mapToGenerated(compounds, "compound"),
       ...mapToGenerated(accessories, "accessory"),
@@ -613,32 +642,79 @@ router.post("/workout/architect-generate", async (req: Request, res: Response) =
       ...mapToGenerated(cooldowns, "cooldown"),
     ];
 
-    const focusMuscleNames = requestedGroups.slice(0, 3).map(m => m.charAt(0).toUpperCase() + m.slice(1));
-    const workoutTitle = focusMuscleNames.join(" & ") + " Session";
+    const availableForAI = EXERCISE_LIBRARY.filter(e => isExerciseAllowed(e));
 
-    let rationale = `Custom session targeting ${focusMuscleNames.join(", ").toLowerCase()}`;
-    if (highSorenessGroups.length > 0) {
-      rationale += `, avoiding ${highSorenessGroups.join(", ")} due to high soreness`;
-    }
-    if (moderateSorenessGroups.length > 0) {
-      rationale += `, reduced volume for ${moderateSorenessGroups.join(", ")}`;
-    }
-    if (energyLevel <= 2) {
-      rationale += `, adjusted for lower energy today`;
-    }
-    rationale += ".";
+    try {
+      const aiResult = await generateAIArchitectWorkout(
+        {
+          skillLevel,
+          fitnessGoal,
+          energyLevel,
+          sleepQuality: latestCheckin.sleepQuality,
+          stressLevel: latestCheckin.stressLevel,
+          highSorenessGroups,
+          moderateSorenessGroups,
+          injuries: userInjuries,
+          equipment: userEquipment,
+          requestedMuscleGroups: requestedGroups,
+        },
+        availableForAI,
+        exerciseMap
+      );
 
-    res.json({
-      workoutTitle,
-      subtitle: "Custom Architect · AI Optimized",
-      rationale,
-      exercises: generatedExercises,
-      totalSets: generatedExercises.reduce((a, e) => a + e.sets, 0),
-      estimatedMinutes: Math.round(generatedExercises.reduce((a, e) => a + e.sets * 2.5, 0)),
-    });
+      const aiExercises = aiResult.exercises.length >= 3 ? aiResult.exercises : fallbackExercises;
+
+      res.json({
+        workoutTitle: aiResult.workoutTitle,
+        subtitle: "Custom Architect · AI Optimized",
+        rationale: aiResult.rationale,
+        exercises: aiExercises,
+        totalSets: aiExercises.reduce((a: number, e: GeneratedExercise) => a + e.sets, 0),
+        estimatedMinutes: Math.round(aiExercises.reduce((a: number, e: GeneratedExercise) => a + e.sets * 2.5, 0)),
+      });
+    } catch (aiErr) {
+      console.error("AI architect generation failed, falling back to rule-based:", aiErr);
+
+      const focusMuscleNames = requestedGroups.slice(0, 3).map(m => m.charAt(0).toUpperCase() + m.slice(1));
+      const workoutTitle = focusMuscleNames.join(" & ") + " Session";
+      let rationale = `Custom session targeting ${focusMuscleNames.join(", ").toLowerCase()}`;
+      if (highSorenessGroups.length > 0) rationale += `, avoiding ${highSorenessGroups.join(", ")} due to high soreness`;
+      if (energyLevel <= 2) rationale += `, adjusted for lower energy today`;
+      rationale += ".";
+
+      res.json({
+        workoutTitle,
+        subtitle: "Custom Architect · AI Optimized",
+        rationale,
+        exercises: fallbackExercises,
+        totalSets: fallbackExercises.reduce((a, e) => a + e.sets, 0),
+        estimatedMinutes: Math.round(fallbackExercises.reduce((a, e) => a + e.sets * 2.5, 0)),
+      });
+    }
   } catch (err) {
     console.error("Architect generate error:", err);
     res.status(500).json({ error: "Failed to generate architect workout" });
+  }
+});
+
+router.post("/workout/parse-description", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const { description } = req.body as { description: string };
+  if (!description || typeof description !== "string" || description.trim().length === 0) {
+    res.status(400).json({ error: "description is required" });
+    return;
+  }
+
+  try {
+    const result = await parseWorkoutDescriptionAI(description.trim());
+    res.json(result);
+  } catch (err) {
+    console.error("Workout description parse error:", err);
+    res.status(500).json({ error: "Failed to parse workout description" });
   }
 });
 

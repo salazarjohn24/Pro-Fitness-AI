@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, exerciseLibraryTable, workoutHistoryTable } from "@workspace/db";
+import { db, exerciseLibraryTable, workoutHistoryTable, userProfilesTable } from "@workspace/db";
 import { eq, and, ilike, inArray, desc } from "drizzle-orm";
+import { generateCoachNote } from "../services/aiService";
 
 const router: IRouter = Router();
 
@@ -136,6 +137,70 @@ router.get("/exercises/:id/history", async (req: Request, res: Response) => {
     isPlateaued,
     restRecommendation,
   });
+});
+
+router.get("/exercises/:id/coach-note", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const exerciseId = parseInt(req.params.id, 10);
+  if (isNaN(exerciseId)) {
+    res.status(404).json({ error: "Exercise not found" });
+    return;
+  }
+
+  try {
+    const [exercise] = await db
+      .select()
+      .from(exerciseLibraryTable)
+      .where(eq(exerciseLibraryTable.id, exerciseId));
+
+    if (!exercise) {
+      res.status(404).json({ error: "Exercise not found" });
+      return;
+    }
+
+    const [profile] = await db
+      .select()
+      .from(userProfilesTable)
+      .where(eq(userProfilesTable.userId, req.user.id));
+
+    const history = await db
+      .select()
+      .from(workoutHistoryTable)
+      .where(
+        and(
+          eq(workoutHistoryTable.userId, req.user.id),
+          eq(workoutHistoryTable.exerciseId, exerciseId)
+        )
+      )
+      .orderBy(desc(workoutHistoryTable.performedAt))
+      .limit(3);
+
+    const coachNote = await generateCoachNote(
+      exercise.name,
+      exercise.muscleGroup ?? "unknown",
+      exercise.difficulty ?? "intermediate",
+      {
+        skillLevel: profile?.skillLevel ?? undefined,
+        fitnessGoal: profile?.fitnessGoal ?? undefined,
+        injuries: (profile?.injuries as string[] | null) ?? [],
+      },
+      history.map(h => ({
+        weight: h.weight,
+        reps: h.reps,
+        sets: h.sets,
+        performedAt: h.performedAt.toISOString(),
+      }))
+    );
+
+    res.json({ coachNote });
+  } catch (err) {
+    console.error("Coach note generation error:", err);
+    res.json({ coachNote: "Focus on controlled movement and proper form throughout each rep." });
+  }
 });
 
 router.post("/exercises/:id/history", async (req: Request, res: Response) => {

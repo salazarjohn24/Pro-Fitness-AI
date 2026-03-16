@@ -22,6 +22,7 @@ import {
   parseWorkoutDescription,
   type SkillLevel,
 } from "@/utils/stimulus";
+import { getApiBase, getAuthHeaders, getFetchOptions } from "@/hooks/apiHelpers";
 
 interface Props {
   visible: boolean;
@@ -166,11 +167,34 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
     resetState();
   };
 
-  const handleAiParse = () => {
+  const [aiParseLoading, setAiParseLoading] = useState(false);
+
+  const handleAiParse = async () => {
     if (!aiText.trim()) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const parsed = parseWorkoutDescription(aiText);
-    setAiParsed(parsed);
+    setAiParseLoading(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${getApiBase()}/api/workout/parse-description`, {
+        ...getFetchOptions(headers),
+        method: "POST",
+        body: JSON.stringify({ description: aiText.trim() }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAiParsed({ muscleGroups: data.muscleGroups, suggestedIntensity: data.intensity });
+        if (data.label && !aiLabel) setAiLabel(data.label);
+        if (data.estimatedDuration) setAiDuration(data.estimatedDuration);
+      } else {
+        const parsed = parseWorkoutDescription(aiText);
+        setAiParsed(parsed);
+      }
+    } catch {
+      const parsed = parseWorkoutDescription(aiText);
+      setAiParsed(parsed);
+    } finally {
+      setAiParseLoading(false);
+    }
   };
 
   const handleAiSubmit = () => {
@@ -424,14 +448,20 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
                 <Pressable
                   style={({ pressed }) => [
                     styles.secondaryBtn,
-                    !aiText.trim() && styles.primaryBtnDisabled,
+                    (!aiText.trim() || aiParseLoading) && styles.primaryBtnDisabled,
                     { opacity: pressed ? 0.9 : 1, marginTop: 12 },
                   ]}
                   onPress={handleAiParse}
-                  disabled={!aiText.trim()}
+                  disabled={!aiText.trim() || aiParseLoading}
                 >
-                  <Feather name="cpu" size={16} color={Colors.text} />
-                  <Text style={styles.secondaryBtnText}>Analyze Workout</Text>
+                  {aiParseLoading ? (
+                    <ActivityIndicator size="small" color={Colors.text} />
+                  ) : (
+                    <Feather name="cpu" size={16} color={Colors.text} />
+                  )}
+                  <Text style={styles.secondaryBtnText}>
+                    {aiParseLoading ? "Analyzing with AI..." : "Analyze Workout"}
+                  </Text>
                 </Pressable>
               )}
 

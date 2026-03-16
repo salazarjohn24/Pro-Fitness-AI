@@ -2,6 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, workoutSessionsTable, workoutHistoryTable, exerciseLibraryTable, dailyCheckInsTable, externalWorkoutsTable } from "@workspace/db";
 import { eq, desc, and, gte } from "drizzle-orm";
 import { exerciseMap } from "../data/exercises";
+import { generateAuditInsight } from "../services/aiService";
 
 const router: IRouter = Router();
 
@@ -384,6 +385,120 @@ router.get("/audit/volume-stats", async (req: Request, res: Response) => {
   } catch (err) {
     console.error("Volume stats error:", err);
     res.status(500).json({ error: "Failed to compute volume stats" });
+  }
+});
+
+router.get("/audit/ai-insight", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  try {
+    const userId = req.user.id;
+
+    const alerts = await (async () => {
+      const historyRecords = await db
+        .select({
+          exerciseId: workoutHistoryTable.exerciseId,
+          consistencyIndex: workoutHistoryTable.consistencyIndex,
+          performedAt: workoutHistoryTable.performedAt,
+        })
+        .from(workoutHistoryTable)
+        .where(eq(workoutHistoryTable.userId, userId))
+        .orderBy(desc(workoutHistoryTable.performedAt));
+
+      const exerciseLibrary = await db
+        .select({ id: exerciseLibraryTable.id, muscleGroup: exerciseLibraryTable.muscleGroup })
+        .from(exerciseLibraryTable);
+
+      const exerciseMuscleMap: Record<number, string> = {};
+      for (const ex of exerciseLibrary) {
+        exerciseMuscleMap[ex.id] = normalizeMuscleName(ex.muscleGroup ?? "");
+      }
+
+      const muscleLastTrained: Record<string, { date: Date; consistencyIndex: number | null }> = {};
+      for (const record of historyRecords) {
+        const muscle = exerciseMuscleMap[record.exerciseId] ?? "";
+        if (!muscle) continue;
+        if (!muscleLastTrained[muscle] || record.performedAt > muscleLastTrained[muscle].date) {
+          muscleLastTrained[muscle] = { date: record.performedAt, consistencyIndex: record.consistencyIndex };
+        }
+      }
+
+      const now = new Date();
+      const result: { type: string; muscle: string; message: string; daysSince?: number; consistencyIndex?: number }[] = [];
+
+      for (const muscle of CANONICAL_MUSCLES) {
+        const info = muscleLastTrained[muscle];
+        if (!info) continue;
+        const daysSince = Math.floor((now.getTime() - info.date.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysSince >= 10) {
+          result.push({ type: "neglect", muscle, message: `${muscle} hasn't been trained in ${daysSince} days`, daysSince });
+        }
+        if (info.consistencyIndex !== null && info.consistencyIndex !== undefined && info.consistencyIndex < 0.8) {
+          result.push({ type: "consistency", muscle, message: `Consistency check needed for ${muscle}`, consistencyIndex: info.consistencyIndex });
+        }
+      }
+      return result;
+    })();
+
+    const now = new Date();
+    const cutoff = new Date();
+    cutoff.setMonth(now.getMonth() - 1);
+
+    const sessions = await db
+      .select()
+      .from(workoutSessionsTable)
+      .where(and(eq(workoutSessionsTable.userId, userId), gte(workoutSessionsTable.sessionDate, cutoff.toISOString().split("T")[0])))
+      .orderBy(desc(workoutSessionsTable.createdAt));
+
+    const muscleSets: Record<string, number> = {};
+    for (const session of sessions) {
+      const exercises = (session.exercises as { exerciseId: string; name: string; sets: { completed: boolean }[] }[] | null) ?? [];
+      for (const ex of exercises) {
+        const completedSets = (ex.sets ?? []).filter(s => s.completed).length;
+        if (completedSets === 0) continue;
+        const data = exerciseMap.get(ex.exerciseId);
+        const muscle = data?.primaryMuscle.toLowerCase() ?? "";
+        if (muscle) muscleSets[muscle] = (muscleSets[muscle] ?? 0) + completedSets;
+      }
+    }
+
+    const totalSets = Object.values(muscleSets).reduce((a, b) => a + b, 0);
+    const muscleFocus = Object.entries(muscleSets).map(([muscle, sets]) => ({
+      muscle: muscle.charAt(0).toUpperCase() + muscle.slice(1),
+      sets,
+      percentage: totalSets > 0 ? Math.round((sets / totalSets) * 100) : 0,
+    }));
+
+    const checkIns = await db.select().from(dailyCheckInsTable).where(eq(dailyCheckInsTable.userId, userId)).orderBy(desc(dailyCheckInsTable.createdAt)).limit(30);
+    const checkInByDate: Record<string, typeof checkIns[0]> = {};
+    for (const ci of checkIns) { checkInByDate[ci.date] = ci; }
+
+    const highVols: number[] = [];
+    const lowVols: number[] = [];
+    for (const s of sessions) {
+      const ci = checkInByDate[s.sessionDate];
+      if (!ci) continue;
+      const sleepScore = ci.sleepScore ?? Math.round((ci.sleepQuality / 5) * 100);
+      const vol = s.totalVolume ?? (s.totalSetsCompleted ?? 0) * 10;
+      if (sleepScore >= 70) highVols.push(vol); else lowVols.push(vol);
+    }
+    const avgHigh = highVols.length > 0 ? highVols.reduce((a, b) => a + b, 0) / highVols.length : 0;
+    const avgLow = lowVols.length > 0 ? lowVols.reduce((a, b) => a + b, 0) / lowVols.length : 0;
+    const pctDiff = avgLow > 0 ? Math.round(((avgHigh - avgLow) / avgLow) * 100) : (avgHigh > 0 ? 100 : 0);
+
+    const insight = await generateAuditInsight(
+      alerts,
+      { totalSessions: sessions.length, totalVolume: sessions.reduce((a, s) => a + (s.totalVolume ?? 0), 0), muscleFocus },
+      { avgHighVolume: Math.round(avgHigh), avgLowVolume: Math.round(avgLow), percentageDifference: pctDiff, hasEnoughData: highVols.length >= 5 && lowVols.length >= 5 }
+    );
+
+    res.json({ insight });
+  } catch (err) {
+    console.error("AI audit insight error:", err);
+    res.json({ insight: "Keep training consistently to unlock deeper performance insights." });
   }
 });
 

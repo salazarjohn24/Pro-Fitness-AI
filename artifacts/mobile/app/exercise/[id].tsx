@@ -18,6 +18,7 @@ import { Colors } from "@/constants/colors";
 import {
   useExerciseDetail,
   useExerciseHistory,
+  useExerciseCoachNote,
   type Exercise,
 } from "@/hooks/useExercises";
 
@@ -37,6 +38,7 @@ export default function ExerciseDetailScreen() {
 
   const { data: exercise, isLoading, isError, refetch } = useExerciseDetail(exerciseId);
   const { data: history } = useExerciseHistory(exerciseId);
+  const { data: coachNoteData, isLoading: coachNoteLoading } = useExerciseCoachNote(exerciseId);
 
   if (isLoading) {
     return (
@@ -223,12 +225,22 @@ export default function ExerciseDetailScreen() {
                   <Text style={styles.coachStatLabel}>Sessions</Text>
                 </View>
               </View>
-              {history.restRecommendation && (
+              {coachNoteLoading ? (
+                <View style={styles.restRec}>
+                  <ActivityIndicator size="small" color={Colors.highlight} />
+                  <Text style={[styles.restRecText, { marginLeft: 6 }]}>Generating AI insight...</Text>
+                </View>
+              ) : coachNoteData?.coachNote ? (
+                <View style={styles.aiNoteContainer}>
+                  <Feather name="zap" size={12} color={Colors.highlight} />
+                  <Text style={styles.aiNoteText}>{coachNoteData.coachNote}</Text>
+                </View>
+              ) : history.restRecommendation ? (
                 <View style={styles.restRec}>
                   <Feather name="clock" size={12} color={Colors.highlight} />
                   <Text style={styles.restRecText}>{history.restRecommendation}</Text>
                 </View>
-              )}
+              ) : null}
             </View>
           )}
 
@@ -415,6 +427,17 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   restRecText: { flex: 1, fontSize: 12, fontFamily: "Inter_400Regular", color: Colors.highlight, lineHeight: 16 },
+  aiNoteContainer: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    backgroundColor: "rgba(246,234,152,0.08)",
+    borderRadius: 10,
+    padding: 12,
+    borderLeftWidth: 2,
+    borderLeftColor: Colors.highlight,
+  },
+  aiNoteText: { flex: 1, fontSize: 12, fontFamily: "Inter_400Regular", color: Colors.highlight, lineHeight: 18 },
   plateauAlert: {
     backgroundColor: "rgba(245,158,11,0.08)",
     borderWidth: 1,
