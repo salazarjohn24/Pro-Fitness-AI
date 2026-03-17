@@ -37,7 +37,7 @@ router.put("/profile", async (req: Request, res: Response) => {
     streakDays, fitnessGoal, workoutFrequency, dailySyncProgress,
     checkInCompleted, activityImported,
     age, weight, height, gender, experienceLevel,
-    injuries, injuryNotes, primaryGoal,
+    injuries, injuryNotes, primaryGoal, unitSystem,
     onboardingCompleted, insightDetailLevel, syncPreferences,
     equipment, skillLevel,
   } = req.body;
@@ -58,6 +58,7 @@ router.put("/profile", async (req: Request, res: Response) => {
   if (injuries !== undefined) setFields.injuries = injuries;
   if (injuryNotes !== undefined) setFields.injuryNotes = injuryNotes;
   if (primaryGoal !== undefined) setFields.primaryGoal = primaryGoal;
+  if (unitSystem !== undefined) setFields.unitSystem = unitSystem;
   if (onboardingCompleted !== undefined) setFields.onboardingCompleted = onboardingCompleted;
   if (insightDetailLevel !== undefined) setFields.insightDetailLevel = insightDetailLevel;
   if (syncPreferences !== undefined) setFields.syncPreferences = syncPreferences;

@@ -48,6 +48,7 @@ export interface FitnessProfile {
   injuries: string[] | null;
   injuryNotes: string | null;
   primaryGoal: string | null;
+  unitSystem: string | null;
   onboardingCompleted: boolean | null;
   insightDetailLevel: string | null;
   syncPreferences: { appleHealth: boolean; strava: boolean; manualScreenshot: boolean } | null;

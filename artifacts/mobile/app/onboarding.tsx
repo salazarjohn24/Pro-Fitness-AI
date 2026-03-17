@@ -54,9 +54,12 @@ export default function OnboardingScreen() {
   const progressAnim = useRef(new Animated.Value(0.2)).current;
 
   const [step, setStep] = useState(0);
+  const [unitSystem, setUnitSystem] = useState<"imperial" | "metric">("imperial");
   const [age, setAge] = useState("");
   const [weight, setWeight] = useState("");
-  const [height, setHeight] = useState("");
+  const [heightFt, setHeightFt] = useState("");
+  const [heightIn, setHeightIn] = useState("");
+  const [heightCm, setHeightCm] = useState("");
   const [gender, setGender] = useState("");
   const [experienceLevel, setExperienceLevel] = useState("");
   const [injuries, setInjuries] = useState<string[]>([]);
@@ -100,17 +103,28 @@ export default function OnboardingScreen() {
     );
   };
 
+  const computedHeight = (): number | null => {
+    if (unitSystem === "imperial") {
+      const ft = parseInt(heightFt) || 0;
+      const inches = parseInt(heightIn) || 0;
+      const total = ft * 12 + inches;
+      return total > 0 ? total : null;
+    }
+    return heightCm ? parseInt(heightCm) : null;
+  };
+
   const handleConfirm = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     await updateProfile({
       age: age ? parseInt(age) : null,
       weight: weight ? parseInt(weight) : null,
-      height: height ? parseInt(height) : null,
+      height: computedHeight(),
       gender: gender || null,
       experienceLevel: experienceLevel || null,
       injuries,
       injuryNotes: injuryNotes || null,
       primaryGoal: primaryGoal || null,
+      unitSystem,
       onboardingCompleted: true,
     });
     router.replace("/gym-setup");
@@ -118,7 +132,10 @@ export default function OnboardingScreen() {
 
   const canProceed = () => {
     switch (step) {
-      case 0: return age !== "" && weight !== "" && height !== "" && gender !== "";
+      case 0: {
+        const heightOk = unitSystem === "imperial" ? heightFt !== "" : heightCm !== "";
+        return age !== "" && weight !== "" && heightOk && gender !== "";
+      }
       case 1: return experienceLevel !== "";
       case 2: return true;
       case 3: return primaryGoal !== "";
@@ -135,6 +152,31 @@ export default function OnboardingScreen() {
             <Text style={styles.stepTitle}>YOUR BIOMETRICS</Text>
             <Text style={styles.stepSubtitle}>Help us personalize your training</Text>
 
+            <View style={styles.unitToggleRow}>
+              <Pressable
+                style={[styles.unitToggleBtn, unitSystem === "imperial" && styles.unitToggleBtnActive]}
+                onPress={() => { Haptics.selectionAsync(); setUnitSystem("imperial"); }}
+              >
+                <Text style={[styles.unitToggleText, unitSystem === "imperial" && styles.unitToggleTextActive]}>
+                  IMPERIAL
+                </Text>
+                <Text style={[styles.unitToggleSub, unitSystem === "imperial" && styles.unitToggleSubActive]}>
+                  lb · ft / in
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.unitToggleBtn, unitSystem === "metric" && styles.unitToggleBtnActive]}
+                onPress={() => { Haptics.selectionAsync(); setUnitSystem("metric"); }}
+              >
+                <Text style={[styles.unitToggleText, unitSystem === "metric" && styles.unitToggleTextActive]}>
+                  METRIC
+                </Text>
+                <Text style={[styles.unitToggleSub, unitSystem === "metric" && styles.unitToggleSubActive]}>
+                  kg · cm
+                </Text>
+              </Pressable>
+            </View>
+
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>AGE</Text>
               <TextInput
@@ -150,29 +192,63 @@ export default function OnboardingScreen() {
 
             <View style={styles.inputRow}>
               <View style={[styles.inputGroup, { flex: 1 }]}>
-                <Text style={styles.inputLabel}>WEIGHT (LBS)</Text>
+                <Text style={styles.inputLabel}>WEIGHT ({unitSystem === "imperial" ? "LBS" : "KG"})</Text>
                 <TextInput
                   style={styles.textInput}
                   value={weight}
                   onChangeText={setWeight}
                   keyboardType="numeric"
-                  placeholder="175"
+                  placeholder={unitSystem === "imperial" ? "175" : "80"}
                   placeholderTextColor={Colors.textSubtle}
                   maxLength={4}
                 />
               </View>
-              <View style={[styles.inputGroup, { flex: 1 }]}>
-                <Text style={styles.inputLabel}>HEIGHT (IN)</Text>
-                <TextInput
-                  style={styles.textInput}
-                  value={height}
-                  onChangeText={setHeight}
-                  keyboardType="numeric"
-                  placeholder="70"
-                  placeholderTextColor={Colors.textSubtle}
-                  maxLength={3}
-                />
-              </View>
+
+              {unitSystem === "imperial" ? (
+                <View style={[styles.inputGroup, { flex: 1 }]}>
+                  <Text style={styles.inputLabel}>HEIGHT</Text>
+                  <View style={styles.inputRow}>
+                    <View style={{ flex: 1 }}>
+                      <TextInput
+                        style={[styles.textInput, { textAlign: "center" }]}
+                        value={heightFt}
+                        onChangeText={setHeightFt}
+                        keyboardType="numeric"
+                        placeholder="5 ft"
+                        placeholderTextColor={Colors.textSubtle}
+                        maxLength={1}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <TextInput
+                        style={[styles.textInput, { textAlign: "center" }]}
+                        value={heightIn}
+                        onChangeText={(v) => {
+                          const n = parseInt(v);
+                          if (!v || (n >= 0 && n <= 11)) setHeightIn(v);
+                        }}
+                        keyboardType="numeric"
+                        placeholder="10 in"
+                        placeholderTextColor={Colors.textSubtle}
+                        maxLength={2}
+                      />
+                    </View>
+                  </View>
+                </View>
+              ) : (
+                <View style={[styles.inputGroup, { flex: 1 }]}>
+                  <Text style={styles.inputLabel}>HEIGHT (CM)</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={heightCm}
+                    onChangeText={setHeightCm}
+                    keyboardType="numeric"
+                    placeholder="178"
+                    placeholderTextColor={Colors.textSubtle}
+                    maxLength={3}
+                  />
+                </View>
+              )}
             </View>
 
             <Text style={styles.inputLabel}>GENDER</Text>
@@ -291,15 +367,26 @@ export default function OnboardingScreen() {
           </View>
         );
 
-      case 4:
+      case 4: {
+        const weightDisplay = weight
+          ? `${weight} ${unitSystem === "imperial" ? "lbs" : "kg"}`
+          : "—";
+        const heightDisplay = (() => {
+          if (unitSystem === "imperial") {
+            if (!heightFt) return "—";
+            return `${heightFt}′ ${heightIn || "0"}″`;
+          }
+          return heightCm ? `${heightCm} cm` : "—";
+        })();
         return (
           <View style={styles.stepContent}>
             <Text style={styles.stepTitle}>REVIEW & CONFIRM</Text>
             <Text style={styles.stepSubtitle}>Make sure everything looks good</Text>
             <View style={styles.reviewCard}>
+              <ReviewRow label="Units" value={unitSystem === "imperial" ? "Imperial" : "Metric"} />
               <ReviewRow label="Age" value={age ? `${age} years` : "—"} />
-              <ReviewRow label="Weight" value={weight ? `${weight} lbs` : "—"} />
-              <ReviewRow label="Height" value={height ? `${height} in` : "—"} />
+              <ReviewRow label="Weight" value={weightDisplay} />
+              <ReviewRow label="Height" value={heightDisplay} />
               <ReviewRow label="Gender" value={gender || "—"} />
               <ReviewRow label="Experience" value={experienceLevel || "—"} />
               <ReviewRow label="Injuries" value={injuries.length > 0 ? injuries.join(", ") : "None"} />
@@ -308,6 +395,7 @@ export default function OnboardingScreen() {
             </View>
           </View>
         );
+      }
 
       default:
         return null;
@@ -440,6 +528,39 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     marginBottom: 8,
   },
+  unitToggleRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 4,
+  },
+  unitToggleBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: "rgba(255,255,255,0.03)",
+    alignItems: "center",
+    gap: 3,
+  },
+  unitToggleBtnActive: {
+    borderColor: Colors.orange,
+    backgroundColor: "rgba(252,82,0,0.1)",
+  },
+  unitToggleText: {
+    fontSize: 11,
+    fontFamily: "Inter_900Black",
+    color: Colors.textMuted,
+    letterSpacing: 1.5,
+  },
+  unitToggleTextActive: { color: Colors.orange },
+  unitToggleSub: {
+    fontSize: 10,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
+  },
+  unitToggleSubActive: { color: "rgba(252,82,0,0.7)" },
   inputGroup: { gap: 6 },
   inputLabel: {
     fontSize: 9,

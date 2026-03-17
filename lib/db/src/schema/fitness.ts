@@ -23,6 +23,7 @@ export const userProfilesTable = pgTable("user_profiles", {
   injuries: jsonb("injuries").$type<string[]>().default([]),
   injuryNotes: text("injury_notes"),
   primaryGoal: varchar("primary_goal"),
+  unitSystem: varchar("unit_system").default("imperial"),
   onboardingCompleted: boolean("onboarding_completed").default(false),
   insightDetailLevel: varchar("insight_detail_level").default("simple"),
   syncPreferences: jsonb("sync_preferences").$type<{ appleHealth: boolean; strava: boolean; manualScreenshot: boolean }>().default({ appleHealth: false, strava: false, manualScreenshot: false }),
