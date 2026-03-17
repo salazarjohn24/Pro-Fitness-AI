@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { Colors } from "@/constants/colors";
 import { MUSCLE_GROUPS, computeStimulusPoints, type SkillLevel } from "@/utils/stimulus";
+import { DatePickerSheet, getLocalToday, formatDisplayDate } from "@/components/DatePickerSheet";
 
 const WORKOUT_TYPES = [
   "Strength", "Cardio", "HIIT", "CrossFit", "Yoga",
@@ -36,6 +37,7 @@ export interface WorkoutItem {
   stimulusPoints: number | null;
   source: string;
   createdAt: string;
+  workoutDate?: string | null;
 }
 
 interface Props {
@@ -50,6 +52,7 @@ interface Props {
     intensity: number;
     muscleGroups: string[];
     stimulusPoints: number;
+    workoutDate: string;
   }) => void;
   onDelete: (id: number) => void;
   isSaving?: boolean;
@@ -63,6 +66,8 @@ export function EditWorkoutModal({ visible, workout, skillLevel, onClose, onSave
   const [workoutType, setWorkoutType] = useState("Strength");
   const [intensity, setIntensity] = useState(5);
   const [muscleGroups, setMuscleGroups] = useState<string[]>([]);
+  const [workoutDate, setWorkoutDate] = useState(getLocalToday);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
 
   useEffect(() => {
     if (workout) {
@@ -71,6 +76,7 @@ export function EditWorkoutModal({ visible, workout, skillLevel, onClose, onSave
       setWorkoutType(workout.workoutType || "Strength");
       setIntensity(workout.intensity ?? 5);
       setMuscleGroups(workout.muscleGroups ?? []);
+      setWorkoutDate(workout.workoutDate ?? workout.createdAt?.slice(0, 10) ?? getLocalToday());
     }
   }, [workout]);
 
@@ -98,6 +104,7 @@ export function EditWorkoutModal({ visible, workout, skillLevel, onClose, onSave
       intensity,
       muscleGroups: groups,
       stimulusPoints,
+      workoutDate,
     });
   };
 
@@ -160,6 +167,18 @@ export function EditWorkoutModal({ visible, workout, skillLevel, onClose, onSave
                     value={label}
                     onChangeText={setLabel}
                   />
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.fieldLabel}>WORKOUT DATE</Text>
+                  <Pressable
+                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDatePickerOpen(true); }}
+                    style={styles.dateTrigger}
+                  >
+                    <Feather name="calendar" size={16} color={Colors.highlight} />
+                    <Text style={styles.dateTriggerText}>{formatDisplayDate(workoutDate)}</Text>
+                    <Feather name="chevron-down" size={14} color={Colors.textSubtle} />
+                  </Pressable>
                 </View>
 
                 <View style={styles.formGroup}>
@@ -260,6 +279,13 @@ export function EditWorkoutModal({ visible, workout, skillLevel, onClose, onSave
           </ScrollView>
         </View>
       </View>
+
+      <DatePickerSheet
+        visible={datePickerOpen}
+        value={workoutDate}
+        onClose={() => setDatePickerOpen(false)}
+        onSelect={(date) => setWorkoutDate(date)}
+      />
     </Modal>
   );
 }
@@ -435,6 +461,23 @@ const styles = StyleSheet.create({
     color: Colors.textSubtle,
   },
   muscleChipTextSelected: { color: Colors.highlight },
+  dateTrigger: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(246,234,152,0.3)",
+    backgroundColor: "rgba(246,234,152,0.06)",
+  },
+  dateTriggerText: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: "Inter_700Bold",
+    color: Colors.highlight,
+  },
   actions: { gap: 10, marginTop: 8 },
   saveBtn: {
     flexDirection: "row",

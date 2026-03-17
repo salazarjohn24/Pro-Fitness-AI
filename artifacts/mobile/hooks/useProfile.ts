@@ -251,6 +251,7 @@ export function useUpdateExternalWorkout() {
       intensity?: number | null;
       muscleGroups?: string[] | null;
       stimulusPoints?: number | null;
+      workoutDate?: string | null;
     }) => {
       const headers = await getAuthHeaders();
       const res = await fetch(`${getApiBase()}/api/workouts/external/${id}`, {

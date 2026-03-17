@@ -23,6 +23,7 @@ import {
   type SkillLevel,
 } from "@/utils/stimulus";
 import { getApiBase, getAuthHeaders, getFetchOptions } from "@/hooks/apiHelpers";
+import { DatePickerSheet, getLocalToday, formatDisplayDate } from "@/components/DatePickerSheet";
 
 export interface ImportedWorkoutData {
   label: string;
@@ -66,16 +67,6 @@ const WORKOUT_TYPES = [
 
 const DURATION_OPTIONS = [15, 20, 30, 45, 60, 75, 90, 120];
 
-const DATE_OPTIONS = [
-  { label: "Today", offset: 0 },
-  { label: "Yesterday", offset: 1 },
-  { label: "2 days ago", offset: 2 },
-  { label: "3 days ago", offset: 3 },
-  { label: "4 days ago", offset: 4 },
-  { label: "5 days ago", offset: 5 },
-  { label: "6 days ago", offset: 6 },
-  { label: "7 days ago", offset: 7 },
-];
 
 function resolveSkillLevel(raw?: string | null): SkillLevel {
   if (raw === "Beginner" || raw === "Intermediate" || raw === "Advanced") return raw;
@@ -106,13 +97,8 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
   } | null>(null);
   const [imageAnalysis, setImageAnalysis] = useState<ImageAnalysis | null>(null);
   const [screenshotLabel, setScreenshotLabel] = useState("");
-  const [workoutDateOffset, setWorkoutDateOffset] = useState(0);
-
-  function getWorkoutDate(offset: number): string {
-    const d = new Date();
-    d.setDate(d.getDate() - offset);
-    return d.toISOString().slice(0, 10);
-  }
+  const [workoutDate, setWorkoutDate] = useState(getLocalToday);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
 
   const analyzeImage = async (uri: string, mimeType = "image/jpeg") => {
     try {
@@ -246,7 +232,7 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
         intensity: manualIntensity,
         muscleGroups: groups,
         stimulusPoints,
-        workoutDate: getWorkoutDate(workoutDateOffset),
+        workoutDate,
       });
     }
     resetState();
@@ -299,14 +285,13 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
         intensity: aiParsed.suggestedIntensity,
         muscleGroups: aiParsed.muscleGroups,
         stimulusPoints,
-        workoutDate: getWorkoutDate(workoutDateOffset),
+        workoutDate,
       });
     }
     resetState();
   };
 
   const handleFinish = () => {
-    const workoutDate = getWorkoutDate(workoutDateOffset);
     if (screenshotData) {
       onComplete({
         label: screenshotLabel || "Screenshot Import",
@@ -360,7 +345,8 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
       setScreenshotData(null);
       setImageAnalysis(null);
       setScreenshotLabel("");
-      setWorkoutDateOffset(0);
+      setWorkoutDate(getLocalToday());
+      setDatePickerOpen(false);
     }, 300);
   };
 
@@ -547,19 +533,14 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
 
               <View style={styles.formGroup}>
                 <Text style={styles.fieldLabel}>LOG FOR DATE</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View style={styles.dateRow}>
-                    {DATE_OPTIONS.map(({ label: dl, offset }) => (
-                      <Pressable
-                        key={offset}
-                        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setWorkoutDateOffset(offset); }}
-                        style={[styles.dateChip, workoutDateOffset === offset && styles.dateChipSelected]}
-                      >
-                        <Text style={[styles.dateChipText, workoutDateOffset === offset && styles.dateChipTextSelected]}>{dl}</Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                </ScrollView>
+                <Pressable
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDatePickerOpen(true); }}
+                  style={styles.dateTrigger}
+                >
+                  <Feather name="calendar" size={16} color={Colors.highlight} />
+                  <Text style={styles.dateTriggerText}>{formatDisplayDate(workoutDate)}</Text>
+                  <Feather name="chevron-down" size={14} color={Colors.textSubtle} />
+                </Pressable>
               </View>
 
               <Pressable
@@ -662,19 +643,14 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
 
                   <View style={styles.formGroup}>
                     <Text style={styles.fieldLabel}>LOG FOR DATE</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                      <View style={styles.dateRow}>
-                        {DATE_OPTIONS.map(({ label: dl, offset }) => (
-                          <Pressable
-                            key={offset}
-                            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setWorkoutDateOffset(offset); }}
-                            style={[styles.dateChip, workoutDateOffset === offset && styles.dateChipSelected]}
-                          >
-                            <Text style={[styles.dateChipText, workoutDateOffset === offset && styles.dateChipTextSelected]}>{dl}</Text>
-                          </Pressable>
-                        ))}
-                      </View>
-                    </ScrollView>
+                    <Pressable
+                      onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDatePickerOpen(true); }}
+                      style={styles.dateTrigger}
+                    >
+                      <Feather name="calendar" size={16} color={Colors.highlight} />
+                      <Text style={styles.dateTriggerText}>{formatDisplayDate(workoutDate)}</Text>
+                      <Feather name="chevron-down" size={14} color={Colors.textSubtle} />
+                    </Pressable>
                   </View>
 
                   <Pressable
@@ -794,19 +770,14 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
 
               <View style={styles.formGroup}>
                 <Text style={styles.fieldLabel}>LOG FOR DATE</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View style={styles.dateRow}>
-                    {DATE_OPTIONS.map(({ label: dl, offset }) => (
-                      <Pressable
-                        key={offset}
-                        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setWorkoutDateOffset(offset); }}
-                        style={[styles.dateChip, workoutDateOffset === offset && styles.dateChipSelected]}
-                      >
-                        <Text style={[styles.dateChipText, workoutDateOffset === offset && styles.dateChipTextSelected]}>{dl}</Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                </ScrollView>
+                <Pressable
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDatePickerOpen(true); }}
+                  style={styles.dateTrigger}
+                >
+                  <Feather name="calendar" size={16} color={Colors.highlight} />
+                  <Text style={styles.dateTriggerText}>{formatDisplayDate(workoutDate)}</Text>
+                  <Feather name="chevron-down" size={14} color={Colors.textSubtle} />
+                </Pressable>
               </View>
 
               <Pressable
@@ -830,6 +801,13 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
           )}
         </View>
       </View>
+
+      <DatePickerSheet
+        visible={datePickerOpen}
+        value={workoutDate}
+        onClose={() => setDatePickerOpen(false)}
+        onSelect={(date) => setWorkoutDate(date)}
+      />
     </Modal>
   );
 }
@@ -1175,25 +1153,23 @@ const styles = StyleSheet.create({
     color: Colors.textSubtle,
     letterSpacing: 0.5,
   },
-  dateRow: { flexDirection: "row", gap: 6, paddingVertical: 2 },
-  dateChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 100,
+  dateTrigger: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.bgCard,
+    borderColor: "rgba(246,234,152,0.3)",
+    backgroundColor: "rgba(246,234,152,0.06)",
   },
-  dateChipSelected: {
-    borderColor: Colors.highlight,
-    backgroundColor: "rgba(246,234,152,0.12)",
-  },
-  dateChipText: {
-    fontSize: 11,
+  dateTriggerText: {
+    flex: 1,
+    fontSize: 14,
     fontFamily: "Inter_700Bold",
-    color: Colors.textMuted,
+    color: Colors.highlight,
   },
-  dateChipTextSelected: { color: Colors.highlight },
   metconBadge: {
     flexDirection: "row",
     alignItems: "center",

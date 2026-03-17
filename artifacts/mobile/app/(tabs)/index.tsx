@@ -214,6 +214,7 @@ export default function StatusScreen() {
     intensity: number;
     muscleGroups: string[];
     stimulusPoints: number;
+    workoutDate: string;
   }) => {
     updateExternalWorkout({ id, ...data }, {
       onSuccess: () => {

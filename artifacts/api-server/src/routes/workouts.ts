@@ -101,10 +101,17 @@ router.put("/workouts/external/:id", async (req: Request, res: Response) => {
     return;
   }
 
-  const { label, duration, workoutType, intensity, muscleGroups, stimulusPoints } = req.body;
+  const { label, duration, workoutType, intensity, muscleGroups, stimulusPoints, workoutDate } = req.body;
 
   const updateData: Record<string, unknown> = {};
   if (label !== undefined) updateData.label = label;
+  if (workoutDate !== undefined) {
+    if (workoutDate !== null && (typeof workoutDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(workoutDate))) {
+      res.status(400).json({ error: "workoutDate must be a YYYY-MM-DD string" });
+      return;
+    }
+    updateData.workoutDate = workoutDate;
+  }
   if (duration !== undefined) {
     if (typeof duration !== "number" || duration < 1 || duration > 600) {
       res.status(400).json({ error: "duration must be a number between 1 and 600" });
