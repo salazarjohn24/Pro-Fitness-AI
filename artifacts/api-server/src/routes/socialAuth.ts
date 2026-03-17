@@ -74,8 +74,22 @@ async function upsertSocialUser(params: {
       .limit(1);
 
     if (byEmail) {
-      const providerLabel = byEmail.authProvider === "local" ? "email and password" : byEmail.authProvider ?? "another method";
-      throw new Error(`An account with this email already exists. Please sign in with ${providerLabel}.`);
+      if (!params.emailVerified) {
+        throw new Error("Cannot link accounts: Google email is not verified.");
+      }
+      const [linked] = await db
+        .update(usersTable)
+        .set({
+          authProvider: params.provider,
+          providerId: compositeId,
+          firstName: params.firstName ?? byEmail.firstName,
+          lastName: params.lastName ?? byEmail.lastName,
+          profileImageUrl: params.profileImageUrl ?? byEmail.profileImageUrl,
+          updatedAt: new Date(),
+        })
+        .where(eq(usersTable.id, byEmail.id))
+        .returning();
+      return linked;
     }
   }
 
