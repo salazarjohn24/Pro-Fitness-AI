@@ -1,4 +1,4 @@
-import { boolean, date, integer, jsonb, pgTable, real, serial, text, timestamp, unique, varchar } from "drizzle-orm/pg-core";
+import { boolean, date, integer, jsonb, pgTable, real, serial, text, timestamp, unique, varchar, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -153,6 +153,38 @@ export const workoutHistoryTable = pgTable("workout_history", {
 
 export type WorkoutHistory = typeof workoutHistoryTable.$inferSelect;
 export type InsertWorkoutHistory = typeof workoutHistoryTable.$inferInsert;
+
+export const exercisePerformanceTable = pgTable("exercise_performance", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  exerciseName: varchar("exercise_name").notNull(),
+  sessionId: integer("session_id"),
+  sets: integer("sets").notNull().default(0),
+  avgReps: real("avg_reps"),
+  maxWeight: real("max_weight"),
+  avgWeight: real("avg_weight"),
+  totalVolume: real("total_volume"),
+  performedAt: timestamp("performed_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("ep_user_exercise_idx").on(table.userId, table.exerciseName),
+]);
+
+export type ExercisePerformance = typeof exercisePerformanceTable.$inferSelect;
+export type InsertExercisePerformance = typeof exercisePerformanceTable.$inferInsert;
+
+export const exerciseSubstitutionsTable = pgTable("exercise_substitutions", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  originalName: varchar("original_name").notNull(),
+  preferredName: varchar("preferred_name").notNull(),
+  count: integer("count").notNull().default(1),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique("sub_user_original_preferred").on(table.userId, table.originalName, table.preferredName),
+]);
+
+export type ExerciseSubstitution = typeof exerciseSubstitutionsTable.$inferSelect;
+export type InsertExerciseSubstitution = typeof exerciseSubstitutionsTable.$inferInsert;
 
 export const insertWorkoutSessionSchema = createInsertSchema(workoutSessionsTable).omit({ id: true });
 export const insertExerciseLibrarySchema = createInsertSchema(exerciseLibraryTable).omit({ id: true });

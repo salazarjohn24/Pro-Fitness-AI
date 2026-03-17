@@ -135,3 +135,38 @@ export async function fetchExerciseAlternatives(exerciseId: string): Promise<Alt
   if (!res.ok) return [];
   return res.json();
 }
+
+export async function recordExerciseSubstitution(originalName: string, preferredName: string): Promise<void> {
+  try {
+    const headers = await getAuthHeaders();
+    await fetch(`${getApiBase()}/api/exercise/substitution`, {
+      ...getFetchOptions(headers),
+      method: "POST",
+      body: JSON.stringify({ originalName, preferredName }),
+    });
+  } catch {
+    // fire-and-forget
+  }
+}
+
+export interface DeloadCheckResult {
+  recommended: boolean;
+  reason: string | null;
+  avgFatigue: number;
+  weeklyVolume: number;
+  sessionCount: number;
+}
+
+export function useDeloadCheck() {
+  return useQuery<DeloadCheckResult>({
+    queryKey: ["deloadCheck"],
+    queryFn: async () => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${getApiBase()}/api/workout/deload-check`, getFetchOptions(headers));
+      if (!res.ok) return { recommended: false, reason: null, avgFatigue: 0, weeklyVolume: 0, sessionCount: 0 };
+      return res.json();
+    },
+    staleTime: 10 * 60 * 1000,
+    retry: false,
+  });
+}

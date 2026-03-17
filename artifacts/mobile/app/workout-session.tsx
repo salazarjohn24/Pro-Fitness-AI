@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Colors } from "@/constants/colors";
 import { useSubmitExternalWorkout, useProfile } from "@/hooks/useProfile";
 import { computeStimulusPoints, type SkillLevel } from "@/utils/stimulus";
-import { useSaveWorkout, fetchExerciseAlternatives, type AlternativeExercise, type GeneratedExercise, type GeneratedWorkout } from "@/hooks/useWorkout";
+import { useSaveWorkout, fetchExerciseAlternatives, recordExerciseSubstitution, type AlternativeExercise, type GeneratedExercise, type GeneratedWorkout } from "@/hooks/useWorkout";
 
 type SetStatus = "pending" | "done" | "failed";
 
@@ -173,6 +173,11 @@ export default function WorkoutSessionScreen() {
   const confirmSwap = (alt: AlternativeExercise) => {
     if (!swappingId || !workoutData) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    const originalEx = workoutData.exercises.find(ex => ex.exerciseId === swappingId);
+    if (originalEx && originalEx.name !== alt.name) {
+      recordExerciseSubstitution(originalEx.name, alt.name);
+    }
 
     const newExercises = workoutData.exercises.map(ex => {
       if (ex.exerciseId === swappingId) {

@@ -27,6 +27,20 @@ export interface AIGeneratedExercise {
   youtubeKeyword: string;
 }
 
+export interface ExerciseHistoryEntry {
+  lastSets: number;
+  lastAvgReps: number;
+  lastMaxWeight: number;
+  lastAvgWeight: number;
+  performedAt: Date | string;
+}
+
+export interface SubstitutionEntry {
+  originalName: string;
+  preferredName: string;
+  count: number;
+}
+
 export interface WorkoutContext {
   skillLevel: string;
   fitnessGoal: string;
@@ -39,6 +53,8 @@ export interface WorkoutContext {
   equipment: string[];
   checkInNotes?: string | null;
   preferredWorkoutDuration?: number;
+  exerciseHistory?: Record<string, ExerciseHistoryEntry>;
+  substitutions?: SubstitutionEntry[];
 }
 
 export interface ArchitectContext extends WorkoutContext {
@@ -105,6 +121,16 @@ RULES:
 - Match difficulty to skill level (beginners avoid advanced exercises)
 - Output ONLY valid JSON lines, no markdown, no explanation text`;
 
+  const historyLines = ctx.exerciseHistory && Object.keys(ctx.exerciseHistory).length > 0
+    ? Object.entries(ctx.exerciseHistory)
+        .map(([name, h]) => `  - ${name}: last ${h.lastSets} sets × ~${Math.round(h.lastAvgReps)} reps @ ${Math.round(h.lastMaxWeight)}lbs max`)
+        .join("\n")
+    : "  None recorded yet";
+
+  const substitutionLines = ctx.substitutions && ctx.substitutions.length > 0
+    ? ctx.substitutions.map(s => `  - Always swap "${s.originalName}" → "${s.preferredName}" (${s.count}x)`).join("\n")
+    : "  None";
+
   const userPrompt = `User context:
 - Fitness goal: ${ctx.fitnessGoal}
 - Skill level: ${ctx.skillLevel}
@@ -118,7 +144,13 @@ RULES:
 - Target workout duration: ${ctx.preferredWorkoutDuration ?? 60} minutes (adjust exercise count/sets/reps accordingly)
 ${ctx.checkInNotes ? `- User notes: ${sanitizeUserInput(ctx.checkInNotes)}` : ""}
 
-Generate the ideal workout for this person today. Fit within the target duration.`;
+Recent exercise performance (for progressive overload — suggest slightly more weight/reps than last time if appropriate):
+${historyLines}
+
+User exercise preferences (honor these substitutions):
+${substitutionLines}
+
+Generate the ideal workout. Apply progressive overload where previous performance data exists. Honor substitution preferences.`;
 
   const response = await openai.chat.completions.create({
     model: "gpt-5-mini",
@@ -178,6 +210,17 @@ RULES:
 - Output ONLY valid JSON lines, no markdown, no explanation`;
 
   const targetMinutes = ctx.availableMinutes ?? ctx.preferredWorkoutDuration ?? 60;
+
+  const historyLinesA = ctx.exerciseHistory && Object.keys(ctx.exerciseHistory).length > 0
+    ? Object.entries(ctx.exerciseHistory)
+        .map(([name, h]) => `  - ${name}: last ${h.lastSets} sets × ~${Math.round(h.lastAvgReps)} reps @ ${Math.round(h.lastMaxWeight)}lbs max`)
+        .join("\n")
+    : "  None recorded yet";
+
+  const substitutionLinesA = ctx.substitutions && ctx.substitutions.length > 0
+    ? ctx.substitutions.map(s => `  - Always swap "${s.originalName}" → "${s.preferredName}" (${s.count}x)`).join("\n")
+    : "  None";
+
   const userPrompt = `User context:
 - Target muscle groups: ${ctx.requestedMuscleGroups.join(", ")}
 - Fitness goal: ${ctx.fitnessGoal}
@@ -190,7 +233,13 @@ RULES:
 - Available equipment: ${ctx.equipment.join(", ") || "bodyweight only"}
 - Available time: ${targetMinutes} minutes (fit all exercises within this duration)
 
-Generate the custom workout targeting the requested muscle groups. Adjust exercise count and sets to fit the time available.`;
+Recent exercise performance (apply progressive overload where possible):
+${historyLinesA}
+
+User exercise preferences (honor these substitutions):
+${substitutionLinesA}
+
+Generate the custom workout targeting the requested muscle groups. Adjust exercise count and sets to fit the time available. Apply progressive overload and honor substitution preferences.`;
 
   const response = await openai.chat.completions.create({
     model: "gpt-5-mini",

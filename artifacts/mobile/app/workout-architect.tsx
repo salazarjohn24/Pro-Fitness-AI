@@ -22,6 +22,7 @@ import { useTodayCheckIn, useProfile } from "@/hooks/useProfile";
 import {
   useArchitectGenerate,
   fetchExerciseAlternatives,
+  recordExerciseSubstitution,
   type AlternativeExercise,
   type GeneratedExercise,
   type GeneratedWorkout,
@@ -281,6 +282,11 @@ export default function WorkoutArchitectScreen() {
     if (!swappingId) return;
     const oldId = swappingId;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    const originalEx = reviewExercises.find(ex => ex.exerciseId === oldId);
+    if (originalEx && originalEx.name !== alt.name) {
+      recordExerciseSubstitution(originalEx.name, alt.name);
+    }
 
     setSwappingId(null);
     setSwapAlternatives([]);

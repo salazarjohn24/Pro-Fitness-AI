@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, userProfilesTable, dailyCheckInsTable, workoutSessionsTable, workoutHistoryTable, exerciseLibraryTable } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { db, userProfilesTable, dailyCheckInsTable, workoutSessionsTable, workoutHistoryTable, exerciseLibraryTable, exercisePerformanceTable, exerciseSubstitutionsTable, externalWorkoutsTable } from "@workspace/db";
+import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { EXERCISE_LIBRARY, exerciseMap, type ExerciseData } from "../data/exercises";
 import { generateAIWorkout, generateAIArchitectWorkout, parseWorkoutDescriptionAI, analyzeWorkoutImageAI } from "../services/aiService";
 import { aiRateLimit } from "../middlewares/rateLimitMiddleware";
@@ -307,6 +307,33 @@ router.post("/workout/generate", aiRateLimit, async (req: Request, res: Response
 
   const availableForAI = EXERCISE_LIBRARY.filter(e => isExerciseAllowed(e));
 
+  const exerciseNames = availableForAI.map(e => e.name);
+  const [perfRecords, substitutionRecords] = await Promise.all([
+    db.select().from(exercisePerformanceTable)
+      .where(and(
+        eq(exercisePerformanceTable.userId, userId),
+        inArray(exercisePerformanceTable.exerciseName, exerciseNames.slice(0, 50))
+      ))
+      .orderBy(desc(exercisePerformanceTable.performedAt)),
+    db.select().from(exerciseSubstitutionsTable)
+      .where(eq(exerciseSubstitutionsTable.userId, userId))
+      .orderBy(desc(exerciseSubstitutionsTable.count))
+      .limit(20),
+  ]);
+
+  const exerciseHistory: Record<string, { lastSets: number; lastAvgReps: number; lastMaxWeight: number; lastAvgWeight: number; performedAt: Date }> = {};
+  for (const r of perfRecords) {
+    if (!exerciseHistory[r.exerciseName]) {
+      exerciseHistory[r.exerciseName] = {
+        lastSets: r.sets,
+        lastAvgReps: r.avgReps ?? 0,
+        lastMaxWeight: r.maxWeight ?? 0,
+        lastAvgWeight: r.avgWeight ?? 0,
+        performedAt: r.performedAt,
+      };
+    }
+  }
+
   try {
     const aiResult = await generateAIWorkout(
       {
@@ -321,6 +348,8 @@ router.post("/workout/generate", aiRateLimit, async (req: Request, res: Response
         equipment: userEquipment,
         checkInNotes: latestCheckin?.notes,
         preferredWorkoutDuration: profile?.preferredWorkoutDuration ?? 60,
+        exerciseHistory,
+        substitutions: substitutionRecords,
       },
       availableForAI,
       exerciseMap
@@ -363,6 +392,41 @@ router.post("/workout/generate", aiRateLimit, async (req: Request, res: Response
     res.status(500).json({ error: "Failed to generate workout" });
   }
 });
+
+async function updateStreakOnWorkout(userId: string): Promise<void> {
+  try {
+    const today = new Date().toISOString().split("T")[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+
+    const recentSessions = await db
+      .select({ sessionDate: workoutSessionsTable.sessionDate })
+      .from(workoutSessionsTable)
+      .where(eq(workoutSessionsTable.userId, userId))
+      .orderBy(desc(workoutSessionsTable.sessionDate))
+      .limit(2);
+
+    const dates = recentSessions.map(s => s.sessionDate);
+    const hasToday = dates.includes(today);
+
+    const [profile] = await db.select({ streakDays: userProfilesTable.streakDays })
+      .from(userProfilesTable)
+      .where(eq(userProfilesTable.userId, userId));
+
+    if (!profile) return;
+    const currentStreak = profile.streakDays ?? 0;
+
+    if (hasToday) return;
+
+    const hadYesterday = dates.includes(yesterday);
+    const newStreak = hadYesterday ? currentStreak + 1 : 1;
+
+    await db.update(userProfilesTable)
+      .set({ streakDays: newStreak })
+      .where(eq(userProfilesTable.userId, userId));
+  } catch (err) {
+    console.error("updateStreakOnWorkout error:", err);
+  }
+}
 
 router.post("/workout/sessions", async (req: Request, res: Response) => {
   if (!req.isAuthenticated()) {
@@ -459,43 +523,64 @@ router.post("/workout/sessions", async (req: Request, res: Response) => {
       const completedSets = (ex.sets ?? []).filter((s: { completed: boolean }) => s.completed);
       if (completedSets.length === 0) continue;
 
+      const exerciseName = (ex.name ?? "").trim();
+
+      const weights = completedSets.map((s: { weight: string }) => parseFloat(s.weight) || 0);
+      const repsArr = completedSets.map((s: { reps: number }) => s.reps || 0);
+      const avgWt = weights.reduce((a: number, b: number) => a + b, 0) / weights.length;
+      const maxWt = Math.max(...weights);
+      const avgRepsVal = repsArr.reduce((a: number, b: number) => a + b, 0) / repsArr.length;
+      const volTotal = weights.reduce((sum: number, w: number, i: number) => sum + w * (repsArr[i] || 0), 0);
+
+      if (exerciseName) {
+        try {
+          await db.insert(exercisePerformanceTable).values({
+            userId: req.user.id,
+            exerciseName,
+            sessionId: session.id,
+            sets: completedSets.length,
+            avgReps: avgRepsVal,
+            maxWeight: maxWt,
+            avgWeight: avgWt,
+            totalVolume: volTotal,
+          });
+        } catch (perfErr) {
+          console.error(`Failed to insert exercise_performance for "${exerciseName}":`, perfErr);
+        }
+      }
+
       let dbExerciseId: number | null = null;
       const numericId = parseInt(ex.exerciseId, 10);
       if (!isNaN(numericId) && String(numericId) === ex.exerciseId) {
         dbExerciseId = numericId;
-      } else {
-        const exerciseName = (ex.name ?? "").trim();
-        if (exerciseName) {
-          const [found] = await db
-            .select({ id: exerciseLibraryTable.id })
-            .from(exerciseLibraryTable)
-            .where(eq(exerciseLibraryTable.name, exerciseName))
-            .limit(1);
-          if (found) dbExerciseId = found.id;
+      } else if (exerciseName) {
+        const [found] = await db
+          .select({ id: exerciseLibraryTable.id })
+          .from(exerciseLibraryTable)
+          .where(eq(exerciseLibraryTable.name, exerciseName))
+          .limit(1);
+        if (found) dbExerciseId = found.id;
+      }
+
+      if (dbExerciseId !== null) {
+        const avgWeight = Math.round(avgWt);
+        const avgReps = Math.round(avgRepsVal);
+        try {
+          await db.insert(workoutHistoryTable).values({
+            userId: req.user.id,
+            exerciseId: dbExerciseId,
+            weight: avgWeight,
+            reps: avgReps,
+            sets: completedSets.length,
+            consistencyIndex,
+          });
+        } catch (historyErr) {
+          console.error(`Failed to insert workout_history for exercise ${dbExerciseId}:`, historyErr);
         }
       }
-      if (dbExerciseId === null) continue;
-
-      const totalWeight = completedSets.reduce((sum: number, s: { weight: string; reps: number }) => {
-        return sum + (parseFloat(s.weight) || 0);
-      }, 0);
-      const avgWeight = Math.round(totalWeight / completedSets.length);
-      const avgReps = Math.round(
-        completedSets.reduce((sum: number, s: { reps: number }) => sum + (s.reps || 0), 0) / completedSets.length
-      );
-      try {
-        await db.insert(workoutHistoryTable).values({
-          userId: req.user.id,
-          exerciseId: dbExerciseId,
-          weight: avgWeight,
-          reps: avgReps,
-          sets: completedSets.length,
-          consistencyIndex,
-        });
-      } catch (historyErr) {
-        console.error(`Failed to insert workout_history for exercise ${dbExerciseId}:`, historyErr);
-      }
     }
+
+    await updateStreakOnWorkout(req.user.id);
 
     res.json(session);
   } catch (err) {
@@ -646,6 +731,33 @@ router.post("/workout/architect-generate", aiRateLimit, async (req: Request, res
 
     const availableForAI = EXERCISE_LIBRARY.filter(e => isExerciseAllowed(e));
 
+    const archExerciseNames = availableForAI.map(e => e.name);
+    const [archPerfRecords, archSubRecords] = await Promise.all([
+      db.select().from(exercisePerformanceTable)
+        .where(and(
+          eq(exercisePerformanceTable.userId, userId),
+          inArray(exercisePerformanceTable.exerciseName, archExerciseNames.slice(0, 50))
+        ))
+        .orderBy(desc(exercisePerformanceTable.performedAt)),
+      db.select().from(exerciseSubstitutionsTable)
+        .where(eq(exerciseSubstitutionsTable.userId, userId))
+        .orderBy(desc(exerciseSubstitutionsTable.count))
+        .limit(20),
+    ]);
+
+    const archExerciseHistory: Record<string, { lastSets: number; lastAvgReps: number; lastMaxWeight: number; lastAvgWeight: number; performedAt: Date }> = {};
+    for (const r of archPerfRecords) {
+      if (!archExerciseHistory[r.exerciseName]) {
+        archExerciseHistory[r.exerciseName] = {
+          lastSets: r.sets,
+          lastAvgReps: r.avgReps ?? 0,
+          lastMaxWeight: r.maxWeight ?? 0,
+          lastAvgWeight: r.avgWeight ?? 0,
+          performedAt: r.performedAt,
+        };
+      }
+    }
+
     try {
       const aiResult = await generateAIArchitectWorkout(
         {
@@ -661,6 +773,8 @@ router.post("/workout/architect-generate", aiRateLimit, async (req: Request, res
           requestedMuscleGroups: requestedGroups,
           preferredWorkoutDuration: profile?.preferredWorkoutDuration ?? 60,
           availableMinutes: (req.body as any).availableMinutes ?? undefined,
+          exerciseHistory: archExerciseHistory,
+          substitutions: archSubRecords,
         },
         availableForAI,
         exerciseMap
@@ -740,6 +854,198 @@ router.post("/workout/analyze-image", aiRateLimit, async (req: Request, res: Res
   } catch (err) {
     console.error("Workout image analysis error:", err);
     res.status(500).json({ error: "Failed to analyze workout image" });
+  }
+});
+
+router.post("/exercise/performance", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const { exerciseNames } = req.body as { exerciseNames: string[] };
+  if (!Array.isArray(exerciseNames) || exerciseNames.length === 0) {
+    res.json({});
+    return;
+  }
+
+  try {
+    const records = await db
+      .select()
+      .from(exercisePerformanceTable)
+      .where(
+        and(
+          eq(exercisePerformanceTable.userId, req.user.id),
+          inArray(exercisePerformanceTable.exerciseName, exerciseNames)
+        )
+      )
+      .orderBy(desc(exercisePerformanceTable.performedAt));
+
+    const byName: Record<string, typeof records[0][]> = {};
+    for (const r of records) {
+      if (!byName[r.exerciseName]) byName[r.exerciseName] = [];
+      byName[r.exerciseName].push(r);
+    }
+
+    const result: Record<string, { lastSets: number; lastAvgReps: number; lastMaxWeight: number; lastAvgWeight: number; performedAt: Date }> = {};
+    for (const [name, recs] of Object.entries(byName)) {
+      const latest = recs[0];
+      result[name] = {
+        lastSets: latest.sets,
+        lastAvgReps: latest.avgReps ?? 0,
+        lastMaxWeight: latest.maxWeight ?? 0,
+        lastAvgWeight: latest.avgWeight ?? 0,
+        performedAt: latest.performedAt,
+      };
+    }
+
+    res.json(result);
+  } catch (err) {
+    console.error("Exercise performance query error:", err);
+    res.status(500).json({ error: "Failed to query exercise performance" });
+  }
+});
+
+router.post("/exercise/substitution", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const { originalName, preferredName } = req.body as { originalName: string; preferredName: string };
+  if (!originalName || !preferredName || originalName === preferredName) {
+    res.status(400).json({ error: "originalName and preferredName are required and must differ" });
+    return;
+  }
+
+  try {
+    const existing = await db
+      .select()
+      .from(exerciseSubstitutionsTable)
+      .where(
+        and(
+          eq(exerciseSubstitutionsTable.userId, req.user.id),
+          eq(exerciseSubstitutionsTable.originalName, originalName),
+          eq(exerciseSubstitutionsTable.preferredName, preferredName)
+        )
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      const [updated] = await db
+        .update(exerciseSubstitutionsTable)
+        .set({ count: existing[0].count + 1, lastUsedAt: new Date() })
+        .where(eq(exerciseSubstitutionsTable.id, existing[0].id))
+        .returning();
+      res.json(updated);
+    } else {
+      const [inserted] = await db
+        .insert(exerciseSubstitutionsTable)
+        .values({ userId: req.user.id, originalName, preferredName })
+        .returning();
+      res.json(inserted);
+    }
+  } catch (err) {
+    console.error("Exercise substitution error:", err);
+    res.status(500).json({ error: "Failed to save substitution" });
+  }
+});
+
+router.get("/exercise/substitutions", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  try {
+    const subs = await db
+      .select()
+      .from(exerciseSubstitutionsTable)
+      .where(eq(exerciseSubstitutionsTable.userId, req.user.id))
+      .orderBy(desc(exerciseSubstitutionsTable.count));
+
+    res.json(subs);
+  } catch (err) {
+    console.error("Get substitutions error:", err);
+    res.status(500).json({ error: "Failed to get substitutions" });
+  }
+});
+
+router.get("/workout/deload-check", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  try {
+    const userId = req.user.id;
+
+    const recentCheckins = await db
+      .select({
+        date: dailyCheckInsTable.date,
+        energyLevel: dailyCheckInsTable.energyLevel,
+        sorenessScore: dailyCheckInsTable.sorenessScore,
+        stressLevel: dailyCheckInsTable.stressLevel,
+      })
+      .from(dailyCheckInsTable)
+      .where(eq(dailyCheckInsTable.userId, userId))
+      .orderBy(desc(dailyCheckInsTable.date))
+      .limit(7);
+
+    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+    const recentSessions = await db
+      .select({
+        sessionDate: workoutSessionsTable.sessionDate,
+        totalVolume: workoutSessionsTable.totalVolume,
+        totalSetsCompleted: workoutSessionsTable.totalSetsCompleted,
+      })
+      .from(workoutSessionsTable)
+      .where(and(
+        eq(workoutSessionsTable.userId, userId),
+        sql`${workoutSessionsTable.createdAt} > ${sevenDaysAgo}`
+      ))
+      .orderBy(desc(workoutSessionsTable.sessionDate));
+
+    if (recentCheckins.length < 3) {
+      res.json({ recommended: false, reason: null });
+      return;
+    }
+
+    const recentThree = recentCheckins.slice(0, 3);
+    const fatigueScores = recentThree.map(c => {
+      const energy = (6 - c.energyLevel) / 5;
+      const soreness = (c.sorenessScore - 1) / 4;
+      const stress = (c.stressLevel - 1) / 4;
+      return Math.round((energy * 0.35 + soreness * 0.4 + stress * 0.25) * 100);
+    });
+
+    const avgFatigue = fatigueScores.reduce((a, b) => a + b, 0) / fatigueScores.length;
+    const allHighFatigue = fatigueScores.every(f => f >= 65);
+
+    const weeklyVolume = recentSessions.reduce((sum, s) => sum + (s.totalVolume ?? 0), 0);
+    const sessionCount = recentSessions.length;
+
+    const recommended = allHighFatigue || (avgFatigue >= 75 && sessionCount >= 4);
+
+    let reason: string | null = null;
+    if (recommended) {
+      if (allHighFatigue) {
+        reason = `Your fatigue has been elevated for ${recentThree.length}+ consecutive days. A lighter session or full rest day will help your body recover and come back stronger.`;
+      } else {
+        reason = `You've logged ${sessionCount} sessions this week with high cumulative fatigue. Consider a deload day to maximize recovery.`;
+      }
+    }
+
+    res.json({
+      recommended,
+      reason,
+      avgFatigue: Math.round(avgFatigue),
+      weeklyVolume: Math.round(weeklyVolume),
+      sessionCount,
+    });
+  } catch (err) {
+    console.error("Deload check error:", err);
+    res.status(500).json({ error: "Failed to check deload" });
   }
 });
 

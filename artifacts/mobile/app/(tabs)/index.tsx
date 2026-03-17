@@ -32,7 +32,7 @@ import {
   useUpdateExternalWorkout,
   computeReadinessScore,
 } from "@/hooks/useProfile";
-import { useGenerateWorkout, type GeneratedWorkout, type GeneratedExercise } from "@/hooks/useWorkout";
+import { useGenerateWorkout, useDeloadCheck, type GeneratedWorkout, type GeneratedExercise } from "@/hooks/useWorkout";
 import { useRecoveryCorrelation } from "@/hooks/useRecoveryCorrelation";
 
 const TODAY = new Date().toLocaleDateString("en-US", {
@@ -98,6 +98,7 @@ export default function StatusScreen() {
   const streak = profile?.streakDays ?? 0;
   const syncProgress = profile?.dailySyncProgress ?? 0;
   const checkInDone = !!todayCheckIn;
+  const { data: deloadCheck } = useDeloadCheck();
   const onboardingDone = profile?.onboardingCompleted ?? false;
 
   const now = new Date();
@@ -303,6 +304,21 @@ export default function StatusScreen() {
             </View>
           </View>
         </View>
+
+        {deloadCheck?.recommended && deloadCheck.reason && (
+          <Pressable
+            style={({ pressed }) => [styles.deloadBanner, { opacity: pressed ? 0.85 : 1 }]}
+            onPress={() => {}}
+          >
+            <View style={styles.deloadIconWrap}>
+              <Feather name="alert-triangle" size={16} color="#f59e0b" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.deloadTitle}>Recovery Day Recommended</Text>
+              <Text style={styles.deloadBody}>{deloadCheck.reason}</Text>
+            </View>
+          </Pressable>
+        )}
 
         <BentoCard>
           <View style={styles.syncHeader}>
@@ -767,6 +783,32 @@ const styles = StyleSheet.create({
   headerRight: { flexDirection: "row", alignItems: "center", gap: 12 },
   streakBadge: { flexDirection: "row", alignItems: "center", gap: 4 },
   streakText: { fontSize: 14, fontFamily: "Inter_900Black", color: Colors.text, fontStyle: "italic" },
+  deloadBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    backgroundColor: "#f59e0b18",
+    borderWidth: 1,
+    borderColor: "#f59e0b40",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+  },
+  deloadIconWrap: {
+    marginTop: 1,
+  },
+  deloadTitle: {
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+    color: "#f59e0b",
+    marginBottom: 3,
+  },
+  deloadBody: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textMuted,
+    lineHeight: 17,
+  },
   card: {
     backgroundColor: Colors.bgCard,
     borderWidth: 1,
