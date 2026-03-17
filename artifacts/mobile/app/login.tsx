@@ -41,7 +41,11 @@ export default function LoginScreen() {
     setIsLoading(true);
     const result = await signin(identifier.trim(), password);
     setIsLoading(false);
-    if (result.error) setError(result.error);
+    if (result.error) {
+      setError(result.error);
+    } else {
+      router.replace("/");
+    }
   };
 
   const handleSocial = async (provider: string, fn: () => Promise<{ error?: string }>) => {
@@ -50,7 +54,11 @@ export default function LoginScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const result = await fn();
     setSocialLoading(null);
-    if (result.error) setError(result.error);
+    if (result.error) {
+      setError(result.error);
+    } else {
+      router.replace("/");
+    }
   };
 
   const socialProviders = [

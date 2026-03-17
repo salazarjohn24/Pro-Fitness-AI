@@ -4,6 +4,7 @@ import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { Platform } from "react-native";
+import { queryClient } from "@/lib/queryClient";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -258,6 +259,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
     } finally {
       await clearStoredToken();
+      queryClient.clear();
       setUser(null);
     }
   }, []);
