@@ -120,8 +120,7 @@ export async function syncWithAppleHealth(): Promise<{
   }
 
   const endDate = new Date();
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - 7);
+  const startDate = new Date("2010-01-01T00:00:00.000Z");
 
   try {
     const [steps, calories, workouts] = await Promise.all([

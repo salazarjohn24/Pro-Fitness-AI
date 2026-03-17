@@ -113,7 +113,7 @@ export default function ProfileScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Alert.alert(
           "Sync Complete",
-          `Last 7 days synced:\n• ${result.steps?.toLocaleString() ?? 0} steps\n• ${result.activeCalories?.toLocaleString() ?? 0} active calories\n• ${result.workoutCount ?? 0} workouts`
+          `All-time data synced:\n• ${result.steps?.toLocaleString() ?? 0} total steps\n• ${result.activeCalories?.toLocaleString() ?? 0} total active calories\n• ${result.workoutCount ?? 0} total workouts`
         );
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
