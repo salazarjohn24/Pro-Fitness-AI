@@ -17,7 +17,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CheckInModal, type CheckInData } from "@/components/CheckInModal";
 import { EditWorkoutModal, type WorkoutItem } from "@/components/EditWorkoutModal";
 import { InsightInfoModal } from "@/components/InsightInfoModal";
-import { OnboardingModal } from "@/components/OnboardingModal";
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
 import {
@@ -86,7 +85,6 @@ export default function StatusScreen() {
   const [insightOpen, setInsightOpen] = useState(false);
   const [readinessInfoOpen, setReadinessInfoOpen] = useState(false);
   const [coachSecretInfoOpen, setCoachSecretInfoOpen] = useState(false);
-  const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [autoCheckInTriggered, setAutoCheckInTriggered] = useState(false);
   const [generatedWorkout, setGeneratedWorkout] = useState<GeneratedWorkout | null>(null);
   const [editWorkout, setEditWorkout] = useState<WorkoutItem | null>(null);
@@ -97,7 +95,6 @@ export default function StatusScreen() {
   const streak = profile?.streakDays ?? 0;
   const syncProgress = profile?.dailySyncProgress ?? 0;
   const checkInDone = !!todayCheckIn;
-  const activityDone = profile?.activityImported ?? false;
   const onboardingDone = profile?.onboardingCompleted ?? false;
 
   const now = new Date();
@@ -111,6 +108,8 @@ export default function StatusScreen() {
 
   const todayRestWorkout = recentExternalWorkouts?.find((w: any) => w.workoutType === "rest" && isToday(w));
   const isRestDay = !!todayRestWorkout;
+  const todayAnyWorkout = recentExternalWorkouts?.find((w: any) => isToday(w));
+  const activityDone = !!todayAnyWorkout;
 
   const readinessScore = computeReadinessScore(todayCheckIn);
 
@@ -135,12 +134,6 @@ export default function StatusScreen() {
   const pct = Math.round((completedTasks / 2) * 100);
 
   useEffect(() => {
-    if (!isLoading && !checkInLoading && profile && !onboardingDone) {
-      setOnboardingOpen(true);
-    }
-  }, [isLoading, checkInLoading, profile, onboardingDone]);
-
-  useEffect(() => {
     if (!isLoading && !checkInLoading && onboardingDone && !checkInDone && !autoCheckInTriggered) {
       const timer = setTimeout(() => {
         setAutoCheckInTriggered(true);
@@ -157,23 +150,6 @@ export default function StatusScreen() {
       });
     }
   }, [isLoading, checkInLoading, checkInDone, generatedWorkout, isGenerating]);
-
-  const handleOnboardingComplete = (data: {
-    fitnessGoal: string;
-    skillLevel: string;
-    equipment: string[];
-    injuries: string[];
-  }) => {
-    updateProfile({
-      fitnessGoal: data.fitnessGoal,
-      skillLevel: data.skillLevel,
-      equipment: data.equipment,
-      injuries: data.injuries,
-      onboardingCompleted: true,
-    }, {
-      onSuccess: () => setOnboardingOpen(false),
-    });
-  };
 
   const handleCheckInComplete = (data: CheckInData) => {
     const wasAlreadyDone = checkInDone;
@@ -668,11 +644,6 @@ export default function StatusScreen() {
           </BentoCard>
         )}
       </ScrollView>
-
-      <OnboardingModal
-        visible={onboardingOpen}
-        onComplete={handleOnboardingComplete}
-      />
 
       <CheckInModal
         visible={checkInOpen}
