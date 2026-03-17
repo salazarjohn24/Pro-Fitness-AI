@@ -525,16 +525,16 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
                 <View style={styles.formGroup}>
                   <Text style={styles.fieldLabel}>MOVEMENTS & FATIGUE LOAD</Text>
                   {imageAnalysis.movements.map((mv, i) => (
-                    <View key={i} style={styles.movementRow}>
-                      <View style={styles.movementInfo}>
-                        <Text style={styles.movementName}>{mv.name}</Text>
-                        <Text style={styles.movementVolume}>{mv.volume}</Text>
-                        <Text style={styles.movementMuscles}>{mv.muscleGroups.join(", ")}</Text>
+                    <View key={i} style={styles.imgMvRow}>
+                      <View style={styles.imgMvInfo}>
+                        <Text style={styles.imgMvName}>{mv.name}</Text>
+                        <Text style={styles.imgMvVolume}>{mv.volume}</Text>
+                        <Text style={styles.imgMvMuscles}>{mv.muscleGroups.join(", ")}</Text>
                       </View>
-                      <View style={styles.movementFatigue}>
-                        <Text style={styles.movementFatiguePct}>{mv.fatiguePercent}%</Text>
-                        <View style={styles.movementFatigueBar}>
-                          <View style={[styles.movementFatigueFill, { width: `${mv.fatiguePercent}%` as any }]} />
+                      <View style={styles.imgMvFatigue}>
+                        <Text style={styles.imgMvFatiguePct}>{mv.fatiguePercent}%</Text>
+                        <View style={styles.imgMvFatigueBar}>
+                          <View style={[styles.imgMvFatigueFill, { width: `${mv.fatiguePercent}%` as any }]} />
                         </View>
                       </View>
                     </View>
@@ -1286,7 +1286,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     fontStyle: "italic",
   },
-  movementRow: {
+  imgMvRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -1295,38 +1295,38 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
     gap: 12,
   },
-  movementInfo: { flex: 1, gap: 2 },
-  movementName: {
+  imgMvInfo: { flex: 1, gap: 2 },
+  imgMvName: {
     fontSize: 13,
     fontFamily: "Inter_700Bold",
     color: Colors.text,
   },
-  movementVolume: {
+  imgMvVolume: {
     fontSize: 11,
     fontFamily: "Inter_400Regular",
     color: Colors.textMuted,
   },
-  movementMuscles: {
+  imgMvMuscles: {
     fontSize: 10,
     fontFamily: "Inter_400Regular",
     color: Colors.textSubtle,
   },
-  movementFatigue: { alignItems: "flex-end", gap: 4, minWidth: 64 },
-  movementFatiguePct: {
+  imgMvFatigue: { alignItems: "flex-end", gap: 4, minWidth: 64 },
+  imgMvFatiguePct: {
     fontSize: 12,
     fontFamily: "Inter_900Black",
     color: Colors.orange,
     fontStyle: "italic",
   },
-  movementFatigueBar: {
+  imgMvFatigueBar: {
     width: 64,
     height: 4,
     borderRadius: 2,
     backgroundColor: Colors.border,
     overflow: "hidden",
   },
-  movementFatigueFill: {
-    height: "100%",
+  imgMvFatigueFill: {
+    height: "100%" as any,
     backgroundColor: Colors.orange,
     borderRadius: 2,
   },

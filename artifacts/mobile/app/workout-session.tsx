@@ -452,7 +452,7 @@ export default function WorkoutSessionScreen() {
           ) : null}
           <Pressable
             style={({ pressed }) => [styles.doneBtn, { opacity: pressed ? 0.9 : 1 }]}
-            onPress={() => router.replace("/(tabs)/")}
+            onPress={() => router.replace("/(tabs)" as any)}
           >
             <Text style={styles.doneBtnText}>BACK TO DASHBOARD</Text>
           </Pressable>

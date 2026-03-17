@@ -166,7 +166,7 @@ export default function StatusScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         if (!wasAlreadyDone) {
           const newProgress = Math.min(100, syncProgress + 50);
-          updateProfile({ checkInCompleted: true, dailySyncProgress: newProgress, streakDays: streak + 1 });
+          updateProfile({ checkInCompleted: true, dailySyncProgress: newProgress });
         }
         generateWorkout(undefined, {
           onSuccess: (workout) => {

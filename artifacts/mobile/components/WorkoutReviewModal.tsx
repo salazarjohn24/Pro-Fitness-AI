@@ -162,7 +162,7 @@ export default function WorkoutReviewModal({ visible, workout, onClose, onStart 
             onPress={handleStart}
             disabled={exercises.length === 0}
           >
-            <Feather name="play" size={18} color={Colors.bg} />
+            <Feather name="play" size={18} color={Colors.bgPrimary} />
             <Text style={styles.startBtnText}>Start Workout</Text>
           </Pressable>
         </View>
@@ -174,7 +174,7 @@ export default function WorkoutReviewModal({ visible, workout, onClose, onStart 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.bg,
+    backgroundColor: Colors.bgPrimary,
   },
   header: {
     flexDirection: "row",
@@ -325,7 +325,7 @@ const styles = StyleSheet.create({
   startBtnText: {
     fontSize: 16,
     fontFamily: "Inter_900Black",
-    color: Colors.bg,
+    color: Colors.bgPrimary,
     letterSpacing: 0.5,
   },
 });

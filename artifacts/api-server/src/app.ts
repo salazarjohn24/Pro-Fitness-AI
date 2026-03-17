@@ -9,6 +9,7 @@ const app: Express = express();
 const ALLOWED_ORIGIN_PATTERNS = [
   /^https:\/\/[\w-]+\.replit\.dev$/,
   /^https:\/\/[\w-]+\.replit\.app$/,
+  /^https:\/\/[\w.-]+\.spock\.replit\.dev$/,
   /^https:\/\/[\w-]+\.spock\.replit\.dev$/,
 ];
 

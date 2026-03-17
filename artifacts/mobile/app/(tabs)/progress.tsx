@@ -234,7 +234,7 @@ function MuscleFocusChart({ data }: { data: MuscleFocusItem[] }) {
               <View
                 style={[
                   styles.muscleBarFill,
-                  { width: widthPct, backgroundColor: color },
+                  { width: widthPct as any, backgroundColor: color },
                 ]}
               />
             </View>

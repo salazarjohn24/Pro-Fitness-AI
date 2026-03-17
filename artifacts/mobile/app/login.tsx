@@ -20,14 +20,14 @@ import { useAuth } from "@/lib/auth";
 import { Colors } from "@/constants/colors";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 
-type View = "options" | "email";
+type LoginView = "options" | "email";
 
 export default function LoginScreen() {
   const { signin, loginWithGoogle, loginWithApple, appleAvailable } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const [view, setView] = useState<View>("options");
+  const [view, setView] = useState<LoginView>("options");
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
