@@ -120,7 +120,17 @@ router.post("/auth/signup", async (req: Request, res: Response) => {
       .limit(1);
 
     if (existing.length > 0) {
-      res.status(409).json({ error: "An account with that username or email already exists" });
+      const taken = existing[0] as any;
+      const providerLabel = taken.authProvider && taken.authProvider !== "email"
+        ? `Please sign in with ${taken.authProvider} instead.`
+        : "Please sign in or use a different email.";
+      const field = username && taken.username === identifier ? "username" : "email";
+      res.status(409).json({ error: `That ${field} is already registered. ${providerLabel}` });
+      return;
+    }
+
+    if (email && !email.includes("@")) {
+      res.status(400).json({ error: "Please enter a valid email address." });
       return;
     }
 
@@ -151,9 +161,19 @@ router.post("/auth/signup", async (req: Request, res: Response) => {
 
     const sid = await createSession(sessionData);
     res.json({ token: sid });
-  } catch (err) {
+  } catch (err: any) {
     console.error("Signup error:", err);
-    res.status(500).json({ error: "Failed to create account" });
+    if (err?.cause?.code === "23505") {
+      if (err.cause.constraint?.includes("email")) {
+        res.status(409).json({ error: "That email is already registered. Please sign in or use a different email." });
+      } else if (err.cause.constraint?.includes("username")) {
+        res.status(409).json({ error: "That username is already taken. Please choose a different one." });
+      } else {
+        res.status(409).json({ error: "An account with those details already exists." });
+      }
+    } else {
+      res.status(500).json({ error: "Something went wrong creating your account. Please try again." });
+    }
   }
 });
 
