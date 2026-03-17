@@ -75,7 +75,7 @@ async function upsertSocialUser(params: {
 
     if (byEmail) {
       if (!params.emailVerified) {
-        throw new Error("Cannot link accounts: Google email is not verified.");
+        throw new Error("Cannot link accounts: your email address has not been verified by the sign-in provider.");
       }
       const [linked] = await db
         .update(usersTable)
@@ -366,6 +366,7 @@ router.post("/auth/social/apple", async (req: Request, res: Response) => {
     const user = await upsertSocialUser({
       provider: "apple", providerId: sub,
       email, firstName, lastName, profileImageUrl: null,
+      emailVerified: true,
     });
 
     const sid = await createSocialSession(user);
