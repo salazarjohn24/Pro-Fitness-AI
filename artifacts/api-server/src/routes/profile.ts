@@ -39,7 +39,7 @@ router.put("/profile", async (req: Request, res: Response) => {
     age, weight, height, gender, experienceLevel,
     injuries, injuryNotes, primaryGoal, unitSystem,
     onboardingCompleted, insightDetailLevel, syncPreferences,
-    equipment, skillLevel,
+    equipment, skillLevel, preferredWorkoutDuration,
   } = req.body;
 
   const setFields: Partial<InsertUserProfile> = { updatedAt: new Date() };
@@ -64,6 +64,7 @@ router.put("/profile", async (req: Request, res: Response) => {
   if (syncPreferences !== undefined) setFields.syncPreferences = syncPreferences;
   if (equipment !== undefined) setFields.equipment = equipment;
   if (skillLevel !== undefined) setFields.skillLevel = skillLevel;
+  if (preferredWorkoutDuration !== undefined) setFields.preferredWorkoutDuration = preferredWorkoutDuration;
 
   const [updated] = await db
     .insert(userProfilesTable)

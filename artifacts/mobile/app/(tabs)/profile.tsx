@@ -514,6 +514,33 @@ export default function ProfileScreen() {
 
       <View style={styles.sectionCard}>
         <View style={styles.auditHeader}>
+          <Text style={styles.auditTitle}>WORKOUT DURATION</Text>
+        </View>
+        <Text style={styles.envHint}>Set your preferred session length — used by AI when building your workouts</Text>
+        <View style={styles.freqRow}>
+          {[30, 45, 60, 75, 90].map((mins) => (
+            <Pressable
+              key={mins}
+              style={({ pressed }) => [
+                styles.freqBtn,
+                (profile?.preferredWorkoutDuration ?? 60) === mins && styles.freqBtnActive,
+                { opacity: pressed ? 0.8 : 1 },
+              ]}
+              onPress={() => {
+                Haptics.selectionAsync();
+                updateProfile({ preferredWorkoutDuration: mins });
+              }}
+            >
+              <Text style={[styles.freqBtnText, (profile?.preferredWorkoutDuration ?? 60) === mins && styles.freqBtnTextActive]}>
+                {mins}m
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.sectionCard}>
+        <View style={styles.auditHeader}>
           <Text style={styles.auditTitle}>GYM ENVIRONMENTS</Text>
         </View>
         <Text style={styles.envHint}>Tap an environment to set it as default for AI workout recommendations</Text>

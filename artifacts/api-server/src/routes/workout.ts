@@ -320,6 +320,7 @@ router.post("/workout/generate", aiRateLimit, async (req: Request, res: Response
         injuries: userInjuries,
         equipment: userEquipment,
         checkInNotes: latestCheckin?.notes,
+        preferredWorkoutDuration: profile?.preferredWorkoutDuration ?? 60,
       },
       availableForAI,
       exerciseMap
@@ -658,6 +659,8 @@ router.post("/workout/architect-generate", aiRateLimit, async (req: Request, res
           injuries: userInjuries,
           equipment: userEquipment,
           requestedMuscleGroups: requestedGroups,
+          preferredWorkoutDuration: profile?.preferredWorkoutDuration ?? 60,
+          availableMinutes: (req.body as any).availableMinutes ?? undefined,
         },
         availableForAI,
         exerciseMap

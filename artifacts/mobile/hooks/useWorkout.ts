@@ -112,7 +112,7 @@ export function useSaveWorkout() {
 }
 
 export function useArchitectGenerate() {
-  return useMutation<GeneratedWorkout, Error, { muscleGroups: string[]; equipment: string[] }>({
+  return useMutation<GeneratedWorkout, Error, { muscleGroups: string[]; equipment: string[]; availableMinutes?: number }>({
     mutationFn: async (data) => {
       const headers = await getAuthHeaders();
       const res = await fetch(`${getApiBase()}/api/workout/architect-generate`, {

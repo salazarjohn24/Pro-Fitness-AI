@@ -38,10 +38,12 @@ export interface WorkoutContext {
   injuries: string[];
   equipment: string[];
   checkInNotes?: string | null;
+  preferredWorkoutDuration?: number;
 }
 
 export interface ArchitectContext extends WorkoutContext {
   requestedMuscleGroups: string[];
+  availableMinutes?: number;
 }
 
 function buildExerciseListForPrompt(exercises: ExerciseData[]): string {
@@ -113,9 +115,10 @@ RULES:
 - Moderate soreness (reduce volume): ${ctx.moderateSorenessGroups.join(", ") || "none"}
 - Injuries (AVOID): ${ctx.injuries.join(", ") || "none"}
 - Available equipment: ${ctx.equipment.join(", ") || "bodyweight only"}
+- Target workout duration: ${ctx.preferredWorkoutDuration ?? 60} minutes (adjust exercise count/sets/reps accordingly)
 ${ctx.checkInNotes ? `- User notes: ${sanitizeUserInput(ctx.checkInNotes)}` : ""}
 
-Generate the ideal workout for this person today.`;
+Generate the ideal workout for this person today. Fit within the target duration.`;
 
   const response = await openai.chat.completions.create({
     model: "gpt-5-mini",
@@ -174,6 +177,7 @@ RULES:
 - NEVER include exercises targeting high-soreness or injured muscle groups
 - Output ONLY valid JSON lines, no markdown, no explanation`;
 
+  const targetMinutes = ctx.availableMinutes ?? ctx.preferredWorkoutDuration ?? 60;
   const userPrompt = `User context:
 - Target muscle groups: ${ctx.requestedMuscleGroups.join(", ")}
 - Fitness goal: ${ctx.fitnessGoal}
@@ -184,8 +188,9 @@ RULES:
 - Moderate soreness (reduce volume): ${ctx.moderateSorenessGroups.join(", ") || "none"}
 - Injuries (AVOID): ${ctx.injuries.join(", ") || "none"}
 - Available equipment: ${ctx.equipment.join(", ") || "bodyweight only"}
+- Available time: ${targetMinutes} minutes (fit all exercises within this duration)
 
-Generate the custom workout targeting the requested muscle groups.`;
+Generate the custom workout targeting the requested muscle groups. Adjust exercise count and sets to fit the time available.`;
 
   const response = await openai.chat.completions.create({
     model: "gpt-5-mini",

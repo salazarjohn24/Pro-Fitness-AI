@@ -17,8 +17,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CheckInModal, type CheckInData } from "@/components/CheckInModal";
 import { EditWorkoutModal, type WorkoutItem } from "@/components/EditWorkoutModal";
 import { InsightInfoModal } from "@/components/InsightInfoModal";
+import WorkoutReviewModal from "@/components/WorkoutReviewModal";
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
+import { sendWorkoutReadyNotification } from "@/lib/notifications";
 import {
   useProfile,
   useUpdateProfile,
@@ -30,7 +32,7 @@ import {
   useUpdateExternalWorkout,
   computeReadinessScore,
 } from "@/hooks/useProfile";
-import { useGenerateWorkout, type GeneratedWorkout } from "@/hooks/useWorkout";
+import { useGenerateWorkout, type GeneratedWorkout, type GeneratedExercise } from "@/hooks/useWorkout";
 import { useRecoveryCorrelation } from "@/hooks/useRecoveryCorrelation";
 
 const TODAY = new Date().toLocaleDateString("en-US", {
@@ -87,6 +89,7 @@ export default function StatusScreen() {
   const [coachSecretInfoOpen, setCoachSecretInfoOpen] = useState(false);
   const [autoCheckInTriggered, setAutoCheckInTriggered] = useState(false);
   const [generatedWorkout, setGeneratedWorkout] = useState<GeneratedWorkout | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [editWorkout, setEditWorkout] = useState<WorkoutItem | null>(null);
   const [editWorkoutOpen, setEditWorkoutOpen] = useState(false);
   const [rpeInfoOpen, setRpeInfoOpen] = useState(false);
@@ -146,7 +149,10 @@ export default function StatusScreen() {
   useEffect(() => {
     if (!isLoading && !checkInLoading && checkInDone && !generatedWorkout && !isGenerating) {
       generateWorkout(undefined, {
-        onSuccess: (workout) => setGeneratedWorkout(workout),
+        onSuccess: (workout) => {
+          setGeneratedWorkout(workout);
+          sendWorkoutReadyNotification(workout.workoutTitle);
+        },
       });
     }
   }, [isLoading, checkInLoading, checkInDone, generatedWorkout, isGenerating]);
@@ -164,6 +170,7 @@ export default function StatusScreen() {
         generateWorkout(undefined, {
           onSuccess: (workout) => {
             setGeneratedWorkout(workout);
+            sendWorkoutReadyNotification(workout.workoutTitle);
           },
         });
       },
@@ -240,21 +247,24 @@ export default function StatusScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
     if (generatedWorkout) {
-      router.push({
-        pathname: "/workout-session",
-        params: { workout: JSON.stringify(generatedWorkout) },
-      });
+      setReviewOpen(true);
     } else {
       generateWorkout(undefined, {
         onSuccess: (workout) => {
           setGeneratedWorkout(workout);
-          router.push({
-            pathname: "/workout-session",
-            params: { workout: JSON.stringify(workout) },
-          });
+          sendWorkoutReadyNotification(workout.workoutTitle);
+          setReviewOpen(true);
         },
       });
     }
+  };
+
+  const handleReviewStart = (workout: GeneratedWorkout, exercises: GeneratedExercise[]) => {
+    setReviewOpen(false);
+    router.push({
+      pathname: "/workout-session",
+      params: { workout: JSON.stringify({ ...workout, exercises }) },
+    });
   };
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -391,8 +401,11 @@ export default function StatusScreen() {
           </View>
           {isGenerating ? (
             <View style={styles.generatingBlock}>
-              <ActivityIndicator color={Colors.orange} size="small" />
-              <Text style={styles.generatingText}>Generating your workout...</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <ActivityIndicator color={Colors.orange} size="small" />
+                <Text style={styles.generatingText}>Generating your workout...</Text>
+              </View>
+              <Text style={styles.generatingSubtext}>This usually takes 30–60 seconds. You can leave the app — we'll send you a notification when it's ready.</Text>
             </View>
           ) : (
             <>
@@ -694,6 +707,13 @@ export default function StatusScreen() {
         isSaving={isUpdatingWorkout}
       />
 
+      <WorkoutReviewModal
+        visible={reviewOpen}
+        workout={generatedWorkout}
+        onClose={() => setReviewOpen(false)}
+        onStart={handleReviewStart}
+      />
+
       <InsightInfoModal
         visible={rpeInfoOpen}
         onClose={() => setRpeInfoOpen(false)}
@@ -828,15 +848,20 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   generatingBlock: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 20,
+    alignItems: "flex-start",
+    gap: 8,
+    paddingVertical: 16,
   },
   generatingText: {
     fontSize: 14,
     fontFamily: "Inter_700Bold",
     color: Colors.textMuted,
+  },
+  generatingSubtext: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
+    lineHeight: 17,
   },
   workoutMeta: {
     flexDirection: "row",

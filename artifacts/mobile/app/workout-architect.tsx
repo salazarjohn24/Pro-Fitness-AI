@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Colors } from "@/constants/colors";
 import { EQUIPMENT_CATEGORIES } from "@/components/EquipmentChecklist";
 import { useEnvironments, useCreateEnvironment, type GymEnvironment } from "@/hooks/useEnvironments";
-import { useTodayCheckIn } from "@/hooks/useProfile";
+import { useTodayCheckIn, useProfile } from "@/hooks/useProfile";
 import {
   useArchitectGenerate,
   fetchExerciseAlternatives,
@@ -96,12 +96,15 @@ function matchEquipmentIds(envItems: string[]): string[] {
     .filter((v): v is string => !!v && validIds.has(v)))];
 }
 
+const DURATION_OPTIONS = [30, 45, 60, 75, 90, 120];
+
 export default function WorkoutArchitectScreen() {
   const insets = useSafeAreaInsets();
   const { data: todayCheckIn, isLoading: checkInLoading } = useTodayCheckIn();
   const { mutate: architectGenerate, isPending: isGenerating } = useArchitectGenerate();
   const { data: environments } = useEnvironments();
   const { mutate: createEnv, isPending: isCreatingEnv } = useCreateEnvironment();
+  const { data: profile } = useProfile();
 
   const [step, setStep] = useState<Step>("muscles");
   const [selectedMuscles, setSelectedMuscles] = useState<string[]>([]);
@@ -109,6 +112,7 @@ export default function WorkoutArchitectScreen() {
   const [equipmentLoaded, setEquipmentLoaded] = useState(false);
   const [generatedWorkout, setGeneratedWorkout] = useState<GeneratedWorkout | null>(null);
   const [workoutName, setWorkoutName] = useState("");
+  const [availableMinutes, setAvailableMinutes] = useState<number>(60);
 
   const [addEnvOpen, setAddEnvOpen] = useState(false);
   const [newEnvName, setNewEnvName] = useState("");
@@ -182,12 +186,38 @@ export default function WorkoutArchitectScreen() {
     setSelectedEnvId(null);
   };
 
+  useEffect(() => {
+    if (profile?.preferredWorkoutDuration) {
+      setAvailableMinutes(profile.preferredWorkoutDuration);
+    }
+  }, [profile?.preferredWorkoutDuration]);
+
+  const moveExerciseUp = (idx: number) => {
+    if (idx === 0) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setReviewExercises(prev => {
+      const arr = [...prev];
+      [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
+      return arr;
+    });
+  };
+
+  const moveExerciseDown = (idx: number) => {
+    setReviewExercises(prev => {
+      if (idx >= prev.length - 1) return prev;
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const arr = [...prev];
+      [arr[idx], arr[idx + 1]] = [arr[idx + 1], arr[idx]];
+      return arr;
+    });
+  };
+
   const handleGenerate = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setStep("generating");
 
     architectGenerate(
-      { muscleGroups: selectedMuscles, equipment: selectedEquipment },
+      { muscleGroups: selectedMuscles, equipment: selectedEquipment, availableMinutes },
       {
         onSuccess: (workout) => {
           setGeneratedWorkout(workout);
@@ -381,14 +411,6 @@ export default function WorkoutArchitectScreen() {
     const totalReps = reviewExercises.reduce((a, ex) => a + (exerciseSets[ex.exerciseId] ?? ex.sets) * (exerciseReps[ex.exerciseId] ?? ex.reps), 0);
     const estimatedTime = Math.round(reviewExercises.reduce((a, ex) => a + (exerciseSets[ex.exerciseId] ?? ex.sets) * 2.5, 0));
 
-    const groupedExercises = reviewExercises.reduce((acc, ex) => {
-      const cat = ex.category;
-      if (!acc[cat]) acc[cat] = [];
-      acc[cat].push(ex);
-      return acc;
-    }, {} as Record<string, GeneratedExercise[]>);
-    const categoryOrder = ["warmup", "compound", "accessory", "core", "cooldown"];
-
     return (
       <View style={[styles.container, { paddingTop: topPad }]}>
         <View style={styles.topBar}>
@@ -428,73 +450,85 @@ export default function WorkoutArchitectScreen() {
             </View>
           </View>
 
-          {categoryOrder.map(cat => {
-            const catExercises = groupedExercises[cat];
-            if (!catExercises || catExercises.length === 0) return null;
-            return (
-              <View key={cat}>
-                <Text style={styles.categoryLabel}>{CATEGORY_LABELS[cat] ?? cat.toUpperCase()}</Text>
-                {catExercises.map((ex, i) => (
-                  <View key={ex.exerciseId} style={styles.reviewExCard}>
-                    <View style={styles.reviewExHeader}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.reviewExName}>{ex.name}</Text>
-                        <Text style={styles.reviewExMuscles}>
-                          {ex.primaryMuscle}{ex.secondaryMuscles.length > 0 ? ` · ${ex.secondaryMuscles.join(" · ")}` : ""}
-                        </Text>
-                      </View>
-                      <View style={styles.reviewExActions}>
-                        <Pressable onPress={() => handleSwap(ex.exerciseId)} style={styles.reviewActionBtn}>
-                          <Feather name="refresh-cw" size={14} color={Colors.highlight} />
-                        </Pressable>
-                        <Pressable onPress={() => removeExercise(ex.exerciseId)} style={styles.reviewActionBtn}>
-                          <Feather name="trash-2" size={14} color="#555" />
-                        </Pressable>
-                      </View>
-                    </View>
-
-                    <View style={styles.adjustRow}>
-                      <View style={styles.adjBlock}>
-                        <Text style={styles.adjLabel}>SETS</Text>
-                        <View style={styles.adjControls}>
-                          <Pressable onPress={() => adjustSets(ex.exerciseId, -1)} style={styles.adjBtn}>
-                            <Feather name="minus" size={14} color={Colors.textMuted} />
-                          </Pressable>
-                          <Text style={styles.adjVal}>{exerciseSets[ex.exerciseId] ?? ex.sets}</Text>
-                          <Pressable onPress={() => adjustSets(ex.exerciseId, 1)} style={styles.adjBtn}>
-                            <Feather name="plus" size={14} color={Colors.textMuted} />
-                          </Pressable>
-                        </View>
-                      </View>
-                      <View style={styles.adjDivider} />
-                      <View style={styles.adjBlock}>
-                        <Text style={styles.adjLabel}>REPS</Text>
-                        <View style={styles.adjControls}>
-                          <Pressable onPress={() => adjustReps(ex.exerciseId, -1)} style={styles.adjBtn}>
-                            <Feather name="minus" size={14} color={Colors.textMuted} />
-                          </Pressable>
-                          <Text style={styles.adjVal}>{exerciseReps[ex.exerciseId] ?? ex.reps}</Text>
-                          <Pressable onPress={() => adjustReps(ex.exerciseId, 1)} style={styles.adjBtn}>
-                            <Feather name="plus" size={14} color={Colors.textMuted} />
-                          </Pressable>
-                        </View>
-                      </View>
-                      <View style={styles.adjDivider} />
-                      <View style={styles.adjBlock}>
-                        <Text style={styles.adjLabel}>WEIGHT</Text>
-                        <TextInput
-                          style={styles.weightInput}
-                          value={exerciseWeights[ex.exerciseId] ?? ex.weight}
-                          onChangeText={(t) => setExerciseWeights(prev => ({ ...prev, [ex.exerciseId]: t }))}
-                          placeholderTextColor={Colors.textSubtle}
-                        />
-                      </View>
+          {reviewExercises.map((ex, i) => (
+            <View key={ex.exerciseId} style={styles.reviewExCard}>
+              <View style={styles.reviewExHeader}>
+                <View style={styles.reorderBtns}>
+                  <Pressable
+                    onPress={() => moveExerciseUp(i)}
+                    style={[styles.reorderBtn, i === 0 && styles.reorderBtnDisabled]}
+                    disabled={i === 0}
+                  >
+                    <Feather name="chevron-up" size={15} color={i === 0 ? Colors.textSubtle : Colors.textMuted} />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => moveExerciseDown(i)}
+                    style={[styles.reorderBtn, i === reviewExercises.length - 1 && styles.reorderBtnDisabled]}
+                    disabled={i === reviewExercises.length - 1}
+                  >
+                    <Feather name="chevron-down" size={15} color={i === reviewExercises.length - 1 ? Colors.textSubtle : Colors.textMuted} />
+                  </Pressable>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <Text style={styles.reviewExName}>{ex.name}</Text>
+                    <View style={styles.catBadge}>
+                      <Text style={styles.catBadgeText}>{CATEGORY_LABELS[ex.category] ?? ex.category}</Text>
                     </View>
                   </View>
-                ))}
+                  <Text style={styles.reviewExMuscles}>
+                    {ex.primaryMuscle}{ex.secondaryMuscles.length > 0 ? ` · ${ex.secondaryMuscles.join(" · ")}` : ""}
+                  </Text>
+                </View>
+                <View style={styles.reviewExActions}>
+                  <Pressable onPress={() => handleSwap(ex.exerciseId)} style={styles.reviewActionBtn}>
+                    <Feather name="refresh-cw" size={14} color={Colors.highlight} />
+                  </Pressable>
+                  <Pressable onPress={() => removeExercise(ex.exerciseId)} style={styles.reviewActionBtn}>
+                    <Feather name="trash-2" size={14} color="#555" />
+                  </Pressable>
+                </View>
               </View>
-            );
-          })}
+
+              <View style={styles.adjustRow}>
+                <View style={styles.adjBlock}>
+                  <Text style={styles.adjLabel}>SETS</Text>
+                  <View style={styles.adjControls}>
+                    <Pressable onPress={() => adjustSets(ex.exerciseId, -1)} style={styles.adjBtn}>
+                      <Feather name="minus" size={14} color={Colors.textMuted} />
+                    </Pressable>
+                    <Text style={styles.adjVal}>{exerciseSets[ex.exerciseId] ?? ex.sets}</Text>
+                    <Pressable onPress={() => adjustSets(ex.exerciseId, 1)} style={styles.adjBtn}>
+                      <Feather name="plus" size={14} color={Colors.textMuted} />
+                    </Pressable>
+                  </View>
+                </View>
+                <View style={styles.adjDivider} />
+                <View style={styles.adjBlock}>
+                  <Text style={styles.adjLabel}>REPS</Text>
+                  <View style={styles.adjControls}>
+                    <Pressable onPress={() => adjustReps(ex.exerciseId, -1)} style={styles.adjBtn}>
+                      <Feather name="minus" size={14} color={Colors.textMuted} />
+                    </Pressable>
+                    <Text style={styles.adjVal}>{exerciseReps[ex.exerciseId] ?? ex.reps}</Text>
+                    <Pressable onPress={() => adjustReps(ex.exerciseId, 1)} style={styles.adjBtn}>
+                      <Feather name="plus" size={14} color={Colors.textMuted} />
+                    </Pressable>
+                  </View>
+                </View>
+                <View style={styles.adjDivider} />
+                <View style={styles.adjBlock}>
+                  <Text style={styles.adjLabel}>WEIGHT</Text>
+                  <TextInput
+                    style={styles.weightInput}
+                    value={exerciseWeights[ex.exerciseId] ?? ex.weight}
+                    onChangeText={(t) => setExerciseWeights(prev => ({ ...prev, [ex.exerciseId]: t }))}
+                    placeholderTextColor={Colors.textSubtle}
+                  />
+                </View>
+              </View>
+            </View>
+          ))}
         </ScrollView>
 
         <View style={[styles.bottomBar, { paddingBottom: botPad + 12 }]}>
@@ -792,6 +826,23 @@ export default function WorkoutArchitectScreen() {
             );
           })}
         </View>
+
+        <View style={styles.durationSection}>
+          <Text style={styles.durationLabel}>AVAILABLE TIME</Text>
+          <View style={styles.durationRow}>
+            {DURATION_OPTIONS.map(mins => (
+              <Pressable
+                key={mins}
+                onPress={() => { Haptics.selectionAsync(); setAvailableMinutes(mins); }}
+                style={[styles.durationBtn, availableMinutes === mins && styles.durationBtnActive]}
+              >
+                <Text style={[styles.durationBtnText, availableMinutes === mins && styles.durationBtnTextActive]}>
+                  {mins}m
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
       </ScrollView>
 
       {selectedMuscles.length > 0 && (
@@ -997,6 +1048,41 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   selectionLabelSelected: { color: Colors.orange },
+  durationSection: {
+    marginTop: 20,
+    paddingHorizontal: 4,
+  },
+  durationLabel: {
+    fontSize: 10,
+    fontFamily: "Inter_700Bold",
+    color: Colors.textSubtle,
+    letterSpacing: 1,
+    marginBottom: 10,
+  },
+  durationRow: {
+    flexDirection: "row",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  durationBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#333",
+    backgroundColor: "#1e1e1e",
+  },
+  durationBtnActive: {
+    borderColor: Colors.orange,
+    backgroundColor: Colors.orange + "18",
+  },
+  durationBtnText: {
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+    color: Colors.textMuted,
+    letterSpacing: 0.3,
+  },
+  durationBtnTextActive: { color: Colors.orange },
   checkMark: {
     width: 18,
     height: 18,
@@ -1067,6 +1153,29 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   reviewExHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
+  reorderBtns: { flexDirection: "column", gap: 2, marginRight: 4 },
+  reorderBtn: {
+    width: 26,
+    height: 26,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 6,
+    backgroundColor: "#2a2a2a",
+  },
+  reorderBtnDisabled: { opacity: 0.3 },
+  catBadge: {
+    backgroundColor: Colors.highlight + "22",
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  catBadgeText: {
+    fontSize: 9,
+    fontFamily: "Inter_700Bold",
+    color: Colors.highlight,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
   reviewExName: { fontSize: 14, fontFamily: "Inter_700Bold", color: Colors.text, textTransform: "uppercase", letterSpacing: 0.3 },
   reviewExMuscles: { fontSize: 10, fontFamily: "Inter_400Regular", color: Colors.textSubtle, marginTop: 2 },
   reviewExActions: { flexDirection: "row", gap: 6 },

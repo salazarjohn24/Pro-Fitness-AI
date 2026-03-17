@@ -53,6 +53,7 @@ export interface FitnessProfile {
   insightDetailLevel: string | null;
   syncPreferences: { appleHealth: boolean; strava: boolean; manualScreenshot: boolean } | null;
   activeEnvironmentId: number | null;
+  preferredWorkoutDuration: number | null;
   updatedAt: string | null;
 }
 
