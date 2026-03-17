@@ -85,7 +85,12 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
   const [manualMuscleGroups, setManualMuscleGroups] = useState<string[]>([]);
 
   const [aiText, setAiText] = useState("");
-  const [aiParsed, setAiParsed] = useState<{ muscleGroups: string[]; suggestedIntensity: number } | null>(null);
+  const [aiParsed, setAiParsed] = useState<{
+    muscleGroups: string[];
+    suggestedIntensity: number;
+    workoutType: string;
+    movements: Array<{ name: string; volume: string; muscleGroups: string[]; fatiguePercent: number }>;
+  } | null>(null);
   const [aiLabel, setAiLabel] = useState("");
   const [aiDuration, setAiDuration] = useState(30);
 
@@ -253,16 +258,21 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
       });
       if (res.ok) {
         const data = await res.json();
-        setAiParsed({ muscleGroups: data.muscleGroups, suggestedIntensity: data.intensity });
+        setAiParsed({
+          muscleGroups: data.muscleGroups ?? [],
+          suggestedIntensity: data.intensity ?? 5,
+          workoutType: data.workoutType ?? "Other",
+          movements: data.movements ?? [],
+        });
         if (data.label && !aiLabel) setAiLabel(data.label);
         if (data.estimatedDuration) setAiDuration(data.estimatedDuration);
       } else {
         const parsed = parseWorkoutDescription(aiText);
-        setAiParsed(parsed);
+        setAiParsed({ ...parsed, workoutType: "Other", movements: [] });
       }
     } catch {
       const parsed = parseWorkoutDescription(aiText);
-      setAiParsed(parsed);
+      setAiParsed({ ...parsed, workoutType: "Other", movements: [] });
     } finally {
       setAiParseLoading(false);
     }
@@ -281,11 +291,12 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
       onManualSubmit({
         label: aiLabel.trim(),
         duration: aiDuration,
-        workoutType: "Custom",
+        workoutType: aiParsed.workoutType || "Other",
         intensity: aiParsed.suggestedIntensity,
         muscleGroups: aiParsed.muscleGroups,
         stimulusPoints,
         workoutDate,
+        movements: aiParsed.movements,
       });
     }
     resetState();
@@ -597,6 +608,33 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
               {aiParsed && (
                 <>
                   <View style={[styles.extractedCard, { marginTop: 12 }]}>
+                    {aiParsed.movements.length > 0 && (
+                      <>
+                        <Text style={[styles.fieldLabel, { marginBottom: 8 }]}>MOVEMENTS DETECTED</Text>
+                        {aiParsed.movements.map((mv, idx) => (
+                          <View key={idx} style={styles.movementRow}>
+                            <View style={styles.movementLeft}>
+                              <Text style={styles.movementName}>{mv.name}</Text>
+                              {mv.volume ? (
+                                <Text style={styles.movementVolume}>{mv.volume}</Text>
+                              ) : null}
+                              <View style={styles.movementTagRow}>
+                                {mv.muscleGroups.slice(0, 3).map((mg) => (
+                                  <View key={mg} style={styles.movementTag}>
+                                    <Text style={styles.movementTagText}>{mg}</Text>
+                                  </View>
+                                ))}
+                              </View>
+                            </View>
+                            <View style={styles.movementFatigueWrap}>
+                              <Text style={styles.movementFatigue}>{mv.fatiguePercent}%</Text>
+                              <Text style={styles.movementFatigueLabel}>fatigue</Text>
+                            </View>
+                          </View>
+                        ))}
+                        <View style={{ height: 1, backgroundColor: Colors.border, marginVertical: 2 }} />
+                      </>
+                    )}
                     <Text style={[styles.fieldLabel, { marginBottom: 4 }]}>DETECTED MUSCLE GROUPS</Text>
                     <View style={styles.muscleTagRow}>
                       {aiParsed.muscleGroups.map((g) => (
@@ -1090,6 +1128,64 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 6,
+  },
+  movementRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    paddingVertical: 6,
+    gap: 8,
+  },
+  movementLeft: {
+    flex: 1,
+    gap: 3,
+  },
+  movementName: {
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+    color: Colors.text,
+  },
+  movementVolume: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textMuted,
+  },
+  movementTagRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 4,
+    marginTop: 2,
+  },
+  movementTag: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: "rgba(246,234,152,0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(246,234,152,0.2)",
+  },
+  movementTagText: {
+    fontSize: 9,
+    fontFamily: "Inter_700Bold",
+    color: Colors.highlight,
+    letterSpacing: 0.5,
+  },
+  movementFatigueWrap: {
+    alignItems: "center",
+    minWidth: 44,
+  },
+  movementFatigue: {
+    fontSize: 16,
+    fontFamily: "Inter_900Black",
+    color: Colors.orange,
+    fontStyle: "italic",
+  },
+  movementFatigueLabel: {
+    fontSize: 8,
+    fontFamily: "Inter_700Bold",
+    color: Colors.textSubtle,
+    letterSpacing: 1,
+    textTransform: "uppercase",
   },
   durationRow: {
     flexDirection: "row",

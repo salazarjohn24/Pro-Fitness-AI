@@ -417,26 +417,38 @@ export async function parseWorkoutDescriptionAI(description: string): Promise<{
   estimatedDuration: number;
   workoutType: string;
   label: string;
+  movements: Array<{ name: string; volume: string; muscleGroups: string[]; fatiguePercent: number }>;
 }> {
   const response = await openai.chat.completions.create({
     model: "gpt-5-mini",
-    max_completion_tokens: 500,
+    max_completion_tokens: 800,
     messages: [
       {
         role: "system",
-        content: `You are a fitness AI that parses workout descriptions into structured data. 
-Return ONLY a valid JSON object with these keys:
-- muscleGroups: string[] (from: chest, back, shoulders, quads, hamstrings, glutes, biceps, triceps, core, calves, full body)
-- intensity: number (1-10 RPE scale)
-- estimatedDuration: number (minutes)
-- workoutType: string (strength, cardio, hiit, yoga, sports, rest, other)
-- label: string (concise workout name)
+        content: `You are a fitness AI that parses workout descriptions into structured data for fatigue and muscle tracking.
 
-No markdown, no explanation, just the JSON.`,
+Return ONLY a valid JSON object with these exact keys:
+- label: string — concise workout name (e.g. "CrossFit WOD", "Deadlift + Conditioning")
+- workoutType: string — one of: Strength, Cardio, HIIT, CrossFit, Yoga, Pilates, Swimming, Running, Cycling, Sports, Other
+- intensity: number — overall RPE 1-10
+- estimatedDuration: number — total minutes
+- muscleGroups: string[] — all muscle groups worked, from: chest, back, shoulders, quads, hamstrings, glutes, biceps, triceps, core, calves, traps, lats
+- movements: array of individual exercises, each with:
+    - name: string — exercise name (e.g. "Deadlift", "Running", "Wall Walk")
+    - volume: string — concise volume descriptor (e.g. "5RM @ 295lbs", "17:03 for 2050m", "10-8-6 reps")
+    - muscleGroups: string[] — muscle groups specific to this movement
+    - fatiguePercent: number — estimated fatigue contribution 0-100 for that movement
+
+Rules:
+- Include every distinct movement in the description as a separate entry in movements
+- For timed workouts (e.g. "17:03 on a 30min clock"), use that as the volume
+- For strength PRs or rep maxes, note the weight and rep scheme in volume
+- fatiguePercent reflects how taxing that movement is (heavy barbell compounds = 70-90, running = 40-60, accessory = 20-50)
+- No markdown, no explanation, just raw JSON`,
       },
       {
         role: "user",
-        content: `Parse this workout description: "${sanitizeUserInput(description)}"`,
+        content: `Parse this workout: ${sanitizeUserInput(description)}`,
       },
     ],
   });
@@ -444,20 +456,30 @@ No markdown, no explanation, just the JSON.`,
   const content = response.choices[0]?.message?.content ?? "{}";
   try {
     const parsed = JSON.parse(content.trim());
+    const movements = Array.isArray(parsed.movements)
+      ? parsed.movements.map((m: any) => ({
+          name: String(m.name ?? "Exercise"),
+          volume: String(m.volume ?? ""),
+          muscleGroups: Array.isArray(m.muscleGroups) ? m.muscleGroups : [],
+          fatiguePercent: Math.max(0, Math.min(100, parseInt(m.fatiguePercent) || 50)),
+        }))
+      : [];
     return {
       muscleGroups: Array.isArray(parsed.muscleGroups) ? parsed.muscleGroups : [],
       intensity: Math.max(1, Math.min(10, parseInt(parsed.intensity) || 5)),
       estimatedDuration: Math.max(5, Math.min(300, parseInt(parsed.estimatedDuration) || 30)),
-      workoutType: parsed.workoutType ?? "other",
+      workoutType: parsed.workoutType ?? "Other",
       label: parsed.label ?? "Workout",
+      movements,
     };
   } catch {
     return {
       muscleGroups: [],
       intensity: 5,
       estimatedDuration: 30,
-      workoutType: "other",
+      workoutType: "Other",
       label: "Workout",
+      movements: [],
     };
   }
 }
