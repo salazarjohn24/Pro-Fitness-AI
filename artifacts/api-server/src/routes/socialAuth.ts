@@ -120,18 +120,51 @@ async function createSocialSession(user: { id: string; email: string | null; fir
   });
 }
 
-function redirectToApp(res: Response, token: string) {
-  res.redirect(`${DEEP_LINK_SCHEME}?token=${encodeURIComponent(token)}`);
+function redirectToApp(res: Response, token: string, platform: string = "mobile", origin: string = "") {
+  if (platform === "web") {
+    res.redirect(`${origin}/api/auth/web-complete?token=${encodeURIComponent(token)}`);
+  } else {
+    res.redirect(`${DEEP_LINK_SCHEME}?token=${encodeURIComponent(token)}`);
+  }
 }
 
-function redirectError(res: Response, message: string) {
-  res.redirect(`${DEEP_LINK_SCHEME}?error=${encodeURIComponent(message)}`);
+function redirectError(res: Response, message: string, platform: string = "mobile", origin: string = "") {
+  if (platform === "web") {
+    res.redirect(`${origin}/api/auth/web-complete?error=${encodeURIComponent(message)}`);
+  } else {
+    res.redirect(`${DEEP_LINK_SCHEME}?error=${encodeURIComponent(message)}`);
+  }
 }
+
+router.get("/auth/web-complete", (req: Request, res: Response) => {
+  const { token, error } = req.query as Record<string, string>;
+  if (token && !error) {
+    res.cookie("sid", token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "strict",
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+  }
+  const payload = JSON.stringify({ success: !error, error: error ?? null });
+  const html = `<!DOCTYPE html><html><head><script>
+    if (window.opener) {
+      window.opener.postMessage(${payload}, '*');
+      window.close();
+    } else {
+      window.location.href = '/';
+    }
+  </script></head><body></body></html>`;
+  res.setHeader("Content-Type", "text/html");
+  res.send(html);
+});
 
 router.get("/auth/social/:provider", (req: Request, res: Response) => {
   const { provider } = req.params;
+  const platform = req.query.platform === "web" ? "web" : "mobile";
   const state = crypto.randomBytes(16).toString("hex");
-  oauthStates.set(state, { provider, expiresAt: Date.now() + 10 * 60_000 });
+  oauthStates.set(state, { provider, platform, expiresAt: Date.now() + 10 * 60_000 });
 
   const cb = callbackUrl(req, provider);
 
@@ -195,12 +228,14 @@ router.get("/auth/social/:provider/callback", async (req: Request, res: Response
   }
   oauthStates.delete(state);
 
+  const platform: string = (stateData as any).platform ?? "mobile";
+  const origin = `${req.headers["x-forwarded-proto"] || "https"}://${req.headers["x-forwarded-host"] || req.headers.host}`;
   const cb = callbackUrl(req, provider);
 
   try {
     if (provider === "google") {
       if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
-        redirectError(res, "Google auth not configured"); return;
+        redirectError(res, "Google auth not configured", platform, origin); return;
       }
       const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
         method: "POST",
@@ -212,12 +247,12 @@ router.get("/auth/social/:provider/callback", async (req: Request, res: Response
       });
       const tokens = await tokenRes.json() as any;
       if (!tokenRes.ok || !tokens.id_token) {
-        redirectError(res, "Failed to exchange Google code"); return;
+        redirectError(res, "Failed to exchange Google code", platform, origin); return;
       }
       const infoRes = await fetch(`https://www.googleapis.com/oauth2/v3/tokeninfo?id_token=${tokens.id_token}`);
       const info = await infoRes.json() as any;
-      if (!infoRes.ok) { redirectError(res, "Failed to get Google user"); return; }
-      if (!info.email_verified) { redirectError(res, "Google account email is not verified"); return; }
+      if (!infoRes.ok) { redirectError(res, "Failed to get Google user", platform, origin); return; }
+      if (!info.email_verified) { redirectError(res, "Google account email is not verified", platform, origin); return; }
       const user = await upsertSocialUser({
         provider: "google", providerId: info.sub,
         email: info.email, firstName: info.given_name,
@@ -225,13 +260,13 @@ router.get("/auth/social/:provider/callback", async (req: Request, res: Response
         emailVerified: true,
       });
       const sid = await createSocialSession(user);
-      redirectToApp(res, sid);
+      redirectToApp(res, sid, platform, origin);
       return;
     }
 
     if (provider === "github") {
       if (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET) {
-        redirectError(res, "GitHub auth not configured"); return;
+        redirectError(res, "GitHub auth not configured", platform, origin); return;
       }
       const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
         method: "POST",
@@ -239,7 +274,7 @@ router.get("/auth/social/:provider/callback", async (req: Request, res: Response
         body: JSON.stringify({ client_id: GITHUB_CLIENT_ID, client_secret: GITHUB_CLIENT_SECRET, code, redirect_uri: cb }),
       });
       const tokens = await tokenRes.json() as any;
-      if (!tokens.access_token) { redirectError(res, "Failed to exchange GitHub code"); return; }
+      if (!tokens.access_token) { redirectError(res, "Failed to exchange GitHub code", platform, origin); return; }
       const userRes = await fetch("https://api.github.com/user", {
         headers: { Authorization: `Bearer ${tokens.access_token}`, "User-Agent": "ProFitnessAI" },
       });
@@ -261,13 +296,13 @@ router.get("/auth/social/:provider/callback", async (req: Request, res: Response
         profileImageUrl: ghUser.avatar_url,
       });
       const sid = await createSocialSession(user);
-      redirectToApp(res, sid);
+      redirectToApp(res, sid, platform, origin);
       return;
     }
 
     if (provider === "twitter") {
       if (!TWITTER_CLIENT_ID || !TWITTER_CLIENT_SECRET) {
-        redirectError(res, "X/Twitter auth not configured"); return;
+        redirectError(res, "X/Twitter auth not configured", platform, origin); return;
       }
       const codeVerifier = (stateData as any).codeVerifier ?? "";
       const credentials = Buffer.from(`${TWITTER_CLIENT_ID}:${TWITTER_CLIENT_SECRET}`).toString("base64");
@@ -281,13 +316,13 @@ router.get("/auth/social/:provider/callback", async (req: Request, res: Response
         }),
       });
       const tokens = await tokenRes.json() as any;
-      if (!tokens.access_token) { redirectError(res, "Failed to exchange X token"); return; }
+      if (!tokens.access_token) { redirectError(res, "Failed to exchange X token", platform, origin); return; }
       const meRes = await fetch("https://api.twitter.com/2/users/me?user.fields=name,profile_image_url", {
         headers: { Authorization: `Bearer ${tokens.access_token}` },
       });
       const meData = await meRes.json() as any;
       const twUser = meData.data;
-      if (!twUser) { redirectError(res, "Failed to get X user"); return; }
+      if (!twUser) { redirectError(res, "Failed to get X user", platform, origin); return; }
       const nameParts = ((twUser.name as string) ?? "").split(" ");
       const user = await upsertSocialUser({
         provider: "twitter", providerId: twUser.id,
@@ -296,7 +331,7 @@ router.get("/auth/social/:provider/callback", async (req: Request, res: Response
         profileImageUrl: twUser.profile_image_url,
       });
       const sid = await createSocialSession(user);
-      redirectToApp(res, sid);
+      redirectToApp(res, sid, platform, origin);
       return;
     }
 
@@ -304,7 +339,7 @@ router.get("/auth/social/:provider/callback", async (req: Request, res: Response
   } catch (err) {
     console.error(`Social auth callback error (${provider}):`, err);
     const message = err instanceof Error ? err.message : "Authentication failed";
-    redirectError(res, message);
+    redirectError(res, message, platform, origin);
   }
 });
 

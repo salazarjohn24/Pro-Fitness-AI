@@ -153,6 +153,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const apiBase = getApiBaseUrl();
     if (!apiBase) return { error: "API not configured" };
 
+    if (IS_WEB) {
+      return new Promise((resolve) => {
+        const authUrl = `${apiBase}/api/auth/social/${provider}?platform=web`;
+        const popup = window.open(authUrl, "_blank", "width=500,height=650,noopener");
+
+        const handler = (event: MessageEvent) => {
+          if (!event.data || event.data.success == null) return;
+          window.removeEventListener("message", handler);
+          clearInterval(pollTimer);
+          if (event.data.error) {
+            resolve({ error: decodeURIComponent(event.data.error) });
+          } else {
+            setIsLoading(true);
+            fetchUser().then(() => resolve({}));
+          }
+        };
+        window.addEventListener("message", handler);
+
+        const pollTimer = setInterval(() => {
+          if (popup?.closed) {
+            clearInterval(pollTimer);
+            window.removeEventListener("message", handler);
+            fetchUser().then(() => resolve({}));
+          }
+        }, 500);
+      });
+    }
+
     try {
       const result = await WebBrowser.openAuthSessionAsync(
         `${apiBase}/api/auth/social/${provider}`,
