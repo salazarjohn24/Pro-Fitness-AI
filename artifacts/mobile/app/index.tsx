@@ -1,14 +1,34 @@
 import { Redirect } from "expo-router";
-import React from "react";
+import React, { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 
 import { useAuth } from "@/lib/auth";
-import { useProfile } from "@/hooks/useProfile";
+import { useProfile, useUpdateProfile } from "@/hooks/useProfile";
 import { Colors } from "@/constants/colors";
 
 export default function EntryScreen() {
   const { isLoading, isAuthenticated, hasSignedInBefore } = useAuth();
   const { data: profile, isLoading: profileLoading } = useProfile();
+  const { mutate: updateProfile } = useUpdateProfile();
+
+  const hasCompletedBiometrics =
+    profile != null &&
+    profile.age != null &&
+    profile.weight != null &&
+    profile.height != null;
+
+  const onboardingDone =
+    profile?.onboardingCompleted === true || hasCompletedBiometrics;
+
+  useEffect(() => {
+    if (
+      profile &&
+      hasCompletedBiometrics &&
+      !profile.onboardingCompleted
+    ) {
+      updateProfile({ onboardingCompleted: true });
+    }
+  }, [profile, hasCompletedBiometrics]);
 
   if (isLoading) {
     return (
@@ -30,7 +50,7 @@ export default function EntryScreen() {
     );
   }
 
-  if (profile && !profile.onboardingCompleted) {
+  if (!onboardingDone) {
     return <Redirect href="/onboarding" />;
   }
 

@@ -111,6 +111,7 @@ export default function OnboardingScreen() {
       injuries,
       injuryNotes: injuryNotes || null,
       primaryGoal: primaryGoal || null,
+      onboardingCompleted: true,
     });
     router.replace("/gym-setup");
   };
