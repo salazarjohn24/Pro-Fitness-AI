@@ -535,20 +535,22 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      <Pressable
-        style={({ pressed }) => [styles.healthSyncBtn, { opacity: pressed || healthSyncing ? 0.8 : 1 }]}
-        onPress={handleHealthSync}
-        disabled={healthSyncing}
-      >
-        {healthSyncing ? (
-          <ActivityIndicator size="small" color="#fff" />
-        ) : (
-          <Feather name="heart" size={16} color="#fff" />
-        )}
-        <Text style={styles.healthSyncText}>
-          {healthSyncing ? "SYNCING..." : "SYNC WITH APPLE HEALTH"}
-        </Text>
-      </Pressable>
+      {isHealthKitAvailable() && (
+        <Pressable
+          style={({ pressed }) => [styles.healthSyncBtn, { opacity: pressed || healthSyncing ? 0.8 : 1 }]}
+          onPress={handleHealthSync}
+          disabled={healthSyncing}
+        >
+          {healthSyncing ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Feather name="heart" size={16} color="#fff" />
+          )}
+          <Text style={styles.healthSyncText}>
+            {healthSyncing ? "SYNCING..." : "SYNC WITH APPLE HEALTH"}
+          </Text>
+        </Pressable>
+      )}
 
       <Pressable
         style={({ pressed }) => [styles.logoutBtn, { opacity: pressed ? 0.8 : 1 }]}
