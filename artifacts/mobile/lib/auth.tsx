@@ -9,6 +9,7 @@ import { queryClient } from "@/lib/queryClient";
 WebBrowser.maybeCompleteAuthSession();
 
 const AUTH_TOKEN_KEY = "auth_session_token";
+const HAS_SIGNED_IN_KEY = "has_signed_in_before";
 const IS_WEB = Platform.OS === "web";
 const IS_IOS = Platform.OS === "ios";
 
@@ -24,6 +25,7 @@ interface AuthContextValue {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  hasSignedInBefore: boolean;
   signup: (params: SignupParams) => Promise<{ error?: string }>;
   signin: (identifier: string, password: string) => Promise<{ error?: string }>;
   loginWithGoogle: () => Promise<{ error?: string }>;
@@ -46,6 +48,7 @@ const AuthContext = createContext<AuthContextValue>({
   user: null,
   isLoading: true,
   isAuthenticated: false,
+  hasSignedInBefore: false,
   signup: async () => ({}),
   signin: async () => ({}),
   loginWithGoogle: async () => ({}),
@@ -78,10 +81,21 @@ async function clearStoredToken(): Promise<void> {
   try { await SecureStore.deleteItemAsync(AUTH_TOKEN_KEY); } catch {}
 }
 
+async function markHasSignedIn(): Promise<void> {
+  if (IS_WEB) return;
+  try { await SecureStore.setItemAsync(HAS_SIGNED_IN_KEY, "true"); } catch {}
+}
+
+async function readHasSignedIn(): Promise<boolean> {
+  if (IS_WEB) return false;
+  try { return (await SecureStore.getItemAsync(HAS_SIGNED_IN_KEY)) === "true"; } catch { return false; }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [appleAvailable, setAppleAvailable] = useState(false);
+  const [hasSignedInBefore, setHasSignedInBefore] = useState(false);
 
   useEffect(() => {
     if (IS_IOS) {
@@ -99,7 +113,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
         return;
       }
-      const token = await getStoredToken();
+      const [token, prevSignIn] = await Promise.all([getStoredToken(), readHasSignedIn()]);
+      setHasSignedInBefore(prevSignIn);
       if (!token) { setUser(null); setIsLoading(false); return; }
       const res = await fetch(`${apiBase}/api/auth/user`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -130,7 +145,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       const data = await res.json();
       if (!res.ok) return { error: data.error || "Failed to create account" };
-      if (data.token) { await setStoredToken(data.token); setIsLoading(true); await fetchUser(); }
+      if (data.token) {
+        await Promise.all([setStoredToken(data.token), markHasSignedIn()]);
+        setHasSignedInBefore(true);
+        setIsLoading(true);
+        await fetchUser();
+      }
       return {};
     } catch { return { error: "Network error. Please try again." }; }
   }, [fetchUser]);
@@ -145,7 +165,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       const data = await res.json();
       if (!res.ok) return { error: data.error || "Failed to sign in" };
-      if (data.token) { await setStoredToken(data.token); setIsLoading(true); await fetchUser(); }
+      if (data.token) {
+        await Promise.all([setStoredToken(data.token), markHasSignedIn()]);
+        setHasSignedInBefore(true);
+        setIsLoading(true);
+        await fetchUser();
+      }
       return {};
     } catch { return { error: "Network error. Please try again." }; }
   }, [fetchUser]);
@@ -195,7 +220,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const error = parsed.queryParams?.error as string | undefined;
         if (error) return { error: decodeURIComponent(error) };
         if (token) {
-          await setStoredToken(token);
+          await Promise.all([setStoredToken(token), markHasSignedIn()]);
+          setHasSignedInBefore(true);
           setIsLoading(true);
           await fetchUser();
         }
@@ -237,7 +263,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       const data = await res.json();
       if (!res.ok) return { error: data.error || "Apple sign in failed" };
-      if (data.token) { await setStoredToken(data.token); setIsLoading(true); await fetchUser(); }
+      if (data.token) {
+        await Promise.all([setStoredToken(data.token), markHasSignedIn()]);
+        setHasSignedInBefore(true);
+        setIsLoading(true);
+        await fetchUser();
+      }
       return {};
     } catch (err: any) {
       if (err?.code === "ERR_CANCELED") return {};
@@ -266,7 +297,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      user, isLoading, isAuthenticated: !!user,
+      user, isLoading, isAuthenticated: !!user, hasSignedInBefore,
       signup, signin, loginWithGoogle, loginWithGitHub, loginWithTwitter, loginWithApple,
       appleAvailable, logout,
     }}>

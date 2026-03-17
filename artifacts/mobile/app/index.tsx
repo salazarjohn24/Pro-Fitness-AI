@@ -7,7 +7,7 @@ import { useProfile } from "@/hooks/useProfile";
 import { Colors } from "@/constants/colors";
 
 export default function EntryScreen() {
-  const { isLoading, isAuthenticated } = useAuth();
+  const { isLoading, isAuthenticated, hasSignedInBefore } = useAuth();
   const { data: profile, isLoading: profileLoading } = useProfile();
 
   if (isLoading) {
@@ -19,7 +19,7 @@ export default function EntryScreen() {
   }
 
   if (!isAuthenticated) {
-    return <Redirect href="/welcome" />;
+    return <Redirect href={hasSignedInBefore ? "/login" : "/welcome"} />;
   }
 
   if (profileLoading) {
