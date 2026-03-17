@@ -66,6 +66,19 @@ async function upsertSocialUser(params: {
     return user;
   }
 
+  if (params.email) {
+    const [byEmail] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.email, params.email))
+      .limit(1);
+
+    if (byEmail) {
+      const providerLabel = byEmail.authProvider === "local" ? "email and password" : byEmail.authProvider ?? "another method";
+      throw new Error(`An account with this email already exists. Please sign in with ${providerLabel}.`);
+    }
+  }
+
   const [user] = await db
     .insert(usersTable)
     .values({
@@ -276,7 +289,8 @@ router.get("/auth/social/:provider/callback", async (req: Request, res: Response
     res.status(400).json({ error: "Unknown provider" });
   } catch (err) {
     console.error(`Social auth callback error (${provider}):`, err);
-    redirectError(res, "Authentication failed");
+    const message = err instanceof Error ? err.message : "Authentication failed";
+    redirectError(res, message);
   }
 });
 
