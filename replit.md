@@ -53,8 +53,9 @@ Pro Fitness AI — dark-themed fitness tracker with AI recommendations.
 - `app/exercise/[id].tsx` — Exercise detail: YouTube link, instructions, common mistakes, stimulus map, Coach's Note, plateau alerts, similar exercises
 - `app/(tabs)/progress.tsx` — Audit tab (Performance Audit): time-range filtered (1M/3M/6M) training volume bar chart + muscle focus breakdown from real API data, data sufficiency banner, audit alerts, recovery correlation
 - `app/(tabs)/profile.tsx` — Profile: user info, fitness goals, gym environments, insight preferences, settings
-- `app/workout-session.tsx` — Active workout session with exercise cards, swap, video, rest timer
-- `app/workout-architect.tsx` — Multi-step custom workout builder (muscle groups → equipment → AI generate → review → start)
+- `app/workout-session.tsx` — Active workout session with exercise cards, swap, video, rest timer → Review screen (exercise summary, add-missed-exercise stepper, AI insights textarea) → Congratulations screen (rotating muscle-specific recovery/nutrition tips, saving spinner)
+- `app/workout-architect.tsx` — Multi-step custom workout builder (muscle groups → equipment → AI generate → review → start); check-in gate shows motivational card + inline CheckInModal instead of dead-end lock screen
+- `app/workout-detail.tsx` — Unified workout detail screen for both in-app sessions (sets table with inline weight/reps editing) and external workouts (movements list, fatigue meter)
 
 ### Key Components
 - `components/OnboardingModal.tsx` — Multi-step onboarding: goal, skill level, equipment, injuries
@@ -68,7 +69,8 @@ Pro Fitness AI — dark-themed fitness tracker with AI recommendations.
 ### Key Files
 - `lib/auth.tsx` — Auth context (Replit OIDC mobile flow)
 - `hooks/useProfile.ts` — React Query hooks for profile, check-ins, external workouts (submit, recent, update, delete), readiness score computation, and fitness profile CRUD
-- `hooks/useWorkout.ts` — Hooks for workout generation, architect generation, saving, alternatives
+- `hooks/useWorkout.ts` — Hooks for workout generation, architect generation, saving, alternatives; `useWorkoutHistory(days)` unified history feed, `useSessionDetail(id)`, `useUpdateSessionExercises(id)` for detail/editing
+- `constants/recoveryTips.ts` — Rotating muscle-specific recovery tip cards and nutrition tip cards (used on Congratulations screen)
 - `hooks/useExercises.ts` — React Query hooks for exercise library (list, detail, history, log set)
 - `hooks/useAuditAlerts.ts` — React Query hook for fetching audit alerts (neglect + consistency)
 - `hooks/useRecoveryCorrelation.ts` — React Query hook for recovery-to-load correlation data

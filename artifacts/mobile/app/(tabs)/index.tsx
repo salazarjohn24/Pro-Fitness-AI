@@ -32,7 +32,7 @@ import {
   useUpdateExternalWorkout,
   computeReadinessScore,
 } from "@/hooks/useProfile";
-import { useGenerateWorkout, useDeloadCheck, type GeneratedWorkout, type GeneratedExercise } from "@/hooks/useWorkout";
+import { useGenerateWorkout, useDeloadCheck, useWorkoutHistory, type GeneratedWorkout, type GeneratedExercise } from "@/hooks/useWorkout";
 import { useRecoveryCorrelation } from "@/hooks/useRecoveryCorrelation";
 
 const TODAY = new Date().toLocaleDateString("en-US", {
@@ -79,6 +79,7 @@ export default function StatusScreen() {
   const { mutate: deleteExternalWorkout } = useDeleteExternalWorkout();
   const { mutate: updateExternalWorkout, isPending: isUpdatingWorkout } = useUpdateExternalWorkout();
   const { data: recentExternalWorkouts } = useRecentExternalWorkouts();
+  const { data: workoutHistory } = useWorkoutHistory(60);
   const { mutate: generateWorkout, isPending: isGenerating } = useGenerateWorkout();
 
   const { data: recoveryCorrelation } = useRecoveryCorrelation();
@@ -629,48 +630,49 @@ export default function StatusScreen() {
           </BentoCard>
         )}
 
-        {(recentExternalWorkouts && recentExternalWorkouts.length > 0) && (
+        {(workoutHistory && workoutHistory.length > 0) && (
           <BentoCard>
-            <Text style={styles.sectionLabel}>Recent Activity</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <Text style={styles.sectionLabel}>Recent Activity</Text>
+              <Pressable onPress={() => router.push("/external-workouts" as any)}>
+                <Text style={{ fontSize: 11, fontFamily: "Inter_700Bold", color: Colors.textSubtle }}>All →</Text>
+              </Pressable>
+            </View>
             <View style={styles.recentList}>
-              {recentExternalWorkouts.slice(0, 5).map((workout: any) => {
-                const isRest = workout.workoutType === "rest";
-                const isExternal = workout.source !== "in-app";
-                const dateStr = new Date(workout.createdAt).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                });
-                const iconName = isRest ? "moon" : isExternal ? "globe" : "award";
-                const iconColor = isRest ? Colors.recovery : isExternal ? Colors.orange : Colors.highlight;
-                const iconBg = isRest ? styles.recentIconRest : isExternal ? styles.recentIconExternal : styles.recentIconInApp;
-                const sourceLabel = isRest ? "Rest Day" : isExternal ? "External" : "In-App";
+              {workoutHistory.slice(0, 6).map((workout) => {
+                const isRest = (workout as any).workoutType === "rest";
+                const isInternal = workout.type === "internal";
+                const dateStr = new Date(workout.date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                const iconName: any = isRest ? "moon" : isInternal ? "award" : (workout.source === "ai_scan" ? "cpu" : "globe");
+                const iconColor = isRest ? Colors.recovery : isInternal ? Colors.highlight : Colors.orange;
+                const iconBg = isRest ? styles.recentIconRest : isInternal ? styles.recentIconInApp : styles.recentIconExternal;
+                const srcLabel = isRest ? "Rest" : isInternal ? "In-App" : (workout.source === "ai_scan" ? "AI Scan" : "External");
+                const subText = isRest
+                  ? "Recovery day"
+                  : isInternal
+                  ? `${workout.durationMinutes}m · ${workout.exerciseCount} exercises · ${workout.totalSetsCompleted} sets`
+                  : `${workout.durationMinutes}m${(workout as any).intensity ? ` · RPE ${(workout as any).intensity}` : ""}${workout.stimulusPoints ? ` · ${workout.stimulusPoints} pts` : ""}${workout.exerciseCount > 0 ? ` · ${workout.exerciseCount} exercises` : ""}`;
                 return (
                   <Pressable
-                    key={workout.id}
+                    key={`${workout.type}-${workout.id}`}
                     style={({ pressed }) => [styles.recentItem, { opacity: pressed ? 0.75 : 1 }]}
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setEditWorkout(workout as WorkoutItem);
-                      setEditWorkoutOpen(true);
+                      router.push(`/workout-detail?type=${workout.type}&id=${workout.id}` as any);
                     }}
                   >
                     <View style={[styles.recentIcon, iconBg]}>
                       <Feather name={iconName} size={14} color={iconColor} />
                     </View>
                     <View style={styles.recentInfo}>
-                      <Text style={styles.recentTitle}>{workout.label}</Text>
-                      <Text style={styles.recentSub}>
-                        {isRest
-                          ? "Recovery day"
-                          : `${workout.duration} min${workout.intensity ? ` · RPE ${workout.intensity}` : ""}${workout.stimulusPoints ? ` · ${workout.stimulusPoints} pts` : ""}`
-                        }
-                      </Text>
+                      <Text style={styles.recentTitle} numberOfLines={1}>{workout.label}</Text>
+                      <Text style={styles.recentSub} numberOfLines={1}>{subText}</Text>
                     </View>
                     <View style={styles.recentRight}>
                       <Text style={styles.recentDate}>{dateStr}</Text>
-                      <Text style={styles.recentSource}>{sourceLabel}</Text>
+                      <Text style={styles.recentSource}>{srcLabel}</Text>
                     </View>
-                    <Feather name="edit-2" size={13} color={Colors.textSubtle} style={{ marginLeft: 4 }} />
+                    <Feather name="chevron-right" size={13} color={Colors.textSubtle} style={{ marginLeft: 4 }} />
                   </Pressable>
                 );
               })}

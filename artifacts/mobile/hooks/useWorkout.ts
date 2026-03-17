@@ -170,3 +170,86 @@ export function useDeloadCheck() {
     retry: false,
   });
 }
+
+export interface UnifiedWorkout {
+  id: number;
+  type: "internal" | "external";
+  label: string;
+  date: string;
+  durationMinutes: number;
+  muscleGroups: string[];
+  stimulusPoints: number | null;
+  source: string;
+  exerciseCount: number;
+  totalSetsCompleted: number | null;
+  feedback: { perceivedDifficulty: number; energyAfter: number; enjoyment: number; notes: string } | null;
+  workoutType?: string;
+  intensity?: number | null;
+}
+
+export interface SessionDetail {
+  id: number;
+  workoutTitle: string;
+  durationSeconds: number;
+  exercises: {
+    exerciseId: string;
+    name: string;
+    primaryMuscle?: string;
+    secondaryMuscles?: string[];
+    targetWeight?: string;
+    targetReps?: number;
+    sets: { reps: number; weight: string; completed: boolean }[];
+  }[];
+  totalSetsCompleted: number;
+  totalVolume: number | null;
+  postWorkoutFeedback: { perceivedDifficulty: number; energyAfter: number; enjoyment: number; notes: string } | null;
+  sessionDate: string;
+  createdAt: string;
+}
+
+export function useWorkoutHistory(days = 90) {
+  return useQuery<UnifiedWorkout[]>({
+    queryKey: ["workoutHistory", days],
+    queryFn: async () => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${getApiBase()}/api/workouts/history?days=${days}`, getFetchOptions(headers));
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 2 * 60 * 1000,
+  });
+}
+
+export function useSessionDetail(id: number | null) {
+  return useQuery<SessionDetail>({
+    queryKey: ["sessionDetail", id],
+    queryFn: async () => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${getApiBase()}/api/workouts/sessions/${id}`, getFetchOptions(headers));
+      if (!res.ok) throw new Error("Session not found");
+      return res.json();
+    },
+    enabled: id !== null,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useUpdateSessionExercises() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, exercises }: { id: number; exercises: SessionDetail["exercises"] }) => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${getApiBase()}/api/workouts/sessions/${id}/exercises`, {
+        ...getFetchOptions(headers),
+        method: "PATCH",
+        body: JSON.stringify({ exercises }),
+      });
+      if (!res.ok) throw new Error("Failed to update session");
+      return res.json();
+    },
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ["sessionDetail", id] });
+      queryClient.invalidateQueries({ queryKey: ["workoutHistory"] });
+    },
+  });
+}

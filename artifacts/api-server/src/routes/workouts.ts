@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, externalWorkoutsTable } from "@workspace/db";
-import { desc, eq, and } from "drizzle-orm";
+import { db, externalWorkoutsTable, workoutSessionsTable } from "@workspace/db";
+import { desc, eq, and, gte } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -188,6 +188,93 @@ router.delete("/workouts/external/:id", async (req: Request, res: Response) => {
   }
 
   res.json({ success: true });
+});
+
+router.get("/workouts/history", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const limitDays = parseInt(req.query.days as string) || 90;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - limitDays);
+
+  const [sessions, external] = await Promise.all([
+    db.select().from(workoutSessionsTable)
+      .where(and(eq(workoutSessionsTable.userId, req.user.id), gte(workoutSessionsTable.createdAt, cutoff)))
+      .orderBy(desc(workoutSessionsTable.createdAt))
+      .limit(50),
+    db.select().from(externalWorkoutsTable)
+      .where(and(eq(externalWorkoutsTable.userId, req.user.id), gte(externalWorkoutsTable.createdAt, cutoff)))
+      .orderBy(desc(externalWorkoutsTable.createdAt))
+      .limit(50),
+  ]);
+
+  const unified = [
+    ...sessions.map(s => ({
+      id: s.id,
+      type: "internal" as const,
+      label: s.workoutTitle,
+      date: s.createdAt.toISOString(),
+      durationMinutes: Math.round((s.durationSeconds ?? 0) / 60),
+      muscleGroups: Array.from(new Set(
+        (s.exercises ?? []).flatMap((e: any) => [e.primaryMuscle, ...(e.secondaryMuscles ?? [])].filter(Boolean))
+      )),
+      stimulusPoints: null,
+      source: "in-app",
+      exerciseCount: (s.exercises ?? []).length,
+      totalSetsCompleted: s.totalSetsCompleted ?? 0,
+      feedback: s.postWorkoutFeedback,
+    })),
+    ...external.map(e => ({
+      id: e.id,
+      type: "external" as const,
+      label: e.label,
+      date: (e.workoutDate ? new Date(e.workoutDate).toISOString() : e.createdAt.toISOString()),
+      durationMinutes: e.duration,
+      muscleGroups: e.muscleGroups ?? [],
+      stimulusPoints: e.stimulusPoints,
+      source: e.source ?? "manual",
+      exerciseCount: (e.movements ?? []).length,
+      totalSetsCompleted: null,
+      feedback: null,
+      workoutType: e.workoutType,
+      intensity: e.intensity,
+    })),
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  res.json(unified);
+});
+
+router.get("/workouts/sessions/:id", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const sessionId = parseInt(req.params.id, 10);
+  if (isNaN(sessionId)) { res.status(400).json({ error: "Invalid session ID" }); return; }
+
+  const [session] = await db.select().from(workoutSessionsTable)
+    .where(and(eq(workoutSessionsTable.id, sessionId), eq(workoutSessionsTable.userId, req.user.id)));
+
+  if (!session) { res.status(404).json({ error: "Session not found" }); return; }
+
+  res.json(session);
+});
+
+router.patch("/workouts/sessions/:id/exercises", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const sessionId = parseInt(req.params.id, 10);
+  if (isNaN(sessionId)) { res.status(400).json({ error: "Invalid session ID" }); return; }
+
+  const { exercises } = req.body;
+  if (!Array.isArray(exercises)) { res.status(400).json({ error: "exercises must be an array" }); return; }
+
+  const [updated] = await db.update(workoutSessionsTable)
+    .set({ exercises })
+    .where(and(eq(workoutSessionsTable.id, sessionId), eq(workoutSessionsTable.userId, req.user.id)))
+    .returning();
+
+  if (!updated) { res.status(404).json({ error: "Session not found" }); return; }
+
+  res.json(updated);
 });
 
 export default router;
