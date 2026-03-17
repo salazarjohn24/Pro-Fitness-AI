@@ -15,7 +15,6 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CheckInModal, type CheckInData } from "@/components/CheckInModal";
-import { ActivityImportModal } from "@/components/ActivityImportModal";
 import { EditWorkoutModal, type WorkoutItem } from "@/components/EditWorkoutModal";
 import { InsightInfoModal } from "@/components/InsightInfoModal";
 import { OnboardingModal } from "@/components/OnboardingModal";
@@ -100,15 +99,15 @@ export default function StatusScreen() {
   const onboardingDone = profile?.onboardingCompleted ?? false;
 
   const now = new Date();
-  const todayRestWorkout = recentExternalWorkouts?.find((w: any) => {
-    if (w.workoutType !== "rest") return false;
-    const d = new Date(w.createdAt);
-    return (
-      d.getFullYear() === now.getFullYear() &&
-      d.getMonth() === now.getMonth() &&
-      d.getDate() === now.getDate()
-    );
-  });
+  const todayStr = now.toISOString().slice(0, 10);
+
+  function isToday(w: any): boolean {
+    const dateStr = w.workoutDate ?? w.createdAt?.slice(0, 10);
+    if (!dateStr) return false;
+    return dateStr.slice(0, 10) === todayStr;
+  }
+
+  const todayRestWorkout = recentExternalWorkouts?.find((w: any) => w.workoutType === "rest" && isToday(w));
   const isRestDay = !!todayRestWorkout;
 
   const readinessScore = computeReadinessScore(todayCheckIn);
@@ -191,6 +190,7 @@ export default function StatusScreen() {
         intensity: 0,
         muscleGroups: [],
         stimulusPoints: 0,
+        workoutDate: todayStr,
       },
       {
         onSuccess: () => {
@@ -378,27 +378,6 @@ export default function StatusScreen() {
               )}
             </View>
 
-            <Pressable
-              onPress={handleStartWorkout}
-              style={({ pressed }) => [
-                styles.taskItem,
-                checkInDone ? styles.taskPending : styles.taskLocked,
-                { opacity: checkInDone ? (pressed ? 0.85 : 1) : 0.5 },
-              ]}
-            >
-              <View style={[styles.taskIcon, checkInDone ? styles.taskIconHighlight : styles.taskIconLocked]}>
-                <Feather name="activity" size={16} color={checkInDone ? Colors.highlight : "#3C3C3A"} />
-              </View>
-              <View style={styles.taskInfo}>
-                <Text style={[styles.taskTitle, !checkInDone && styles.taskTitleLocked]}>Physique Protocol</Text>
-                <Text style={styles.taskSub}>{checkInDone ? "Generate AI workout" : "Locked: Complete check-in first"}</Text>
-              </View>
-              {checkInDone ? (
-                <Feather name="chevron-right" size={16} color={Colors.textMuted} />
-              ) : (
-                <Feather name="lock" size={16} color="#3C3C3A" />
-              )}
-            </Pressable>
           </View>
         </BentoCard>
 

@@ -313,6 +313,104 @@ Provide a focused performance insight for this athlete.`,
   return response.choices[0]?.message?.content ?? "Keep training consistently to unlock deeper performance insights.";
 }
 
+export interface AnalyzedMovement {
+  name: string;
+  volume: string;
+  muscleGroups: string[];
+  fatiguePercent: number;
+}
+
+export interface WorkoutImageAnalysis {
+  label: string;
+  workoutType: string;
+  duration: number;
+  intensity: number;
+  muscleGroups: string[];
+  movements: AnalyzedMovement[];
+  isMetcon: boolean;
+  metconFormat: string | null;
+}
+
+export async function analyzeWorkoutImageAI(base64Image: string, mimeType = "image/jpeg"): Promise<WorkoutImageAnalysis> {
+  const systemPrompt = `You are an elite strength and conditioning coach analyzing a workout screenshot. 
+Extract every movement/exercise you see, then compute weighted muscle fatigue percentages that sum to 100.
+
+For EMOMs, AMRAPs, running clocks, Fran, "21-15-9", and other metcons:
+- Identify the format (e.g. "EMOM 20", "AMRAP 12 min", "21-15-9", "5 Rounds For Time")
+- Assign fatiguePercent to each movement based on volume × intensity × muscle-group size
+- Bigger, compound movements (thrusters, deadlifts, squats) get more fatigue weight than isolated ones
+
+Return ONLY valid JSON with this structure (no markdown, no explanation):
+{
+  "label": "string (concise workout name)",
+  "workoutType": "strength|cardio|hiit|crossfit|yoga|pilates|swimming|running|cycling|sports|other",
+  "duration": number (estimated minutes),
+  "intensity": number (1-10 RPE),
+  "muscleGroups": ["primary muscles worked"],
+  "isMetcon": boolean,
+  "metconFormat": "string or null (e.g. EMOM 20, AMRAP 12, 5 RFT, 21-15-9)",
+  "movements": [
+    {
+      "name": "movement name",
+      "volume": "volume descriptor (e.g. 3x10, 21-15-9 reps, 5 rounds x 8)",
+      "muscleGroups": ["muscles"],
+      "fatiguePercent": number (0-100, all must sum to 100)
+    }
+  ]
+}`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-5-mini",
+      max_completion_tokens: 1000,
+      messages: [
+        { role: "system", content: systemPrompt },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Analyze this workout and return the JSON breakdown:" },
+            { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64Image}` } },
+          ] as any,
+        },
+      ],
+    });
+
+    const content = response.choices[0]?.message?.content ?? "{}";
+    const parsed = JSON.parse(content.trim());
+
+    const movements: AnalyzedMovement[] = Array.isArray(parsed.movements)
+      ? parsed.movements.map((m: any) => ({
+          name: String(m.name ?? ""),
+          volume: String(m.volume ?? ""),
+          muscleGroups: Array.isArray(m.muscleGroups) ? m.muscleGroups : [],
+          fatiguePercent: Math.max(0, Math.min(100, Number(m.fatiguePercent) || 0)),
+        }))
+      : [];
+
+    return {
+      label: parsed.label ?? "Workout",
+      workoutType: parsed.workoutType ?? "other",
+      duration: Math.max(5, Math.min(300, parseInt(parsed.duration) || 30)),
+      intensity: Math.max(1, Math.min(10, parseInt(parsed.intensity) || 6)),
+      muscleGroups: Array.isArray(parsed.muscleGroups) ? parsed.muscleGroups : [],
+      movements,
+      isMetcon: Boolean(parsed.isMetcon),
+      metconFormat: parsed.metconFormat ?? null,
+    };
+  } catch {
+    return {
+      label: "Workout",
+      workoutType: "other",
+      duration: 30,
+      intensity: 6,
+      muscleGroups: ["Full Body"],
+      movements: [],
+      isMetcon: false,
+      metconFormat: null,
+    };
+  }
+}
+
 export async function parseWorkoutDescriptionAI(description: string): Promise<{
   muscleGroups: string[];
   intensity: number;

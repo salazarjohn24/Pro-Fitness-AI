@@ -184,6 +184,10 @@ export interface ExternalWorkout {
   intensity: number | null;
   muscleGroups: string[] | null;
   stimulusPoints: number | null;
+  workoutDate: string | null;
+  movements: Array<{ name: string; volume: string; muscleGroups: string[]; fatiguePercent: number }> | null;
+  isMetcon: boolean | null;
+  metconFormat: string | null;
   createdAt: string;
 }
 
@@ -198,6 +202,10 @@ export function useSubmitExternalWorkout() {
       intensity?: number;
       muscleGroups?: string[];
       stimulusPoints?: number;
+      workoutDate?: string | null;
+      movements?: Array<{ name: string; volume: string; muscleGroups: string[]; fatiguePercent: number }>;
+      isMetcon?: boolean;
+      metconFormat?: string | null;
     }) => {
       const headers = await getAuthHeaders();
       const res = await fetch(`${getApiBase()}/api/workouts/external`, {

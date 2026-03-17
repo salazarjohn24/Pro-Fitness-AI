@@ -2,7 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, userProfilesTable, dailyCheckInsTable, workoutSessionsTable, workoutHistoryTable, exerciseLibraryTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { EXERCISE_LIBRARY, exerciseMap, type ExerciseData } from "../data/exercises";
-import { generateAIWorkout, generateAIArchitectWorkout, parseWorkoutDescriptionAI } from "../services/aiService";
+import { generateAIWorkout, generateAIArchitectWorkout, parseWorkoutDescriptionAI, analyzeWorkoutImageAI } from "../services/aiService";
 import { aiRateLimit } from "../middlewares/rateLimitMiddleware";
 
 const router: IRouter = Router();
@@ -716,6 +716,27 @@ router.post("/workout/parse-description", aiRateLimit, async (req: Request, res:
   } catch (err) {
     console.error("Workout description parse error:", err);
     res.status(500).json({ error: "Failed to parse workout description" });
+  }
+});
+
+router.post("/workout/analyze-image", aiRateLimit, async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const { base64Image, mimeType } = req.body as { base64Image: string; mimeType?: string };
+  if (!base64Image || typeof base64Image !== "string") {
+    res.status(400).json({ error: "base64Image is required" });
+    return;
+  }
+
+  try {
+    const result = await analyzeWorkoutImageAI(base64Image, mimeType ?? "image/jpeg");
+    res.json(result);
+  } catch (err) {
+    console.error("Workout image analysis error:", err);
+    res.status(500).json({ error: "Failed to analyze workout image" });
   }
 });
 

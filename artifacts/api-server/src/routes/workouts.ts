@@ -10,7 +10,7 @@ router.post("/workouts/external", async (req: Request, res: Response) => {
     return;
   }
 
-  const { label, duration, workoutType, source, intensity, muscleGroups, stimulusPoints } = req.body;
+  const { label, duration, workoutType, source, intensity, muscleGroups, stimulusPoints, workoutDate, movements, isMetcon, metconFormat } = req.body;
 
   if (!label || !workoutType) {
     res.status(400).json({ error: "Missing required fields: label, workoutType" });
@@ -63,6 +63,10 @@ router.post("/workouts/external", async (req: Request, res: Response) => {
       intensity: intensity ?? null,
       muscleGroups: muscleGroups ?? [],
       stimulusPoints: stimulusPoints ?? null,
+      workoutDate: workoutDate ?? null,
+      movements: movements ?? [],
+      isMetcon: isMetcon ?? false,
+      metconFormat: metconFormat ?? null,
     })
     .returning();
 

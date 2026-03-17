@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { ActivityImportModal } from "@/components/ActivityImportModal";
+import { ActivityImportModal, type ImportedWorkoutData } from "@/components/ActivityImportModal";
 import { Colors } from "@/constants/colors";
 import {
   useProfile,
@@ -126,29 +126,14 @@ export default function ExternalWorkoutsScreen() {
     updateProfile({ activityImported: true, dailySyncProgress: newProgress });
   };
 
-  const handleAddComplete = (data: {
-    label: string;
-    duration: number;
-    workoutType: string;
-    source: string;
-    intensity: number;
-    muscleGroups: string[];
-    stimulusPoints: number;
-  }) => {
+  const handleAddComplete = (data: ImportedWorkoutData) => {
     setAddModalOpen(false);
     submitWorkout(data, { onSuccess: () => markActivityDone() });
   };
 
-  const handleManualSubmit = (data: {
-    label: string;
-    duration: number;
-    workoutType: string;
-    intensity: number;
-    muscleGroups: string[];
-    stimulusPoints: number;
-  }) => {
+  const handleManualSubmit = (data: Omit<ImportedWorkoutData, "source">) => {
     setAddModalOpen(false);
-    submitWorkout(data, { onSuccess: () => markActivityDone() });
+    submitWorkout({ ...data, source: "manual" }, { onSuccess: () => markActivityDone() });
   };
 
   const toggleMuscleGroup = (group: string) => {

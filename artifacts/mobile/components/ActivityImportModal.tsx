@@ -24,27 +24,37 @@ import {
 } from "@/utils/stimulus";
 import { getApiBase, getAuthHeaders, getFetchOptions } from "@/hooks/apiHelpers";
 
+export interface ImportedWorkoutData {
+  label: string;
+  duration: number;
+  workoutType: string;
+  source: string;
+  intensity: number;
+  muscleGroups: string[];
+  stimulusPoints: number;
+  workoutDate?: string | null;
+  movements?: Array<{ name: string; volume: string; muscleGroups: string[]; fatiguePercent: number }>;
+  isMetcon?: boolean;
+  metconFormat?: string | null;
+}
+
 interface Props {
   visible: boolean;
   onClose: () => void;
   skillLevel?: string | null;
-  onComplete: (data: {
-    label: string;
-    duration: number;
-    workoutType: string;
-    source: string;
-    intensity: number;
-    muscleGroups: string[];
-    stimulusPoints: number;
-  }) => void;
-  onManualSubmit?: (data: {
-    label: string;
-    duration: number;
-    workoutType: string;
-    intensity: number;
-    muscleGroups: string[];
-    stimulusPoints: number;
-  }) => void;
+  onComplete: (data: ImportedWorkoutData) => void;
+  onManualSubmit?: (data: Omit<ImportedWorkoutData, "source">) => void;
+}
+
+interface ImageAnalysis {
+  label: string;
+  workoutType: string;
+  duration: number;
+  intensity: number;
+  muscleGroups: string[];
+  movements: Array<{ name: string; volume: string; muscleGroups: string[]; fatiguePercent: number }>;
+  isMetcon: boolean;
+  metconFormat: string | null;
 }
 
 type Step = "choose" | "screenshot_prompt" | "scanning" | "screenshot_done" | "manual" | "ai_interpreter";
@@ -55,6 +65,17 @@ const WORKOUT_TYPES = [
 ];
 
 const DURATION_OPTIONS = [15, 20, 30, 45, 60, 75, 90, 120];
+
+const DATE_OPTIONS = [
+  { label: "Today", offset: 0 },
+  { label: "Yesterday", offset: 1 },
+  { label: "2 days ago", offset: 2 },
+  { label: "3 days ago", offset: 3 },
+  { label: "4 days ago", offset: 4 },
+  { label: "5 days ago", offset: 5 },
+  { label: "6 days ago", offset: 6 },
+  { label: "7 days ago", offset: 7 },
+];
 
 function resolveSkillLevel(raw?: string | null): SkillLevel {
   if (raw === "Beginner" || raw === "Intermediate" || raw === "Advanced") return raw;
@@ -83,6 +104,33 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
     muscleGroups: string[];
     stimulusPoints: number;
   } | null>(null);
+  const [imageAnalysis, setImageAnalysis] = useState<ImageAnalysis | null>(null);
+  const [screenshotLabel, setScreenshotLabel] = useState("");
+  const [workoutDateOffset, setWorkoutDateOffset] = useState(0);
+
+  function getWorkoutDate(offset: number): string {
+    const d = new Date();
+    d.setDate(d.getDate() - offset);
+    return d.toISOString().slice(0, 10);
+  }
+
+  const analyzeImage = async (uri: string, mimeType = "image/jpeg") => {
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${getApiBase()}/api/workout/analyze-image`, {
+        ...getFetchOptions(headers),
+        method: "POST",
+        body: JSON.stringify({ base64Image: uri, mimeType }),
+      });
+      if (res.ok) {
+        const data: ImageAnalysis = await res.json();
+        return data;
+      }
+    } catch (e) {
+      console.error("Image analysis error:", e);
+    }
+    return null;
+  };
 
   const handlePickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -90,21 +138,39 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: false,
-      quality: 0.8,
+      quality: 0.6,
+      base64: true,
     });
     if (!result.canceled && result.assets[0]) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       setImageUri(result.assets[0].uri);
       setStep("scanning");
-      setTimeout(() => {
-        const duration = 47;
-        const intensity = 6;
-        const muscleGroups = ["Full Body"];
-        const stimulusPoints = computeStimulusPoints({ duration, intensity, muscleGroups, skillLevel: userSkillLevel });
-        setScreenshotData({ duration, intensity, muscleGroups, stimulusPoints });
-        setStep("screenshot_done");
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }, 2200);
+      const asset = result.assets[0];
+      const b64 = asset.base64 ?? null;
+      const mime = asset.mimeType ?? "image/jpeg";
+      if (b64) {
+        const analysis = await analyzeImage(b64, mime);
+        if (analysis) {
+          setImageAnalysis(analysis);
+          setScreenshotLabel(analysis.label);
+          const stimulusPoints = computeStimulusPoints({
+            duration: analysis.duration,
+            intensity: analysis.intensity,
+            muscleGroups: analysis.muscleGroups,
+            skillLevel: userSkillLevel,
+          });
+          setScreenshotData({ duration: analysis.duration, intensity: analysis.intensity, muscleGroups: analysis.muscleGroups, stimulusPoints });
+          setStep("screenshot_done");
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          return;
+        }
+      }
+      const duration = 47; const intensity = 6; const muscleGroups = ["Full Body"];
+      const stimulusPoints = computeStimulusPoints({ duration, intensity, muscleGroups, skillLevel: userSkillLevel });
+      setScreenshotData({ duration, intensity, muscleGroups, stimulusPoints });
+      setScreenshotLabel("Workout");
+      setStep("screenshot_done");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
   };
 
@@ -117,21 +183,39 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
     if (status !== "granted") return;
     const result = await ImagePicker.launchCameraAsync({
       allowsEditing: false,
-      quality: 0.8,
+      quality: 0.6,
+      base64: true,
     });
     if (!result.canceled && result.assets[0]) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       setImageUri(result.assets[0].uri);
       setStep("scanning");
-      setTimeout(() => {
-        const duration = 47;
-        const intensity = 6;
-        const muscleGroups = ["Full Body"];
-        const stimulusPoints = computeStimulusPoints({ duration, intensity, muscleGroups, skillLevel: userSkillLevel });
-        setScreenshotData({ duration, intensity, muscleGroups, stimulusPoints });
-        setStep("screenshot_done");
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }, 2200);
+      const asset = result.assets[0];
+      const b64 = asset.base64 ?? null;
+      const mime = asset.mimeType ?? "image/jpeg";
+      if (b64) {
+        const analysis = await analyzeImage(b64, mime);
+        if (analysis) {
+          setImageAnalysis(analysis);
+          setScreenshotLabel(analysis.label);
+          const stimulusPoints = computeStimulusPoints({
+            duration: analysis.duration,
+            intensity: analysis.intensity,
+            muscleGroups: analysis.muscleGroups,
+            skillLevel: userSkillLevel,
+          });
+          setScreenshotData({ duration: analysis.duration, intensity: analysis.intensity, muscleGroups: analysis.muscleGroups, stimulusPoints });
+          setStep("screenshot_done");
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          return;
+        }
+      }
+      const duration = 47; const intensity = 6; const muscleGroups = ["Full Body"];
+      const stimulusPoints = computeStimulusPoints({ duration, intensity, muscleGroups, skillLevel: userSkillLevel });
+      setScreenshotData({ duration, intensity, muscleGroups, stimulusPoints });
+      setScreenshotLabel("Workout");
+      setStep("screenshot_done");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
   };
 
@@ -162,6 +246,7 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
         intensity: manualIntensity,
         muscleGroups: groups,
         stimulusPoints,
+        workoutDate: getWorkoutDate(workoutDateOffset),
       });
     }
     resetState();
@@ -214,21 +299,27 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
         intensity: aiParsed.suggestedIntensity,
         muscleGroups: aiParsed.muscleGroups,
         stimulusPoints,
+        workoutDate: getWorkoutDate(workoutDateOffset),
       });
     }
     resetState();
   };
 
   const handleFinish = () => {
+    const workoutDate = getWorkoutDate(workoutDateOffset);
     if (screenshotData) {
       onComplete({
-        label: "Screenshot Import",
+        label: screenshotLabel || "Screenshot Import",
         duration: screenshotData.duration,
-        workoutType: "Imported",
+        workoutType: imageAnalysis?.workoutType ?? "Imported",
         source: "screenshot",
         intensity: screenshotData.intensity,
         muscleGroups: screenshotData.muscleGroups,
         stimulusPoints: screenshotData.stimulusPoints,
+        workoutDate,
+        movements: imageAnalysis?.movements ?? [],
+        isMetcon: imageAnalysis?.isMetcon ?? false,
+        metconFormat: imageAnalysis?.metconFormat ?? null,
       });
     } else {
       onComplete({
@@ -239,6 +330,10 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
         intensity: 6,
         muscleGroups: ["Full Body"],
         stimulusPoints: computeStimulusPoints({ duration: 47, intensity: 6, muscleGroups: ["Full Body"], skillLevel: userSkillLevel }),
+        workoutDate,
+        movements: [],
+        isMetcon: false,
+        metconFormat: null,
       });
     }
     resetState();
@@ -263,6 +358,9 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
       setAiLabel("");
       setAiDuration(30);
       setScreenshotData(null);
+      setImageAnalysis(null);
+      setScreenshotLabel("");
+      setWorkoutDateOffset(0);
     }, 300);
   };
 
@@ -384,12 +482,29 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
           )}
 
           {step === "screenshot_done" && (
-            <View style={styles.centerBlock}>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 560 }}>
               <View style={styles.doneIcon}>
                 <Feather name="check" size={30} color={Colors.highlight} />
               </View>
-              <Text style={styles.doneTitle}>ACTIVITY{"\n"}SYNCED</Text>
-              <Text style={styles.doneDesc}>Your workout data has been extracted and added to your training log.</Text>
+              <Text style={styles.doneTitle}>ACTIVITY{"\n"}ANALYZED</Text>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.fieldLabel}>WORKOUT NAME</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={screenshotLabel}
+                  onChangeText={setScreenshotLabel}
+                  placeholderTextColor={Colors.textSubtle}
+                  placeholder="Workout name"
+                />
+              </View>
+
+              {imageAnalysis?.isMetcon && imageAnalysis.metconFormat && (
+                <View style={styles.metconBadge}>
+                  <Feather name="zap" size={12} color={Colors.orange} />
+                  <Text style={styles.metconBadgeText}>{imageAnalysis.metconFormat}</Text>
+                </View>
+              )}
 
               <View style={styles.extractedCard}>
                 <View style={styles.extractedRow}>
@@ -400,18 +515,51 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
                 <View style={styles.extractedRow}>
                   <Feather name="zap" size={14} color={Colors.orange} />
                   <Text style={styles.extractedLabel}>Intensity</Text>
-                  <Text style={styles.extractedVal}>{screenshotData?.intensity ?? 6} / 10</Text>
-                </View>
-                <View style={styles.extractedRow}>
-                  <Feather name="target" size={14} color={Colors.highlight} />
-                  <Text style={styles.extractedLabel}>Muscle Groups</Text>
-                  <Text style={styles.extractedVal}>{(screenshotData?.muscleGroups ?? ["Full Body"]).join(", ")}</Text>
+                  <Text style={styles.extractedVal}>RPE {screenshotData?.intensity ?? 6}/10</Text>
                 </View>
                 <View style={styles.extractedRow}>
                   <Feather name="trending-up" size={14} color={Colors.highlight} />
                   <Text style={styles.extractedLabel}>Stimulus Points</Text>
                   <Text style={styles.extractedVal}>{screenshotData?.stimulusPoints ?? 0} pts</Text>
                 </View>
+              </View>
+
+              {imageAnalysis?.movements && imageAnalysis.movements.length > 0 && (
+                <View style={styles.formGroup}>
+                  <Text style={styles.fieldLabel}>MOVEMENTS & FATIGUE LOAD</Text>
+                  {imageAnalysis.movements.map((mv, i) => (
+                    <View key={i} style={styles.movementRow}>
+                      <View style={styles.movementInfo}>
+                        <Text style={styles.movementName}>{mv.name}</Text>
+                        <Text style={styles.movementVolume}>{mv.volume}</Text>
+                        <Text style={styles.movementMuscles}>{mv.muscleGroups.join(", ")}</Text>
+                      </View>
+                      <View style={styles.movementFatigue}>
+                        <Text style={styles.movementFatiguePct}>{mv.fatiguePercent}%</Text>
+                        <View style={styles.movementFatigueBar}>
+                          <View style={[styles.movementFatigueFill, { width: `${mv.fatiguePercent}%` as any }]} />
+                        </View>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              <View style={styles.formGroup}>
+                <Text style={styles.fieldLabel}>LOG FOR DATE</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View style={styles.dateRow}>
+                    {DATE_OPTIONS.map(({ label: dl, offset }) => (
+                      <Pressable
+                        key={offset}
+                        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setWorkoutDateOffset(offset); }}
+                        style={[styles.dateChip, workoutDateOffset === offset && styles.dateChipSelected]}
+                      >
+                        <Text style={[styles.dateChipText, workoutDateOffset === offset && styles.dateChipTextSelected]}>{dl}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </ScrollView>
               </View>
 
               <Pressable
@@ -421,7 +569,7 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
                 <Feather name="check-circle" size={16} color="#fff" />
                 <Text style={styles.primaryBtnText}>SYNC TO PROTOCOL</Text>
               </Pressable>
-            </View>
+            </ScrollView>
           )}
 
           {step === "ai_interpreter" && (
@@ -510,6 +658,23 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
                         );
                       })}
                     </View>
+                  </View>
+
+                  <View style={styles.formGroup}>
+                    <Text style={styles.fieldLabel}>LOG FOR DATE</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      <View style={styles.dateRow}>
+                        {DATE_OPTIONS.map(({ label: dl, offset }) => (
+                          <Pressable
+                            key={offset}
+                            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setWorkoutDateOffset(offset); }}
+                            style={[styles.dateChip, workoutDateOffset === offset && styles.dateChipSelected]}
+                          >
+                            <Text style={[styles.dateChipText, workoutDateOffset === offset && styles.dateChipTextSelected]}>{dl}</Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </ScrollView>
                   </View>
 
                   <Pressable
@@ -625,6 +790,23 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
                     );
                   })}
                 </View>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.fieldLabel}>LOG FOR DATE</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View style={styles.dateRow}>
+                    {DATE_OPTIONS.map(({ label: dl, offset }) => (
+                      <Pressable
+                        key={offset}
+                        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setWorkoutDateOffset(offset); }}
+                        style={[styles.dateChip, workoutDateOffset === offset && styles.dateChipSelected]}
+                      >
+                        <Text style={[styles.dateChipText, workoutDateOffset === offset && styles.dateChipTextSelected]}>{dl}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </ScrollView>
               </View>
 
               <Pressable
@@ -992,5 +1174,88 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     color: Colors.textSubtle,
     letterSpacing: 0.5,
+  },
+  dateRow: { flexDirection: "row", gap: 6, paddingVertical: 2 },
+  dateChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 100,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.bgCard,
+  },
+  dateChipSelected: {
+    borderColor: Colors.highlight,
+    backgroundColor: "rgba(246,234,152,0.12)",
+  },
+  dateChipText: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    color: Colors.textMuted,
+  },
+  dateChipTextSelected: { color: Colors.highlight },
+  metconBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 100,
+    borderWidth: 1,
+    borderColor: "rgba(252,82,0,0.35)",
+    backgroundColor: "rgba(252,82,0,0.08)",
+    marginTop: 4,
+  },
+  metconBadgeText: {
+    fontSize: 11,
+    fontFamily: "Inter_900Black",
+    color: Colors.orange,
+    letterSpacing: 1,
+    fontStyle: "italic",
+  },
+  movementRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    gap: 12,
+  },
+  movementInfo: { flex: 1, gap: 2 },
+  movementName: {
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+    color: Colors.text,
+  },
+  movementVolume: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textMuted,
+  },
+  movementMuscles: {
+    fontSize: 10,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
+  },
+  movementFatigue: { alignItems: "flex-end", gap: 4, minWidth: 64 },
+  movementFatiguePct: {
+    fontSize: 12,
+    fontFamily: "Inter_900Black",
+    color: Colors.orange,
+    fontStyle: "italic",
+  },
+  movementFatigueBar: {
+    width: 64,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.border,
+    overflow: "hidden",
+  },
+  movementFatigueFill: {
+    height: "100%",
+    backgroundColor: Colors.orange,
+    borderRadius: 2,
   },
 });

@@ -61,6 +61,13 @@ export const dailyCheckInsTable = pgTable("daily_check_ins", {
 export type DailyCheckIn = typeof dailyCheckInsTable.$inferSelect;
 export type InsertDailyCheckIn = typeof dailyCheckInsTable.$inferInsert;
 
+export interface WorkoutMovement {
+  name: string;
+  volume: string;
+  muscleGroups: string[];
+  fatiguePercent: number;
+}
+
 export const externalWorkoutsTable = pgTable("external_workouts", {
   id: serial("id").primaryKey(),
   userId: varchar("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
@@ -71,6 +78,10 @@ export const externalWorkoutsTable = pgTable("external_workouts", {
   intensity: integer("intensity"),
   muscleGroups: jsonb("muscle_groups").$type<string[]>().default([]),
   stimulusPoints: integer("stimulus_points"),
+  workoutDate: date("workout_date"),
+  movements: jsonb("movements").$type<WorkoutMovement[]>().default([]),
+  isMetcon: boolean("is_metcon").default(false),
+  metconFormat: varchar("metcon_format"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
