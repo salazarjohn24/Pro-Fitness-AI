@@ -17,8 +17,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Colors } from "@/constants/colors";
 import { EQUIPMENT_CATEGORIES } from "@/components/EquipmentChecklist";
+import { CheckInModal } from "@/components/CheckInModal";
 import { useEnvironments, useCreateEnvironment, type GymEnvironment } from "@/hooks/useEnvironments";
-import { useTodayCheckIn, useProfile } from "@/hooks/useProfile";
+import { useTodayCheckIn, useProfile, useSubmitCheckIn } from "@/hooks/useProfile";
 import {
   useArchitectGenerate,
   fetchExerciseAlternatives,
@@ -101,11 +102,13 @@ const DURATION_OPTIONS = [30, 45, 60, 75, 90, 120];
 
 export default function WorkoutArchitectScreen() {
   const insets = useSafeAreaInsets();
-  const { data: todayCheckIn, isLoading: checkInLoading } = useTodayCheckIn();
+  const { data: todayCheckIn, isLoading: checkInLoading, refetch: refetchCheckIn } = useTodayCheckIn();
   const { mutate: architectGenerate, isPending: isGenerating } = useArchitectGenerate();
   const { data: environments } = useEnvironments();
   const { mutate: createEnv, isPending: isCreatingEnv } = useCreateEnvironment();
   const { data: profile } = useProfile();
+  const { mutate: submitCheckIn, isPending: isSubmittingCheckIn } = useSubmitCheckIn();
+  const [showCheckInModal, setShowCheckInModal] = useState(false);
 
   const [step, setStep] = useState<Step>("muscles");
   const [selectedMuscles, setSelectedMuscles] = useState<string[]>([]);
@@ -375,20 +378,50 @@ export default function WorkoutArchitectScreen() {
         </View>
         <View style={styles.centerBlock}>
           <View style={styles.lockedIcon}>
-            <Feather name="lock" size={40} color={Colors.textSubtle} />
+            <Feather name="cpu" size={40} color={Colors.highlight} />
           </View>
-          <Text style={styles.lockedTitle}>CHECK-IN{"\n"}REQUIRED</Text>
+          <Text style={styles.lockedTitle}>QUICK{"\n"}CHECK-IN</Text>
           <Text style={styles.lockedDesc}>
-            Complete your daily Intelligence Check-in first so the AI can factor in your energy, sleep, soreness, and stress levels.
+            The AI needs to know how you feel today — your energy, sleep, soreness, and stress — before it can design the right workout for you right now.
           </Text>
+          <View style={styles.lockedBenefitsRow}>
+            <View style={styles.lockedBenefit}>
+              <Feather name="battery-charging" size={14} color={Colors.highlight} />
+              <Text style={styles.lockedBenefitText}>Energy-calibrated volume</Text>
+            </View>
+            <View style={styles.lockedBenefit}>
+              <Feather name="alert-triangle" size={14} color={Colors.orange} />
+              <Text style={styles.lockedBenefitText}>Soreness-aware exercise selection</Text>
+            </View>
+            <View style={styles.lockedBenefit}>
+              <Feather name="trending-up" size={14} color={Colors.recovery} />
+              <Text style={styles.lockedBenefitText}>Smarter progressive overload</Text>
+            </View>
+          </View>
           <Pressable
             style={({ pressed }) => [styles.lockedBtn, { opacity: pressed ? 0.9 : 1 }]}
-            onPress={() => router.back()}
+            onPress={() => setShowCheckInModal(true)}
           >
-            <Feather name="arrow-left" size={14} color="#fff" />
-            <Text style={styles.lockedBtnText}>GO TO DASHBOARD</Text>
+            <Feather name="clipboard" size={14} color="#fff" />
+            <Text style={styles.lockedBtnText}>DO MY CHECK-IN NOW</Text>
+          </Pressable>
+          <Pressable onPress={() => router.back()} style={{ marginTop: 16 }}>
+            <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: Colors.textSubtle }}>Maybe later</Text>
           </Pressable>
         </View>
+        <CheckInModal
+          visible={showCheckInModal}
+          onClose={() => setShowCheckInModal(false)}
+          isSubmitting={isSubmittingCheckIn}
+          onComplete={(data) => {
+            submitCheckIn(data, {
+              onSuccess: () => {
+                setShowCheckInModal(false);
+                refetchCheckIn();
+              },
+            });
+          }}
+        />
       </View>
     );
   }
@@ -1004,6 +1037,29 @@ const styles = StyleSheet.create({
     color: "#fff",
     letterSpacing: 1,
     fontStyle: "italic",
+  },
+  lockedBenefitsRow: {
+    width: "100%",
+    gap: 10,
+    marginTop: 20,
+    marginBottom: 4,
+  },
+  lockedBenefit: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: Colors.bgCard,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  lockedBenefitText: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textMuted,
+    flex: 1,
   },
   generatingTitle: {
     fontSize: 24,

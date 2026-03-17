@@ -17,6 +17,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Colors } from "@/constants/colors";
+import { getRecoveryTip, getNutritionTip } from "@/constants/recoveryTips";
 import { useSubmitExternalWorkout, useProfile } from "@/hooks/useProfile";
 import { computeStimulusPoints, type SkillLevel } from "@/utils/stimulus";
 import { useSaveWorkout, fetchExerciseAlternatives, recordExerciseSubstitution, type AlternativeExercise, type GeneratedExercise, type GeneratedWorkout } from "@/hooks/useWorkout";
@@ -82,10 +83,18 @@ export default function WorkoutSessionScreen() {
   const [swapLoading, setSwapLoading] = useState(false);
 
   const [showQuestionnaire, setShowQuestionnaire] = useState(false);
+  const [showReview, setShowReview] = useState(false);
   const [feedbackDifficulty, setFeedbackDifficulty] = useState(3);
   const [feedbackEnergy, setFeedbackEnergy] = useState(3);
   const [feedbackEnjoyment, setFeedbackEnjoyment] = useState(3);
   const [feedbackNotes, setFeedbackNotes] = useState("");
+  const [workoutComments, setWorkoutComments] = useState("");
+  const [extraExercises, setExtraExercises] = useState<{ name: string; sets: number; reps: number; weight: string }[]>([]);
+  const [addExOpen, setAddExOpen] = useState(false);
+  const [newExName, setNewExName] = useState("");
+  const [newExSets, setNewExSets] = useState(3);
+  const [newExReps, setNewExReps] = useState(10);
+  const [newExWeight, setNewExWeight] = useState("");
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const restTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -213,10 +222,21 @@ export default function WorkoutSessionScreen() {
     Linking.openURL(url);
   };
 
+  const handleAddExercise = () => {
+    if (!newExName.trim()) return;
+    setExtraExercises(prev => [...prev, { name: newExName.trim(), sets: newExSets, reps: newExReps, weight: newExWeight.trim() }]);
+    setNewExName("");
+    setNewExSets(3);
+    setNewExReps(10);
+    setNewExWeight("");
+    setAddExOpen(false);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
   const handleFinish = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     if (timerRef.current) clearInterval(timerRef.current);
-    setShowQuestionnaire(true);
+    setShowReview(true);
   };
 
   const handleSubmitFeedback = () => {
@@ -245,16 +265,28 @@ export default function WorkoutSessionScreen() {
       };
     });
 
+    const extraData = extraExercises.map((ex, i) => ({
+      exerciseId: `extra-${i}-${Date.now()}`,
+      name: ex.name,
+      targetWeight: ex.weight || "bodyweight",
+      targetReps: ex.reps,
+      targetRestSeconds: restSeconds,
+      actualRestSeconds: [],
+      sets: Array.from({ length: ex.sets }, () => ({ reps: ex.reps, weight: ex.weight || "0", completed: true })),
+    }));
+
+    const combinedNotes = [workoutComments.trim(), feedbackNotes.trim()].filter(Boolean).join("\n\n");
+
     saveWorkout({
       workoutTitle: workoutData?.workoutTitle ?? "Workout",
       durationSeconds: elapsed,
-      exercises: exerciseData,
-      totalSetsCompleted: completedSets,
+      exercises: [...exerciseData, ...extraData],
+      totalSetsCompleted: completedSets + extraExercises.reduce((a, ex) => a + ex.sets, 0),
       postWorkoutFeedback: {
         perceivedDifficulty: feedbackDifficulty,
         energyAfter: feedbackEnergy,
         enjoyment: feedbackEnjoyment,
-        notes: feedbackNotes.trim(),
+        notes: combinedNotes,
       },
     }, {
       onSuccess: () => setSaved(true),
@@ -304,6 +336,149 @@ export default function WorkoutSessionScreen() {
             <Text style={styles.emptyBtnText}>GO BACK</Text>
           </Pressable>
         </View>
+      </View>
+    );
+  }
+
+  if (showReview) {
+    return (
+      <View style={[styles.container, { paddingTop: topPad }]}>
+        <View style={styles.topBar}>
+          <View style={{ width: 36 }} />
+          <Text style={styles.topBarTitle}>REVIEW SESSION</Text>
+          <View style={{ width: 36 }} />
+        </View>
+        <ScrollView contentContainerStyle={[styles.questionnaireContainer, { paddingBottom: botPad + 20 }]}>
+          <View style={styles.finishedIcon}>
+            <Feather name="check-square" size={32} color={Colors.highlight} />
+          </View>
+          <Text style={styles.finishedTitle}>REVIEW &{"\n"}CONFIRM</Text>
+          <Text style={styles.finishedSub}>Add anything you missed and share insights to make your future workouts smarter.</Text>
+
+          <View style={styles.reviewSection}>
+            <Text style={styles.reviewSectionLabel}>EXERCISES LOGGED</Text>
+            {exercises.map((ex) => {
+              const logs = setLogs[ex.exerciseId] ?? [];
+              const done = logs.filter(l => l.status === "done").length;
+              const lastLog = logs.find(l => l.status === "done");
+              return (
+                <View key={ex.exerciseId} style={styles.reviewExRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.reviewExName}>{ex.name}</Text>
+                    <Text style={styles.reviewExMeta}>
+                      {done}/{ex.sets} sets{lastLog?.weight ? ` · ${lastLog.weight}` : ""}{lastLog ? ` × ${lastLog.reps} reps` : ""}
+                    </Text>
+                  </View>
+                  <View style={[styles.reviewExBadge, { backgroundColor: done === ex.sets ? "rgba(119,156,175,0.15)" : "rgba(252,82,0,0.12)" }]}>
+                    <Text style={[styles.reviewExBadgeText, { color: done === ex.sets ? Colors.recovery : Colors.orange }]}>
+                      {done === ex.sets ? "COMPLETE" : `${done}/${ex.sets}`}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+            {extraExercises.map((ex, i) => (
+              <View key={`extra-${i}`} style={[styles.reviewExRow, { borderColor: "rgba(246,234,152,0.2)" }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.reviewExName}>{ex.name}</Text>
+                  <Text style={styles.reviewExMeta}>{ex.sets} sets{ex.weight ? ` · ${ex.weight}` : ""} × {ex.reps} reps · Added</Text>
+                </View>
+                <Pressable onPress={() => setExtraExercises(prev => prev.filter((_, idx) => idx !== i))} style={styles.reviewExRemove}>
+                  <Feather name="x" size={14} color={Colors.textMuted} />
+                </Pressable>
+              </View>
+            ))}
+          </View>
+
+          <Pressable
+            style={({ pressed }) => [styles.addExBtn, { opacity: pressed ? 0.85 : 1 }]}
+            onPress={() => setAddExOpen(o => !o)}
+          >
+            <Feather name={addExOpen ? "minus" : "plus"} size={14} color={Colors.highlight} />
+            <Text style={styles.addExBtnText}>{addExOpen ? "CANCEL" : "ADD MISSED EXERCISE"}</Text>
+          </Pressable>
+
+          {addExOpen && (
+            <View style={styles.addExForm}>
+              <TextInput
+                style={styles.addExInput}
+                placeholder="Exercise name (e.g. Romanian Deadlift)"
+                placeholderTextColor={Colors.textSubtle}
+                value={newExName}
+                onChangeText={setNewExName}
+              />
+              <View style={styles.addExRow}>
+                <View style={styles.addExField}>
+                  <Text style={styles.addExFieldLabel}>SETS</Text>
+                  <View style={styles.addExStepper}>
+                    <Pressable onPress={() => setNewExSets(s => Math.max(1, s - 1))} style={styles.addExStep}>
+                      <Text style={styles.addExStepText}>−</Text>
+                    </Pressable>
+                    <Text style={styles.addExStepVal}>{newExSets}</Text>
+                    <Pressable onPress={() => setNewExSets(s => Math.min(10, s + 1))} style={styles.addExStep}>
+                      <Text style={styles.addExStepText}>+</Text>
+                    </Pressable>
+                  </View>
+                </View>
+                <View style={styles.addExField}>
+                  <Text style={styles.addExFieldLabel}>REPS</Text>
+                  <View style={styles.addExStepper}>
+                    <Pressable onPress={() => setNewExReps(r => Math.max(1, r - 1))} style={styles.addExStep}>
+                      <Text style={styles.addExStepText}>−</Text>
+                    </Pressable>
+                    <Text style={styles.addExStepVal}>{newExReps}</Text>
+                    <Pressable onPress={() => setNewExReps(r => Math.min(50, r + 1))} style={styles.addExStep}>
+                      <Text style={styles.addExStepText}>+</Text>
+                    </Pressable>
+                  </View>
+                </View>
+                <View style={[styles.addExField, { flex: 1.5 }]}>
+                  <Text style={styles.addExFieldLabel}>WEIGHT</Text>
+                  <TextInput
+                    style={styles.addExWeightInput}
+                    placeholder="e.g. 135 lbs"
+                    placeholderTextColor={Colors.textSubtle}
+                    value={newExWeight}
+                    onChangeText={setNewExWeight}
+                    keyboardType="default"
+                  />
+                </View>
+              </View>
+              <Pressable
+                style={({ pressed }) => [styles.addExConfirmBtn, { opacity: pressed ? 0.9 : 1 }]}
+                onPress={handleAddExercise}
+              >
+                <Feather name="plus-circle" size={14} color={Colors.bgPrimary} />
+                <Text style={styles.addExConfirmBtnText}>ADD EXERCISE</Text>
+              </Pressable>
+            </View>
+          )}
+
+          <View style={styles.reviewSection}>
+            <Text style={styles.reviewSectionLabel}>AI INSIGHTS</Text>
+            <View style={styles.aiBadge}>
+              <Feather name="cpu" size={12} color={Colors.highlight} />
+              <Text style={styles.aiBadgeText}>THIS TRAINS YOUR FUTURE WORKOUTS</Text>
+            </View>
+            <TextInput
+              style={[styles.feedbackNotesInput, { marginTop: 10 }]}
+              value={workoutComments}
+              onChangeText={setWorkoutComments}
+              placeholder="e.g. Left shoulder felt tight on bench, PR on deadlift, need shorter rest periods next time, elbow clicking on tricep work..."
+              placeholderTextColor={Colors.textSubtle}
+              multiline
+              numberOfLines={4}
+            />
+          </View>
+
+          <Pressable
+            style={({ pressed }) => [styles.doneBtn, { marginTop: 8, opacity: pressed ? 0.9 : 1 }]}
+            onPress={() => { setShowReview(false); setShowQuestionnaire(true); }}
+          >
+            <Feather name="arrow-right" size={16} color={Colors.bgPrimary} />
+            <Text style={styles.doneBtnText}>LOOKS GOOD — CONTINUE</Text>
+          </Pressable>
+        </ScrollView>
       </View>
     );
   }
@@ -409,36 +584,40 @@ export default function WorkoutSessionScreen() {
   }
 
   if (finished) {
+    const allMuscles = exercises.flatMap(ex => [ex.primaryMuscle, ...ex.secondaryMuscles]).filter(Boolean);
+    const recoveryTip = getRecoveryTip(allMuscles);
+    const nutritionTip = getNutritionTip(exercises.length);
+    const congrats = pct === 100 ? "OUTSTANDING\nPERFORMANCE!" : pct >= 80 ? "GREAT\nSESSION!" : pct >= 60 ? "SOLID\nWORK TODAY!" : "WELL\nDONE!";
+    const subMsg = pct === 100
+      ? "Every set. Every rep. That's the standard."
+      : pct >= 80
+      ? "Almost perfect — that consistency compounds."
+      : "Progress is progress. You showed up and that matters.";
+
     return (
       <View style={[styles.container, { paddingTop: topPad }]}>
-        <View style={styles.finishedBlock}>
-          <View style={styles.finishedIcon}>
+        <ScrollView contentContainerStyle={[styles.questionnaireContainer, { paddingBottom: botPad + 30 }]}>
+          <View style={[styles.finishedIcon, { backgroundColor: "rgba(246,234,152,0.12)" }]}>
             <Feather name="zap" size={40} color={Colors.highlight} />
           </View>
-          <Text style={styles.finishedTitle}>WORKOUT{"\n"}COMPLETE</Text>
-          <Text style={styles.finishedSub}>
-            {formatTime(elapsed)} · {completedSets} sets
-          </Text>
+          <Text style={styles.finishedTitle}>{congrats}</Text>
+          <Text style={styles.finishedSub}>{subMsg}</Text>
+
           <View style={styles.finishedStats}>
             <View style={styles.finishedStat}>
-              <Text style={[styles.finishedStatVal, { color: Colors.highlight }]}>{completedSets}</Text>
+              <Text style={[styles.finishedStatVal, { color: Colors.highlight }]}>{completedSets + extraExercises.reduce((a, ex) => a + ex.sets, 0)}</Text>
               <Text style={styles.finishedStatLabel}>Sets Done</Text>
             </View>
-            {failedSets > 0 && (
-              <View style={styles.finishedStat}>
-                <Text style={[styles.finishedStatVal, { color: Colors.orange }]}>{failedSets}</Text>
-                <Text style={styles.finishedStatLabel}>Failed</Text>
-              </View>
-            )}
             <View style={styles.finishedStat}>
               <Text style={[styles.finishedStatVal, { color: Colors.recovery }]}>{formatTime(elapsed)}</Text>
               <Text style={styles.finishedStatLabel}>Duration</Text>
             </View>
             <View style={styles.finishedStat}>
               <Text style={[styles.finishedStatVal, { color: Colors.highlight }]}>{pct}%</Text>
-              <Text style={styles.finishedStatLabel}>Completion</Text>
+              <Text style={styles.finishedStatLabel}>Complete</Text>
             </View>
           </View>
+
           {saved ? (
             <View style={styles.savedBadge}>
               <Feather name="check-circle" size={14} color={Colors.highlight} />
@@ -447,16 +626,41 @@ export default function WorkoutSessionScreen() {
           ) : saved === false ? (
             <View style={[styles.savedBadge, { borderColor: "rgba(252,82,0,0.3)", backgroundColor: "rgba(252,82,0,0.1)" }]}>
               <Feather name="alert-circle" size={14} color={Colors.orange} />
-              <Text style={[styles.savedText, { color: Colors.orange }]}>Save failed</Text>
+              <Text style={[styles.savedText, { color: Colors.orange }]}>Save failed — check connection</Text>
             </View>
-          ) : null}
+          ) : (
+            <View style={[styles.savedBadge, { borderColor: Colors.border }]}>
+              <ActivityIndicator size={12} color={Colors.textMuted} />
+              <Text style={styles.savedText}>Saving…</Text>
+            </View>
+          )}
+
+          <View style={styles.tipCard}>
+            <View style={styles.tipCardHeader}>
+              <Feather name={recoveryTip.icon as any} size={14} color={Colors.recovery} />
+              <Text style={[styles.tipCardTag, { color: Colors.recovery }]}>RECOVERY TIP</Text>
+            </View>
+            <Text style={styles.tipCardTitle}>{recoveryTip.title}</Text>
+            <Text style={styles.tipCardBody}>{recoveryTip.body}</Text>
+          </View>
+
+          <View style={[styles.tipCard, { borderColor: "rgba(252,82,0,0.2)", backgroundColor: "rgba(252,82,0,0.05)" }]}>
+            <View style={styles.tipCardHeader}>
+              <Feather name={nutritionTip.icon as any} size={14} color={Colors.orange} />
+              <Text style={[styles.tipCardTag, { color: Colors.orange }]}>NUTRITION TIP</Text>
+            </View>
+            <Text style={styles.tipCardTitle}>{nutritionTip.title}</Text>
+            <Text style={styles.tipCardBody}>{nutritionTip.body}</Text>
+          </View>
+
           <Pressable
-            style={({ pressed }) => [styles.doneBtn, { opacity: pressed ? 0.9 : 1 }]}
+            style={({ pressed }) => [styles.doneBtn, { opacity: pressed ? 0.9 : 1, marginTop: 8 }]}
             onPress={() => router.replace("/(tabs)" as any)}
           >
+            <Feather name="home" size={16} color={Colors.bgPrimary} />
             <Text style={styles.doneBtnText}>BACK TO DASHBOARD</Text>
           </Pressable>
-        </View>
+        </ScrollView>
       </View>
     );
   }
@@ -1301,5 +1505,186 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_900Black",
     color: Colors.highlight,
     letterSpacing: 1,
+  },
+  reviewSection: {
+    marginTop: 24,
+    width: "100%",
+  },
+  reviewSectionLabel: {
+    fontSize: 10,
+    fontFamily: "Inter_900Black",
+    color: Colors.textSubtle,
+    letterSpacing: 1.5,
+    marginBottom: 10,
+  },
+  reviewExRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  reviewExName: {
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+    color: Colors.text,
+    marginBottom: 2,
+  },
+  reviewExMeta: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textMuted,
+  },
+  reviewExBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  reviewExBadgeText: {
+    fontSize: 9,
+    fontFamily: "Inter_900Black",
+    letterSpacing: 0.5,
+  },
+  reviewExRemove: {
+    padding: 6,
+  },
+  addExBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: Colors.highlight + "40",
+    borderRadius: 12,
+    borderStyle: "dashed",
+    justifyContent: "center",
+  },
+  addExBtnText: {
+    fontSize: 11,
+    fontFamily: "Inter_900Black",
+    color: Colors.highlight,
+    letterSpacing: 1,
+  },
+  addExForm: {
+    marginTop: 12,
+    backgroundColor: Colors.bgCard,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 16,
+    gap: 12,
+  },
+  addExInput: {
+    backgroundColor: Colors.bgMuted,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    color: Colors.text,
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+  },
+  addExRow: {
+    flexDirection: "row",
+    gap: 10,
+    alignItems: "flex-end",
+  },
+  addExField: {
+    flex: 1,
+    gap: 6,
+  },
+  addExFieldLabel: {
+    fontSize: 9,
+    fontFamily: "Inter_900Black",
+    color: Colors.textSubtle,
+    letterSpacing: 1,
+  },
+  addExStepper: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.bgMuted,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    overflow: "hidden",
+  },
+  addExStep: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  addExStepText: {
+    fontSize: 16,
+    color: Colors.textMuted,
+    fontFamily: "Inter_700Bold",
+  },
+  addExStepVal: {
+    flex: 1,
+    textAlign: "center",
+    fontSize: 15,
+    fontFamily: "Inter_900Black",
+    color: Colors.text,
+  },
+  addExWeightInput: {
+    backgroundColor: Colors.bgMuted,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    color: Colors.text,
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+  },
+  addExConfirmBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: Colors.highlight,
+    borderRadius: 12,
+    paddingVertical: 12,
+  },
+  addExConfirmBtnText: {
+    fontSize: 13,
+    fontFamily: "Inter_900Black",
+    color: Colors.bgPrimary,
+    letterSpacing: 0.5,
+  },
+  tipCard: {
+    width: "100%",
+    marginTop: 16,
+    backgroundColor: "rgba(119,156,175,0.07)",
+    borderWidth: 1,
+    borderColor: "rgba(119,156,175,0.2)",
+    borderRadius: 16,
+    padding: 16,
+    gap: 6,
+  },
+  tipCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 4,
+  },
+  tipCardTag: {
+    fontSize: 9,
+    fontFamily: "Inter_900Black",
+    letterSpacing: 1.5,
+  },
+  tipCardTitle: {
+    fontSize: 15,
+    fontFamily: "Inter_700Bold",
+    color: Colors.text,
+    marginBottom: 4,
+  },
+  tipCardBody: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textMuted,
+    lineHeight: 19,
   },
 });

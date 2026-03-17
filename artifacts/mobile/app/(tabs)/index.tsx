@@ -300,7 +300,11 @@ export default function StatusScreen() {
           <View style={styles.headerRight}>
             <View style={styles.streakBadge}>
               <Feather name="zap" size={14} color={Colors.orange} />
-              <Text style={styles.streakText}>{streak}</Text>
+              {streak > 0 ? (
+                <Text style={styles.streakText}>{streak}</Text>
+              ) : (
+                <Text style={[styles.streakText, { fontSize: 11, color: Colors.textMuted }]}>Start!</Text>
+              )}
             </View>
           </View>
         </View>
