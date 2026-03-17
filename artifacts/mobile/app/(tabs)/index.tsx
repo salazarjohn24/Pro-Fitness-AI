@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CheckInModal, type CheckInData } from "@/components/CheckInModal";
 import { ActivityImportModal } from "@/components/ActivityImportModal";
+import { EditWorkoutModal, type WorkoutItem } from "@/components/EditWorkoutModal";
 import { InsightInfoModal } from "@/components/InsightInfoModal";
 import { OnboardingModal } from "@/components/OnboardingModal";
 import { Colors } from "@/constants/colors";
@@ -28,6 +29,7 @@ import {
   useSubmitExternalWorkout,
   useDeleteExternalWorkout,
   useRecentExternalWorkouts,
+  useUpdateExternalWorkout,
   computeReadinessScore,
 } from "@/hooks/useProfile";
 import { useGenerateWorkout, type GeneratedWorkout } from "@/hooks/useWorkout";
@@ -75,6 +77,7 @@ export default function StatusScreen() {
   const { mutate: submitCheckIn, isPending: isSubmittingCheckIn } = useSubmitCheckIn();
   const { mutate: submitExternalWorkout } = useSubmitExternalWorkout();
   const { mutate: deleteExternalWorkout } = useDeleteExternalWorkout();
+  const { mutate: updateExternalWorkout, isPending: isUpdatingWorkout } = useUpdateExternalWorkout();
   const { data: recentExternalWorkouts } = useRecentExternalWorkouts();
   const { mutate: generateWorkout, isPending: isGenerating } = useGenerateWorkout();
 
@@ -87,6 +90,8 @@ export default function StatusScreen() {
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [autoCheckInTriggered, setAutoCheckInTriggered] = useState(false);
   const [generatedWorkout, setGeneratedWorkout] = useState<GeneratedWorkout | null>(null);
+  const [editWorkout, setEditWorkout] = useState<WorkoutItem | null>(null);
+  const [editWorkoutOpen, setEditWorkoutOpen] = useState(false);
 
   const streak = profile?.streakDays ?? 0;
   const syncProgress = profile?.dailySyncProgress ?? 0;
@@ -201,6 +206,33 @@ export default function StatusScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     deleteExternalWorkout(todayRestWorkout.id, {
       onSuccess: () => {
+        const newProgress = Math.max(0, syncProgress - 50);
+        updateProfile({ activityImported: false, dailySyncProgress: newProgress });
+      },
+    });
+  };
+
+  const handleEditWorkoutSave = (id: number, data: {
+    label: string;
+    duration: number;
+    workoutType: string;
+    intensity: number;
+    muscleGroups: string[];
+    stimulusPoints: number;
+  }) => {
+    updateExternalWorkout({ id, ...data }, {
+      onSuccess: () => {
+        setEditWorkoutOpen(false);
+        setEditWorkout(null);
+      },
+    });
+  };
+
+  const handleEditWorkoutDelete = (id: number) => {
+    deleteExternalWorkout(id, {
+      onSuccess: () => {
+        setEditWorkoutOpen(false);
+        setEditWorkout(null);
         const newProgress = Math.max(0, syncProgress - 50);
         updateProfile({ activityImported: false, dailySyncProgress: newProgress });
       },
@@ -592,7 +624,15 @@ export default function StatusScreen() {
                 const iconBg = isRest ? styles.recentIconRest : isExternal ? styles.recentIconExternal : styles.recentIconInApp;
                 const sourceLabel = isRest ? "Rest Day" : isExternal ? "External" : "In-App";
                 return (
-                  <View key={workout.id} style={styles.recentItem}>
+                  <Pressable
+                    key={workout.id}
+                    style={({ pressed }) => [styles.recentItem, { opacity: pressed ? 0.75 : 1 }]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setEditWorkout(workout as WorkoutItem);
+                      setEditWorkoutOpen(true);
+                    }}
+                  >
                     <View style={[styles.recentIcon, iconBg]}>
                       <Feather name={iconName} size={14} color={iconColor} />
                     </View>
@@ -609,7 +649,8 @@ export default function StatusScreen() {
                       <Text style={styles.recentDate}>{dateStr}</Text>
                       <Text style={styles.recentSource}>{sourceLabel}</Text>
                     </View>
-                  </View>
+                    <Feather name="edit-2" size={13} color={Colors.textSubtle} style={{ marginLeft: 4 }} />
+                  </Pressable>
                 );
               })}
             </View>
@@ -658,6 +699,16 @@ export default function StatusScreen() {
           why: "Understanding this correlation helps you optimize training timing. If the delta is large, scheduling hard sessions on well-recovered days yields significantly better results.",
           how: "Log your daily check-in consistently and complete workouts through the app. The more data points the engine has, the more accurate and actionable this insight becomes.",
         }}
+      />
+
+      <EditWorkoutModal
+        visible={editWorkoutOpen}
+        workout={editWorkout}
+        skillLevel={profile?.skillLevel}
+        onClose={() => { setEditWorkoutOpen(false); setEditWorkout(null); }}
+        onSave={handleEditWorkoutSave}
+        onDelete={handleEditWorkoutDelete}
+        isSaving={isUpdatingWorkout}
       />
     </>
   );
