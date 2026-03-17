@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, exerciseLibraryTable, workoutHistoryTable, userProfilesTable } from "@workspace/db";
+import { db, exerciseLibraryTable, workoutHistoryTable, userProfilesTable, userFavoriteExercisesTable } from "@workspace/db";
 import { eq, and, ilike, inArray, desc } from "drizzle-orm";
 import { generateCoachNote } from "../services/aiService";
 import { aiRateLimit } from "../middlewares/rateLimitMiddleware";
@@ -30,6 +30,31 @@ router.get("/exercises", async (req: Request, res: Response) => {
   }
 
   const exercises = await query;
+  res.json(exercises);
+});
+
+router.get("/exercises/favorites", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const favs = await db
+    .select({ exerciseId: userFavoriteExercisesTable.exerciseId })
+    .from(userFavoriteExercisesTable)
+    .where(eq(userFavoriteExercisesTable.userId, req.user.id));
+
+  const ids = favs.map((f) => f.exerciseId);
+  if (ids.length === 0) {
+    res.json([]);
+    return;
+  }
+
+  const exercises = await db
+    .select()
+    .from(exerciseLibraryTable)
+    .where(inArray(exerciseLibraryTable.id, ids));
+
   res.json(exercises);
 });
 
@@ -202,6 +227,50 @@ router.get("/exercises/:id/coach-note", aiRateLimit, async (req: Request, res: R
     console.error("Coach note generation error:", err);
     res.json({ coachNote: "Focus on controlled movement and proper form throughout each rep." });
   }
+});
+
+router.post("/exercises/:id/favorite", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const exerciseId = parseInt(req.params.id, 10);
+  if (isNaN(exerciseId)) {
+    res.status(400).json({ error: "Invalid exercise ID" });
+    return;
+  }
+
+  await db
+    .insert(userFavoriteExercisesTable)
+    .values({ userId: req.user.id, exerciseId })
+    .onConflictDoNothing();
+
+  res.json({ favorited: true });
+});
+
+router.delete("/exercises/:id/favorite", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const exerciseId = parseInt(req.params.id, 10);
+  if (isNaN(exerciseId)) {
+    res.status(400).json({ error: "Invalid exercise ID" });
+    return;
+  }
+
+  await db
+    .delete(userFavoriteExercisesTable)
+    .where(
+      and(
+        eq(userFavoriteExercisesTable.userId, req.user.id),
+        eq(userFavoriteExercisesTable.exerciseId, exerciseId)
+      )
+    );
+
+  res.json({ favorited: false });
 });
 
 router.post("/exercises/:id/history", async (req: Request, res: Response) => {

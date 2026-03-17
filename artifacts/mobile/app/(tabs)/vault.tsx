@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -15,7 +15,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Colors } from "@/constants/colors";
-import { useExercises, type Exercise } from "@/hooks/useExercises";
+import { useExercises, useExerciseFavorites, useToggleFavorite, type Exercise } from "@/hooks/useExercises";
 
 const MUSCLE_GROUPS = [
   { id: "", label: "ALL" },
@@ -63,6 +63,7 @@ export default function VaultScreen() {
   const [equipment, setEquipment] = useState("");
   const [goal, setGoal] = useState("");
   const [activeFilter, setActiveFilter] = useState<"muscle" | "equipment" | "goal">("muscle");
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const botPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -73,6 +74,15 @@ export default function VaultScreen() {
     goal: goal || undefined,
     search: searchText || undefined,
   });
+  const { data: favorites } = useExerciseFavorites();
+  const { mutate: toggleFavorite } = useToggleFavorite();
+
+  const favoriteIds = useMemo(() => new Set((favorites ?? []).map((f) => f.id)), [favorites]);
+
+  const displayedExercises = useMemo(() => {
+    if (!showFavoritesOnly) return exercises ?? [];
+    return (exercises ?? []).filter((e) => favoriteIds.has(e.id));
+  }, [exercises, favoriteIds, showFavoritesOnly]);
 
   const filterOptions = activeFilter === "muscle" ? MUSCLE_GROUPS
     : activeFilter === "equipment" ? EQUIPMENT_OPTIONS
@@ -126,15 +136,33 @@ export default function VaultScreen() {
             onPress={() => {
               Haptics.selectionAsync();
               setActiveFilter(f);
+              setShowFavoritesOnly(false);
             }}
-            style={[styles.filterTab, activeFilter === f && styles.filterTabActive]}
+            style={[styles.filterTab, activeFilter === f && !showFavoritesOnly && styles.filterTabActive]}
           >
-            <Text style={[styles.filterTabText, activeFilter === f && styles.filterTabTextActive]}>
+            <Text style={[styles.filterTabText, activeFilter === f && !showFavoritesOnly && styles.filterTabTextActive]}>
               {f === "muscle" ? "MUSCLE" : f === "equipment" ? "EQUIP" : "GOAL"}
             </Text>
           </Pressable>
         ))}
-        {activeFilterCount > 0 && (
+        <Pressable
+          onPress={() => {
+            Haptics.selectionAsync();
+            setShowFavoritesOnly((v) => !v);
+          }}
+          style={[styles.filterTab, styles.favTab, showFavoritesOnly && styles.favTabActive]}
+        >
+          <Feather
+            name="heart"
+            size={11}
+            color={showFavoritesOnly ? Colors.orange : Colors.textMuted}
+            style={{ marginRight: 4 }}
+          />
+          <Text style={[styles.filterTabText, showFavoritesOnly && styles.filterTabTextActive]}>
+            SAVED{favoriteIds.size > 0 ? ` (${favoriteIds.size})` : ""}
+          </Text>
+        </Pressable>
+        {activeFilterCount > 0 && !showFavoritesOnly && (
           <Pressable
             onPress={() => {
               setMuscleGroup("");
@@ -149,24 +177,34 @@ export default function VaultScreen() {
         )}
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
-        <View style={styles.categories}>
-          {filterOptions.map((c) => (
-            <Pressable
-              key={c.id}
-              onPress={() => {
-                Haptics.selectionAsync();
-                setActiveValue(c.id);
-              }}
-              style={[styles.categoryBtn, activeValue === c.id && styles.categoryBtnActive]}
-            >
-              <Text style={[styles.categoryLabel, activeValue === c.id && styles.categoryLabelActive]}>
-                {c.label}
-              </Text>
-            </Pressable>
-          ))}
+      {!showFavoritesOnly && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
+          <View style={styles.categories}>
+            {filterOptions.map((c) => (
+              <Pressable
+                key={c.id}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setActiveValue(c.id);
+                }}
+                style={[styles.categoryBtn, activeValue === c.id && styles.categoryBtnActive]}
+              >
+                <Text style={[styles.categoryLabel, activeValue === c.id && styles.categoryLabelActive]}>
+                  {c.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </ScrollView>
+      )}
+
+      {showFavoritesOnly && favorites && favorites.length === 0 && (
+        <View style={styles.emptyFavs}>
+          <Feather name="heart" size={36} color={Colors.textSubtle} />
+          <Text style={styles.emptyFavsTitle}>No saved exercises yet</Text>
+          <Text style={styles.emptyFavsSub}>Tap the heart icon on any exercise to save it here</Text>
         </View>
-      </ScrollView>
+      )}
 
       <Pressable
         style={({ pressed }) => [styles.aiBuildBtn, { opacity: pressed ? 0.85 : 1 }]}
@@ -192,12 +230,22 @@ export default function VaultScreen() {
         </View>
       ) : (
         <>
-          <Text style={styles.resultCount}>
-            {exercises?.length ?? 0} exercise{(exercises?.length ?? 0) !== 1 ? "s" : ""}
-          </Text>
+          {!showFavoritesOnly && (
+            <Text style={styles.resultCount}>
+              {displayedExercises.length} exercise{displayedExercises.length !== 1 ? "s" : ""}
+            </Text>
+          )}
           <View style={styles.exerciseGrid}>
-            {exercises?.map((exercise) => (
-              <ExerciseCard key={exercise.id} exercise={exercise} />
+            {displayedExercises.map((exercise) => (
+              <ExerciseCard
+                key={exercise.id}
+                exercise={exercise}
+                isFavorited={favoriteIds.has(exercise.id)}
+                onToggleFavorite={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  toggleFavorite({ id: exercise.id, favorited: favoriteIds.has(exercise.id) });
+                }}
+              />
             ))}
           </View>
         </>
@@ -206,7 +254,15 @@ export default function VaultScreen() {
   );
 }
 
-function ExerciseCard({ exercise }: { exercise: Exercise }) {
+function ExerciseCard({
+  exercise,
+  isFavorited,
+  onToggleFavorite,
+}: {
+  exercise: Exercise;
+  isFavorited: boolean;
+  onToggleFavorite: () => void;
+}) {
   const iconName = EQUIPMENT_ICONS[exercise.equipment] || "activity";
   const diffColor = DIFFICULTY_COLORS[exercise.difficulty] || Colors.textMuted;
 
@@ -218,8 +274,24 @@ function ExerciseCard({ exercise }: { exercise: Exercise }) {
         router.push({ pathname: "/exercise/[id]" as any, params: { id: String(exercise.id) } });
       }}
     >
-      <View style={styles.cardIconContainer}>
-        <Feather name={iconName as any} size={24} color={Colors.orange} />
+      <View style={styles.cardTopRow}>
+        <View style={styles.cardIconContainer}>
+          <Feather name={iconName as any} size={24} color={Colors.orange} />
+        </View>
+        <Pressable
+          onPress={(e) => {
+            e.stopPropagation();
+            onToggleFavorite();
+          }}
+          style={[styles.heartBtn, isFavorited && styles.heartBtnActive]}
+          hitSlop={8}
+        >
+          <Feather
+            name="heart"
+            size={15}
+            color={isFavorited ? Colors.orange : Colors.textSubtle}
+          />
+        </Pressable>
       </View>
       <View style={styles.cardContent}>
         <Text style={styles.cardName} numberOfLines={2}>{exercise.name}</Text>
@@ -232,6 +304,11 @@ function ExerciseCard({ exercise }: { exercise: Exercise }) {
         <View style={styles.equipBadge}>
           <Text style={styles.equipText}>{exercise.equipment.toUpperCase()}</Text>
         </View>
+        {isFavorited && (
+          <View style={styles.savedBadge}>
+            <Text style={styles.savedBadgeText}>SAVED</Text>
+          </View>
+        )}
       </View>
     </Pressable>
   );
@@ -267,6 +344,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     alignItems: "center",
+    flexWrap: "wrap",
   },
   filterTab: {
     paddingHorizontal: 14,
@@ -288,6 +366,14 @@ const styles = StyleSheet.create({
   },
   filterTabTextActive: {
     color: Colors.orange,
+  },
+  favTab: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  favTabActive: {
+    backgroundColor: "rgba(252,82,0,0.15)",
+    borderColor: Colors.orange + "60",
   },
   clearBtn: {
     flexDirection: "row",
@@ -314,6 +400,24 @@ const styles = StyleSheet.create({
   categoryBtnActive: { backgroundColor: Colors.orange, borderColor: Colors.orange },
   categoryLabel: { fontSize: 9, fontFamily: "Inter_900Black", color: Colors.textMuted, letterSpacing: 1 },
   categoryLabelActive: { color: "#fff" },
+  emptyFavs: {
+    alignItems: "center",
+    paddingVertical: 32,
+    gap: 10,
+  },
+  emptyFavsTitle: {
+    fontSize: 16,
+    fontFamily: "Inter_700Bold",
+    color: Colors.text,
+  },
+  emptyFavsSub: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textMuted,
+    textAlign: "center",
+    lineHeight: 18,
+    maxWidth: 240,
+  },
   aiBuildBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -363,6 +467,11 @@ const styles = StyleSheet.create({
     padding: 18,
     gap: 12,
   },
+  cardTopRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+  },
   cardIconContainer: {
     width: 48,
     height: 48,
@@ -370,6 +479,20 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(252,82,0,0.1)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  heartBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heartBtnActive: {
+    backgroundColor: "rgba(252,82,0,0.12)",
+    borderColor: Colors.orange + "50",
   },
   cardContent: {
     gap: 4,
@@ -390,6 +513,8 @@ const styles = StyleSheet.create({
   cardFooter: {
     flexDirection: "row",
     gap: 8,
+    flexWrap: "wrap",
+    alignItems: "center",
   },
   diffBadge: {
     paddingHorizontal: 10,
@@ -414,6 +539,20 @@ const styles = StyleSheet.create({
     fontSize: 8,
     fontFamily: "Inter_900Black",
     color: Colors.textSubtle,
+    letterSpacing: 1,
+  },
+  savedBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 100,
+    backgroundColor: "rgba(252,82,0,0.1)",
+    borderWidth: 1,
+    borderColor: Colors.orange + "40",
+  },
+  savedBadgeText: {
+    fontSize: 8,
+    fontFamily: "Inter_900Black",
+    color: Colors.orange,
     letterSpacing: 1,
   },
 });

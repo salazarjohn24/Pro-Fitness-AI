@@ -103,6 +103,49 @@ export function useExerciseCoachNote(id: number) {
   });
 }
 
+export function useExerciseFavorites() {
+  return useQuery<Exercise[]>({
+    queryKey: ["exercise-favorites"],
+    queryFn: async () => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${getApiBase()}/api/exercises/favorites`, getFetchOptions(headers));
+      if (!res.ok) throw new Error("Failed to load favorites");
+      return res.json();
+    },
+  });
+}
+
+export function useToggleFavorite() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, favorited }: { id: number; favorited: boolean }) => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${getApiBase()}/api/exercises/${id}/favorite`, {
+        ...getFetchOptions(headers),
+        method: favorited ? "DELETE" : "POST",
+      });
+      if (!res.ok) throw new Error("Failed to toggle favorite");
+      return res.json();
+    },
+    onMutate: async ({ id, favorited }) => {
+      await queryClient.cancelQueries({ queryKey: ["exercise-favorites"] });
+      const prev = queryClient.getQueryData<Exercise[]>(["exercise-favorites"]);
+      queryClient.setQueryData<Exercise[]>(["exercise-favorites"], (old = []) =>
+        favorited ? old.filter((e) => e.id !== id) : old
+      );
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev !== undefined) {
+        queryClient.setQueryData(["exercise-favorites"], ctx.prev);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["exercise-favorites"] });
+    },
+  });
+}
+
 export function useLogExerciseSet(exerciseId: number) {
   const queryClient = useQueryClient();
   return useMutation({

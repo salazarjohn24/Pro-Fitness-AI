@@ -186,6 +186,18 @@ export const exerciseSubstitutionsTable = pgTable("exercise_substitutions", {
 export type ExerciseSubstitution = typeof exerciseSubstitutionsTable.$inferSelect;
 export type InsertExerciseSubstitution = typeof exerciseSubstitutionsTable.$inferInsert;
 
+export const userFavoriteExercisesTable = pgTable("user_favorite_exercises", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  exerciseId: integer("exercise_id").notNull().references(() => exerciseLibraryTable.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique("fav_user_exercise").on(table.userId, table.exerciseId),
+]);
+
+export type UserFavoriteExercise = typeof userFavoriteExercisesTable.$inferSelect;
+export type InsertUserFavoriteExercise = typeof userFavoriteExercisesTable.$inferInsert;
+
 export const insertWorkoutSessionSchema = createInsertSchema(workoutSessionsTable).omit({ id: true });
 export const insertExerciseLibrarySchema = createInsertSchema(exerciseLibraryTable).omit({ id: true });
 export const insertWorkoutHistorySchema = createInsertSchema(workoutHistoryTable).omit({ id: true });
