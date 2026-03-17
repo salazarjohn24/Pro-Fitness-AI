@@ -54,10 +54,13 @@ export default function ProfileScreen() {
   const [editingGeneral, setEditingGeneral] = useState(false);
   const [editAge, setEditAge] = useState("");
   const [editWeight, setEditWeight] = useState("");
-  const [editHeight, setEditHeight] = useState("");
+  const [editHeightFt, setEditHeightFt] = useState("");
+  const [editHeightIn, setEditHeightIn] = useState("");
+  const [editHeightCm, setEditHeightCm] = useState("");
   const [editGender, setEditGender] = useState("");
   const [editLevel, setEditLevel] = useState("");
   const [editGoal, setEditGoal] = useState("");
+  const [editUnitSystem, setEditUnitSystem] = useState<"imperial" | "metric">("imperial");
 
   const [showNewEnvModal, setShowNewEnvModal] = useState(false);
   const [newEnvName, setNewEnvName] = useState("");
@@ -131,10 +134,50 @@ export default function ProfileScreen() {
     ? `${user.firstName}${user.lastName ? " " + user.lastName : ""}`
     : user?.email?.split("@")[0] ?? "Athlete";
 
+  const activeUnit = (profile?.unitSystem ?? "imperial") as "imperial" | "metric";
+
+  const formatHeightDisplay = (h: number | null | undefined, unit: "imperial" | "metric") => {
+    if (!h) return "—";
+    if (unit === "imperial") {
+      const ft = Math.floor(h / 12);
+      const inches = h % 12;
+      return `${ft}′ ${inches}″`;
+    }
+    return `${h} cm`;
+  };
+
+  const toggleUnitSystem = (newSystem: "imperial" | "metric") => {
+    if (activeUnit === newSystem) return;
+    Haptics.selectionAsync();
+    const w = profile?.weight ?? null;
+    const h = profile?.height ?? null;
+    let newWeight = w;
+    let newHeight = h;
+    if (newSystem === "metric") {
+      if (w != null) newWeight = Math.round(w / 2.2046);
+      if (h != null) newHeight = Math.round(h * 2.54);
+    } else {
+      if (w != null) newWeight = Math.round(w * 2.2046);
+      if (h != null) newHeight = Math.round(h / 2.54);
+    }
+    updateProfile({ unitSystem: newSystem, weight: newWeight, height: newHeight });
+  };
+
   const startEditingGeneral = () => {
+    const unit = activeUnit;
+    setEditUnitSystem(unit);
     setEditAge(profile?.age?.toString() ?? "");
     setEditWeight(profile?.weight?.toString() ?? "");
-    setEditHeight(profile?.height?.toString() ?? "");
+    if (unit === "imperial") {
+      const h = profile?.height ?? 0;
+      setEditHeightFt(h ? Math.floor(h / 12).toString() : "");
+      setEditHeightIn(h ? (h % 12).toString() : "");
+      setEditHeightCm("");
+    } else {
+      setEditHeightCm(profile?.height?.toString() ?? "");
+      setEditHeightFt("");
+      setEditHeightIn("");
+    }
     setEditGender(profile?.gender ?? "");
     setEditLevel(profile?.experienceLevel ?? "");
     setEditGoal(profile?.primaryGoal ?? "");
@@ -143,13 +186,23 @@ export default function ProfileScreen() {
 
   const saveGeneral = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    let computedHeight: number | null = null;
+    if (editUnitSystem === "imperial") {
+      const ft = parseInt(editHeightFt) || 0;
+      const inches = parseInt(editHeightIn) || 0;
+      const total = ft * 12 + inches;
+      computedHeight = total > 0 ? total : null;
+    } else {
+      computedHeight = editHeightCm ? parseInt(editHeightCm) : null;
+    }
     updateProfile({
       age: editAge ? parseInt(editAge) : null,
       weight: editWeight ? parseInt(editWeight) : null,
-      height: editHeight ? parseInt(editHeight) : null,
+      height: computedHeight,
       gender: editGender || null,
       experienceLevel: editLevel || null,
       primaryGoal: editGoal || null,
+      unitSystem: editUnitSystem,
     });
     setEditingGeneral(false);
   };
@@ -269,14 +322,28 @@ export default function ProfileScreen() {
 
         {!editingGeneral ? (
           <>
+            <View style={styles.unitToggleRowProfile}>
+              {(["imperial", "metric"] as const).map((sys) => (
+                <Pressable
+                  key={sys}
+                  style={[styles.unitToggleBtnProfile, activeUnit === sys && styles.unitToggleBtnProfileActive]}
+                  onPress={() => toggleUnitSystem(sys)}
+                >
+                  <Text style={[styles.unitToggleTextProfile, activeUnit === sys && styles.unitToggleTextProfileActive]}>
+                    {sys === "imperial" ? "LB · FT" : "KG · CM"}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
             <View style={styles.onboardingGrid}>
               {[
-                { label: "Age", value: profile?.age ? `${profile.age} yrs` : "\u2014" },
-                { label: "Weight", value: profile?.weight ? `${profile.weight} lbs` : "\u2014" },
-                { label: "Height", value: profile?.height ? `${profile.height} in` : "\u2014" },
-                { label: "Gender", value: profile?.gender ?? "\u2014" },
-                { label: "Level", value: profile?.experienceLevel ?? "\u2014" },
-                { label: "Goal", value: profile?.primaryGoal ?? "\u2014" },
+                { label: "Age", value: profile?.age ? `${profile.age} yrs` : "—" },
+                { label: "Weight", value: profile?.weight ? `${profile.weight} ${activeUnit === "imperial" ? "lbs" : "kg"}` : "—" },
+                { label: "Height", value: formatHeightDisplay(profile?.height, activeUnit) },
+                { label: "Gender", value: profile?.gender ?? "—" },
+                { label: "Level", value: profile?.experienceLevel ?? "—" },
+                { label: "Goal", value: profile?.primaryGoal ?? "—" },
               ].map(({ label, value }) => (
                 <View key={label} style={styles.onboardingItem}>
                   <Text style={styles.onboardingLabel}>{label}</Text>
@@ -293,6 +360,19 @@ export default function ProfileScreen() {
           </>
         ) : (
           <View style={styles.editForm}>
+            <View style={styles.unitToggleRowProfile}>
+              {(["imperial", "metric"] as const).map((sys) => (
+                <Pressable
+                  key={sys}
+                  style={[styles.unitToggleBtnProfile, editUnitSystem === sys && styles.unitToggleBtnProfileActive]}
+                  onPress={() => { Haptics.selectionAsync(); setEditUnitSystem(sys); }}
+                >
+                  <Text style={[styles.unitToggleTextProfile, editUnitSystem === sys && styles.unitToggleTextProfileActive]}>
+                    {sys === "imperial" ? "LB · FT" : "KG · CM"}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
             <View style={styles.editRow}>
               <View style={styles.editFieldHalf}>
                 <Text style={styles.editFieldLabel}>AGE</Text>
@@ -301,37 +381,66 @@ export default function ProfileScreen() {
                   value={editAge}
                   onChangeText={setEditAge}
                   keyboardType="numeric"
-                  placeholder="\u2014"
+                  placeholder="—"
                   placeholderTextColor={Colors.textSubtle}
                   maxLength={3}
                 />
               </View>
               <View style={styles.editFieldHalf}>
-                <Text style={styles.editFieldLabel}>WEIGHT (LBS)</Text>
+                <Text style={styles.editFieldLabel}>WEIGHT ({editUnitSystem === "imperial" ? "LBS" : "KG"})</Text>
                 <TextInput
                   style={styles.editInput}
                   value={editWeight}
                   onChangeText={setEditWeight}
                   keyboardType="numeric"
-                  placeholder="\u2014"
+                  placeholder="—"
                   placeholderTextColor={Colors.textSubtle}
                   maxLength={4}
                 />
               </View>
             </View>
             <View style={styles.editRow}>
-              <View style={styles.editFieldHalf}>
-                <Text style={styles.editFieldLabel}>HEIGHT (IN)</Text>
-                <TextInput
-                  style={styles.editInput}
-                  value={editHeight}
-                  onChangeText={setEditHeight}
-                  keyboardType="numeric"
-                  placeholder="\u2014"
-                  placeholderTextColor={Colors.textSubtle}
-                  maxLength={3}
-                />
-              </View>
+              {editUnitSystem === "imperial" ? (
+                <View style={styles.editFieldHalf}>
+                  <Text style={styles.editFieldLabel}>HEIGHT (FT / IN)</Text>
+                  <View style={styles.editRow}>
+                    <TextInput
+                      style={[styles.editInput, { flex: 1, textAlign: "center" }]}
+                      value={editHeightFt}
+                      onChangeText={setEditHeightFt}
+                      keyboardType="numeric"
+                      placeholder="ft"
+                      placeholderTextColor={Colors.textSubtle}
+                      maxLength={1}
+                    />
+                    <TextInput
+                      style={[styles.editInput, { flex: 1, textAlign: "center" }]}
+                      value={editHeightIn}
+                      onChangeText={(v) => {
+                        const n = parseInt(v);
+                        if (!v || (n >= 0 && n <= 11)) setEditHeightIn(v);
+                      }}
+                      keyboardType="numeric"
+                      placeholder="in"
+                      placeholderTextColor={Colors.textSubtle}
+                      maxLength={2}
+                    />
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.editFieldHalf}>
+                  <Text style={styles.editFieldLabel}>HEIGHT (CM)</Text>
+                  <TextInput
+                    style={styles.editInput}
+                    value={editHeightCm}
+                    onChangeText={setEditHeightCm}
+                    keyboardType="numeric"
+                    placeholder="—"
+                    placeholderTextColor={Colors.textSubtle}
+                    maxLength={3}
+                  />
+                </View>
+              )}
               <View style={styles.editFieldHalf}>
                 <Text style={styles.editFieldLabel}>GENDER</Text>
                 <View style={styles.editChipRow}>
@@ -953,6 +1062,31 @@ const styles = StyleSheet.create({
   },
   prefSection: { gap: 10 },
   prefLabel: { fontSize: 9, fontFamily: "Inter_700Bold", color: Colors.textSubtle, letterSpacing: 1 },
+  unitToggleRowProfile: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 14,
+  },
+  unitToggleBtnProfile: {
+    flex: 1,
+    paddingVertical: 9,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: "rgba(255,255,255,0.03)",
+    alignItems: "center",
+  },
+  unitToggleBtnProfileActive: {
+    borderColor: Colors.orange,
+    backgroundColor: "rgba(252,82,0,0.1)",
+  },
+  unitToggleTextProfile: {
+    fontSize: 10,
+    fontFamily: "Inter_900Black",
+    color: Colors.textMuted,
+    letterSpacing: 1.5,
+  },
+  unitToggleTextProfileActive: { color: Colors.orange },
   toggleRow: { flexDirection: "row", gap: 8 },
   toggleBtn: {
     flex: 1,
