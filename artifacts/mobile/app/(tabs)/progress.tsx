@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 
 import { Colors } from "@/constants/colors";
-import { useProfile } from "@/hooks/useProfile";
+import { useProfile, useRecentExternalWorkouts, useTodayCheckIn, computeReadinessScore } from "@/hooks/useProfile";
 import { InsightInfoModal } from "@/components/InsightInfoModal";
 import { RebalancePlanModal } from "@/components/RebalancePlanModal";
 import { AccordionCard } from "@/components/AccordionCard";
@@ -48,7 +48,7 @@ function getMuscleColor(muscle: string, index: number): string {
 }
 
 const KPI_ITEMS: { label: string; value: string; unit: string; icon: FeatherIcon; color: string }[] = [
-  { label: "Streak", value: "0", unit: "days", icon: "zap", color: Colors.orange },
+  { label: "Avg RPE", value: "—", unit: "intensity", icon: "zap", color: Colors.orange },
   { label: "Recovery", value: "78", unit: "score", icon: "activity", color: Colors.recovery },
   { label: "Volume", value: "0", unit: "kg", icon: "trending-up", color: Colors.highlight },
 ];
@@ -340,11 +340,14 @@ export default function ProgressScreen() {
   const [activeRange, setActiveRange] = useState("1M");
   const [infoInsight, setInfoInsight] = useState<(typeof AI_INSIGHTS)[0]["info"] | null>(null);
   const [rebalanceOpen, setRebalanceOpen] = useState(false);
+  const [freqInfoOpen, setFreqInfoOpen] = useState(false);
   const { data: profile } = useProfile();
   const { data: alerts } = useAuditAlerts();
   const { data: aiInsight, isLoading: aiInsightLoading } = useAIAuditInsight();
   const { data: recoveryCorrelation } = useRecoveryCorrelation();
   const { data: volumeStats, isLoading: volumeLoading } = useVolumeStats(activeRange);
+  const { data: recentExternalWorkouts } = useRecentExternalWorkouts();
+  const { data: todayCheckIn } = useTodayCheckIn();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const botPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -354,8 +357,35 @@ export default function ProgressScreen() {
   const totalSessions = volumeStats?.totalSessions ?? 0;
   const hasEnoughData = volumeStats?.hasEnoughData ?? false;
 
+  const readinessScore = computeReadinessScore(todayCheckIn);
+
+  const weeklyGoal = profile?.workoutFrequency ?? 3;
+  const weekMonday = (() => {
+    const d = new Date();
+    const dow = d.getDay();
+    d.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
+    return d.toISOString().slice(0, 10);
+  })();
+  const thisWeekWorkouts = (recentExternalWorkouts ?? []).filter((w: any) => {
+    const d = (w.workoutDate ?? w.createdAt?.slice(0, 10) ?? "");
+    return d >= weekMonday;
+  });
+  const weeklySessionCount = thisWeekWorkouts.length;
+  const weeklyAlignmentPct = Math.min(100, Math.round((weeklySessionCount / weeklyGoal) * 100));
+
+  const rpeWorkoutsAll = (recentExternalWorkouts ?? []).filter((w: any) => w.intensity);
+  const avgRpeAll = rpeWorkoutsAll.length > 0
+    ? (Math.round(rpeWorkoutsAll.reduce((s: number, w: any) => s + (w.intensity ?? 0), 0) / rpeWorkoutsAll.length * 10) / 10).toString()
+    : "—";
+
+  const freqRecommendation = (() => {
+    if (readinessScore >= 70) return { text: "Your recovery is strong. You have capacity for another session this week if you're under your goal.", color: Colors.highlight, icon: "trending-up" as FeatherIcon };
+    if (readinessScore >= 50) return { text: "Moderate recovery. Maintain your current training load and prioritize sleep.", color: Colors.recovery, icon: "minus-circle" as FeatherIcon };
+    return { text: "Recovery is low. Consider reducing volume or taking an active rest day for better adaptation.", color: Colors.orange, icon: "trending-down" as FeatherIcon };
+  })();
+
   const kpiItems = KPI_ITEMS.map((item) => {
-    if (item.label === "Streak") return { ...item, value: `${profile?.streakDays ?? 0}` };
+    if (item.label === "Avg RPE") return { ...item, value: avgRpeAll };
     if (item.label === "Volume") return { ...item, value: volumeLabel };
     return item;
   });
@@ -395,6 +425,48 @@ export default function ProgressScreen() {
               <Text style={styles.kpiLabel}>{label}</Text>
             </View>
           ))}
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>WEEKLY FREQUENCY</Text>
+            <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setFreqInfoOpen(true); }} style={styles.infoBtn}>
+              <Feather name="info" size={14} color={Colors.textSubtle} />
+            </Pressable>
+          </View>
+
+          <View style={freqStyles.alignRow}>
+            <View style={freqStyles.alignNumbers}>
+              <Text style={freqStyles.sessionCount}>{weeklySessionCount}</Text>
+              <Text style={freqStyles.sessionGoal}>/ {weeklyGoal} this week</Text>
+            </View>
+            <View style={[freqStyles.alignBadge, weeklyAlignmentPct >= 100 ? freqStyles.badgeGreen : weeklyAlignmentPct >= 60 ? freqStyles.badgeYellow : freqStyles.badgeOrange]}>
+              <Text style={[freqStyles.alignBadgeText, weeklyAlignmentPct >= 100 ? freqStyles.badgeGreenText : weeklyAlignmentPct >= 60 ? freqStyles.badgeYellowText : freqStyles.badgeOrangeText]}>
+                {weeklyAlignmentPct >= 100 ? "ON TRACK" : weeklyAlignmentPct >= 60 ? "IN PROGRESS" : "BEHIND"}
+              </Text>
+            </View>
+          </View>
+
+          <View style={freqStyles.progressTrack}>
+            <View style={[freqStyles.progressFill, {
+              width: `${weeklyAlignmentPct}%` as any,
+              backgroundColor: weeklyAlignmentPct >= 100 ? Colors.highlight : weeklyAlignmentPct >= 60 ? Colors.recovery : Colors.orange,
+            }]} />
+          </View>
+
+          {todayCheckIn && (
+            <View style={freqStyles.recommendRow}>
+              <Feather name={freqRecommendation.icon} size={13} color={freqRecommendation.color} />
+              <Text style={[freqStyles.recommendText, { color: freqRecommendation.color }]}>
+                {freqRecommendation.text}
+              </Text>
+            </View>
+          )}
+          {!todayCheckIn && (
+            <Text style={freqStyles.noCheckInHint}>
+              Complete today's check-in to get a personalized frequency recommendation.
+            </Text>
+          )}
         </View>
 
         <View style={styles.card}>
@@ -572,6 +644,17 @@ export default function ProgressScreen() {
         insight={infoInsight}
       />
 
+      <InsightInfoModal
+        visible={freqInfoOpen}
+        onClose={() => setFreqInfoOpen(false)}
+        insight={{
+          title: "Weekly Frequency Alignment",
+          what: "This shows how many workouts you've logged this week compared to your target weekly frequency. The recommendation adapts based on today's readiness score from your check-in.",
+          why: "Consistently hitting your frequency goal is the primary driver of long-term progress. Too few sessions means lost stimulus; too many without recovery means overtraining and elevated injury risk.",
+          how: "Set your target frequency in Profile and do your daily check-in every morning. The app will tell you when your recovery supports adding a session or when it's smarter to rest.",
+        }}
+      />
+
       <RebalancePlanModal
         visible={rebalanceOpen}
         onClose={() => setRebalanceOpen(false)}
@@ -732,4 +815,24 @@ const styles = StyleSheet.create({
   insightText: { fontSize: 13, fontFamily: "Inter_400Regular", color: Colors.textMuted, lineHeight: 20 },
   insightAction: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start" },
   insightActionText: { fontSize: 11, fontFamily: "Inter_700Bold", color: Colors.highlight },
+});
+
+const freqStyles = StyleSheet.create({
+  alignRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8 },
+  alignNumbers: { flexDirection: "row", alignItems: "baseline", gap: 4 },
+  sessionCount: { fontSize: 36, fontFamily: "Inter_900Black", color: Colors.text, fontStyle: "italic" },
+  sessionGoal: { fontSize: 13, fontFamily: "Inter_400Regular", color: Colors.textMuted },
+  alignBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 100, borderWidth: 1 },
+  badgeGreen: { backgroundColor: "rgba(246,234,152,0.12)", borderColor: "rgba(246,234,152,0.35)" },
+  badgeGreenText: { color: Colors.highlight },
+  badgeYellow: { backgroundColor: "rgba(74,222,128,0.1)", borderColor: "rgba(74,222,128,0.3)" },
+  badgeYellowText: { color: Colors.recovery },
+  badgeOrange: { backgroundColor: "rgba(252,82,0,0.1)", borderColor: "rgba(252,82,0,0.3)" },
+  badgeOrangeText: { color: Colors.orange },
+  alignBadgeText: { fontSize: 9, fontFamily: "Inter_700Bold", letterSpacing: 1.5 },
+  progressTrack: { height: 5, backgroundColor: Colors.border, borderRadius: 10, overflow: "hidden", marginTop: 12 },
+  progressFill: { height: "100%", borderRadius: 10 },
+  recommendRow: { flexDirection: "row", alignItems: "flex-start", gap: 8, marginTop: 14 },
+  recommendText: { flex: 1, fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 18 },
+  noCheckInHint: { fontSize: 12, fontFamily: "Inter_400Regular", color: Colors.textSubtle, marginTop: 12, lineHeight: 18 },
 });

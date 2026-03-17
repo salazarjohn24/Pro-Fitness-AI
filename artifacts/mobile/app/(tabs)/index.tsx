@@ -91,6 +91,8 @@ export default function StatusScreen() {
   const [generatedWorkout, setGeneratedWorkout] = useState<GeneratedWorkout | null>(null);
   const [editWorkout, setEditWorkout] = useState<WorkoutItem | null>(null);
   const [editWorkoutOpen, setEditWorkoutOpen] = useState(false);
+  const [rpeInfoOpen, setRpeInfoOpen] = useState(false);
+  const [weeklySessionsInfoOpen, setWeeklySessionsInfoOpen] = useState(false);
 
   const streak = profile?.streakDays ?? 0;
   const syncProgress = profile?.dailySyncProgress ?? 0;
@@ -111,6 +113,23 @@ export default function StatusScreen() {
   const isRestDay = !!todayRestWorkout;
 
   const readinessScore = computeReadinessScore(todayCheckIn);
+
+  const weeklyGoal = profile?.workoutFrequency ?? 3;
+  const weekMonday = (() => {
+    const d = new Date(now);
+    const dow = d.getDay();
+    d.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
+    return d.toISOString().slice(0, 10);
+  })();
+  const thisWeekWorkouts = (recentExternalWorkouts ?? []).filter((w: any) => {
+    const d = (w.workoutDate ?? w.createdAt?.slice(0, 10) ?? "");
+    return d >= weekMonday;
+  });
+  const weeklySessionCount = thisWeekWorkouts.length;
+  const rpeWorkouts = thisWeekWorkouts.filter((w: any) => w.intensity);
+  const weeklyAvgRPE = rpeWorkouts.length > 0
+    ? Math.round(rpeWorkouts.reduce((s: number, w: any) => s + (w.intensity ?? 0), 0) / rpeWorkouts.length * 10) / 10
+    : null;
 
   const completedTasks = [checkInDone, activityDone].filter(Boolean).length;
   const pct = Math.round((completedTasks / 2) * 100);
@@ -531,16 +550,29 @@ export default function StatusScreen() {
               )}
             </BentoCard>
           </Pressable>
-          <BentoCard style={[styles.statCard, { flex: 1 }]}>
-            <Feather name="zap" size={18} color={Colors.orange} />
-            <Text style={styles.statValue}>{streak}</Text>
-            <Text style={styles.statLabel}>Day Streak</Text>
-          </BentoCard>
-          <BentoCard style={[styles.statCard, { flex: 1 }]}>
-            <Feather name="target" size={18} color={Colors.highlight} />
-            <Text style={styles.statValue}>{profile?.workoutFrequency ?? 3}x</Text>
-            <Text style={styles.statLabel}>/ Week</Text>
-          </BentoCard>
+          <Pressable onPress={() => setRpeInfoOpen(true)} style={{ flex: 1 }}>
+            <BentoCard style={styles.statCard}>
+              <Feather name="zap" size={18} color={Colors.orange} />
+              <Text style={styles.statValue}>{weeklyAvgRPE != null ? weeklyAvgRPE : "—"}</Text>
+              <Text style={styles.statLabel}>Avg RPE</Text>
+              <View style={styles.scoreInfoHint}>
+                <Feather name="info" size={10} color={Colors.textSubtle} />
+              </View>
+            </BentoCard>
+          </Pressable>
+          <Pressable onPress={() => setWeeklySessionsInfoOpen(true)} style={{ flex: 1 }}>
+            <BentoCard style={styles.statCard}>
+              <Feather name="calendar" size={18} color={Colors.highlight} />
+              <Text style={styles.statValue}>
+                {weeklySessionCount}
+                <Text style={[styles.statLabel, { fontSize: 11 }]}>/{weeklyGoal}</Text>
+              </Text>
+              <Text style={styles.statLabel}>This Week</Text>
+              <View style={styles.scoreInfoHint}>
+                <Feather name="info" size={10} color={Colors.textSubtle} />
+              </View>
+            </BentoCard>
+          </Pressable>
         </View>
 
         {recoveryCorrelation?.hasEnoughData && (
@@ -688,6 +720,28 @@ export default function StatusScreen() {
         onSave={handleEditWorkoutSave}
         onDelete={handleEditWorkoutDelete}
         isSaving={isUpdatingWorkout}
+      />
+
+      <InsightInfoModal
+        visible={rpeInfoOpen}
+        onClose={() => setRpeInfoOpen(false)}
+        insight={{
+          title: "Average RPE This Week",
+          what: "RPE (Rate of Perceived Exertion) is your subjective intensity score per workout, rated 1–10. Avg RPE reflects the mean effort across all workouts you've logged this week (Monday–Sunday).",
+          why: "Tracking RPE trends reveals whether you're training too hard, too easy, or hitting the right stimulus. Chronically high RPE without recovery leads to overtraining and injury risk.",
+          how: "Log your RPE after every session. A well-structured training week typically mixes 1–2 high-RPE sessions (8–10) with lower-intensity days (5–7) to balance stimulus and recovery.",
+        }}
+      />
+
+      <InsightInfoModal
+        visible={weeklySessionsInfoOpen}
+        onClose={() => setWeeklySessionsInfoOpen(false)}
+        insight={{
+          title: "Weekly Sessions vs Goal",
+          what: "This shows how many workouts you've logged this week (Monday–Sunday) compared to your weekly frequency goal set in your profile.",
+          why: "Training frequency is one of the strongest predictors of long-term progress. Consistently hitting your weekly goal builds habit and accumulates the progressive overload needed for adaptation.",
+          how: "Set your weekly goal in Profile to match your schedule. If you're consistently under, try shorter sessions. If you always exceed it, consider raising the goal to better reflect your training.",
+        }}
       />
     </>
   );

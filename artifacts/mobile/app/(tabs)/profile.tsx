@@ -251,20 +251,6 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      <View style={styles.statsRow}>
-        {[
-          { label: "Streak", value: profile?.streakDays ?? 0, unit: "days", color: Colors.orange },
-          { label: "Goal", value: (profile?.workoutFrequency ?? 3) + "x", unit: "/week", color: Colors.highlight },
-          { label: "Progress", value: profile?.dailySyncProgress ?? 0, unit: "%", color: Colors.recovery },
-        ].map(({ label, value, unit, color }) => (
-          <View key={label} style={[styles.statCard, { borderColor: color + "25" }]}>
-            <Text style={[styles.statValue, { color }]}>{value}</Text>
-            <Text style={styles.statUnit}>{unit}</Text>
-            <Text style={styles.statLabel}>{label}</Text>
-          </View>
-        ))}
-      </View>
-
       <View style={styles.sectionCard}>
         <View style={styles.auditHeaderRow}>
           <View style={styles.auditHeader}>
