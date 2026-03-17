@@ -6,15 +6,21 @@ import router from "./routes";
 
 const app: Express = express();
 
-const ALLOWED_ORIGINS = [
-  process.env.PRODUCTION_ORIGIN,
-  `https://${process.env.REPLIT_DEV_DOMAIN}`,
-].filter(Boolean) as string[];
+const ALLOWED_ORIGIN_PATTERNS = [
+  /^https:\/\/[\w-]+\.replit\.dev$/,
+  /^https:\/\/[\w-]+\.replit\.app$/,
+  /^https:\/\/[\w-]+\.spock\.replit\.dev$/,
+];
+
+if (process.env.PRODUCTION_ORIGIN) {
+  const escaped = process.env.PRODUCTION_ORIGIN.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  ALLOWED_ORIGIN_PATTERNS.push(new RegExp(`^${escaped}$`));
+}
 
 app.use(cors({
   credentials: true,
   origin: (origin, callback) => {
-    if (!origin || ALLOWED_ORIGINS.some(o => origin.startsWith(o))) {
+    if (!origin || ALLOWED_ORIGIN_PATTERNS.some(p => p.test(origin))) {
       callback(null, true);
     } else {
       callback(new Error("Not allowed by CORS"));
