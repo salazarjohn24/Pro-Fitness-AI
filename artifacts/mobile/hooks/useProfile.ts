@@ -54,6 +54,7 @@ export interface FitnessProfile {
   syncPreferences: { appleHealth: boolean; strava: boolean; manualScreenshot: boolean } | null;
   activeEnvironmentId: number | null;
   preferredWorkoutDuration: number | null;
+  workoutPreferences: string | null;
   updatedAt: string | null;
 }
 

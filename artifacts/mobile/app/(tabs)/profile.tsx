@@ -73,6 +73,7 @@ export default function ProfileScreen() {
   const [editUnitSystem, setEditUnitSystem] = useState<"imperial" | "metric">("imperial");
   const [pendingFrequency, setPendingFrequency] = useState<number | null>(null);
   const [pendingDuration, setPendingDuration] = useState<number | null>(null);
+  const [workoutPrefsText, setWorkoutPrefsText] = useState("");
 
   const [showNewEnvModal, setShowNewEnvModal] = useState(false);
   const [newEnvName, setNewEnvName] = useState("");
@@ -163,6 +164,12 @@ export default function ProfileScreen() {
   useEffect(() => {
     setDisplayUnit(activeUnit);
   }, [activeUnit]);
+
+  useEffect(() => {
+    if (profile?.workoutPreferences != null) {
+      setWorkoutPrefsText(profile.workoutPreferences);
+    }
+  }, [profile?.workoutPreferences]);
 
   const formatHeightDisplay = (h: number | null | undefined, unit: "imperial" | "metric") => {
     if (!h) return "—";
@@ -635,6 +642,38 @@ export default function ProfileScreen() {
             );
           })}
         </View>
+      </View>
+
+      <View style={styles.sectionCard}>
+        <View style={styles.auditHeader}>
+          <Text style={styles.auditTitle}>AI WORKOUT PREFERENCES</Text>
+        </View>
+        <Text style={styles.envHint}>
+          Tell the AI exactly how you want your workouts built — your goals, upcoming competitions, cardio preferences, exercise styles, or anything else. The more specific you are, the more personalized every session becomes.
+        </Text>
+        <Text style={[styles.envHint, { marginTop: 6, color: Colors.textSubtle, fontStyle: "italic" }]}>
+          Example: "I'm competing in a Hyrox race in 3 months — prioritize functional endurance, sled work, rowing, and loaded carries. I also want 2–3 min of ski erg or rower to open every session."
+        </Text>
+        <TextInput
+          style={styles.prefsInput}
+          value={workoutPrefsText}
+          onChangeText={setWorkoutPrefsText}
+          onBlur={() => {
+            updateProfile({ workoutPreferences: workoutPrefsText || null });
+          }}
+          placeholder="Write your preferences here..."
+          placeholderTextColor={Colors.textSubtle}
+          multiline
+          textAlignVertical="top"
+          returnKeyType="default"
+          blurOnSubmit={false}
+        />
+        {workoutPrefsText.length > 0 && (
+          <View style={styles.prefsSavedRow}>
+            <Feather name="check-circle" size={12} color={Colors.orange} />
+            <Text style={styles.prefsSavedText}>Saved · used by AI Workout Builder</Text>
+          </View>
+        )}
       </View>
 
       <View style={styles.sectionCard}>
@@ -1292,6 +1331,30 @@ const styles = StyleSheet.create({
   freqBtnText: { fontSize: 12, fontFamily: "Inter_900Black", color: Colors.textMuted },
   freqBtnTextActive: { color: "#fff" },
   envHint: { fontSize: 11, fontFamily: "Inter_400Regular", color: Colors.textSubtle, lineHeight: 16 },
+  prefsInput: {
+    marginTop: 14,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    borderRadius: 10,
+    padding: 12,
+    color: "#fff",
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    lineHeight: 20,
+    minHeight: 110,
+  },
+  prefsSavedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 8,
+  },
+  prefsSavedText: {
+    fontSize: 10,
+    fontFamily: "Inter_400Regular",
+    color: Colors.orange,
+  },
   envList: { gap: 8 },
   envRow: {
     flexDirection: "row",

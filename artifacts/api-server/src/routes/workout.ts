@@ -850,6 +850,7 @@ router.post("/workout/architect-generate", aiRateLimit, async (req: Request, res
           exerciseHistory: archExerciseHistory,
           substitutions: archSubRecords,
           externalWorkoutFatigue,
+          workoutPreferences: profile?.workoutPreferences ?? null,
         },
         availableForAI,
         exerciseMap

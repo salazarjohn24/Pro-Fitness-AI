@@ -29,6 +29,7 @@ export const userProfilesTable = pgTable("user_profiles", {
   syncPreferences: jsonb("sync_preferences").$type<{ appleHealth: boolean; strava: boolean; manualScreenshot: boolean }>().default({ appleHealth: false, strava: false, manualScreenshot: false }),
   activeEnvironmentId: integer("active_environment_id"),
   preferredWorkoutDuration: integer("preferred_workout_duration").default(60),
+  workoutPreferences: text("workout_preferences"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
 

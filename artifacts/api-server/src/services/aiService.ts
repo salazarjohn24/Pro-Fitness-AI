@@ -68,6 +68,7 @@ export interface WorkoutContext {
 export interface ArchitectContext extends WorkoutContext {
   requestedMuscleGroups: string[];
   availableMinutes?: number;
+  workoutPreferences?: string | null;
 }
 
 export interface RecoveryTip {
@@ -294,6 +295,9 @@ ${historyLinesA}
 
 User exercise preferences (honor these substitutions):
 ${substitutionLinesA}
+
+User's custom workout preferences (IMPORTANT — honor these when designing the session):
+${ctx.workoutPreferences?.trim() ? ctx.workoutPreferences.trim() : "None provided"}
 
 Generate the custom workout targeting the requested muscle groups. Adjust exercise count and sets to fit the time available. Apply progressive overload and honor substitution preferences. Mention any external fatigue overlap in the rationale.`;
 
