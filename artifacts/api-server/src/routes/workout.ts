@@ -2,7 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, userProfilesTable, dailyCheckInsTable, workoutSessionsTable, workoutHistoryTable, exerciseLibraryTable, exercisePerformanceTable, exerciseSubstitutionsTable, externalWorkoutsTable } from "@workspace/db";
 import { eq, and, desc, inArray, sql, gte } from "drizzle-orm";
 import { EXERCISE_LIBRARY, exerciseMap, type ExerciseData } from "../data/exercises";
-import { generateAIWorkout, generateAIArchitectWorkout, parseWorkoutDescriptionAI, analyzeWorkoutImageAI } from "../services/aiService";
+import { generateAIWorkout, generateAIArchitectWorkout, parseWorkoutDescriptionAI, analyzeWorkoutImageAI, generateRecoveryInsights } from "../services/aiService";
 import { aiRateLimit } from "../middlewares/rateLimitMiddleware";
 
 const router: IRouter = Router();
@@ -1121,6 +1121,75 @@ router.get("/workout/deload-check", async (req: Request, res: Response) => {
   } catch (err) {
     console.error("Deload check error:", err);
     res.status(500).json({ error: "Failed to check deload" });
+  }
+});
+
+router.post("/workout/recovery-insights", aiRateLimit, async (req: Request, res: Response) => {
+  const userId = (req as any).user?.id;
+  if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  try {
+    const today = new Date().toISOString().split("T")[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+
+    const [[profile], [latestCheckin]] = await Promise.all([
+      db.select().from(userProfilesTable).where(eq(userProfilesTable.userId, userId)),
+      db.select().from(dailyCheckInsTable)
+        .where(and(
+          eq(dailyCheckInsTable.userId, userId),
+          sql`${dailyCheckInsTable.date} IN (${today}, ${yesterday})`,
+        ))
+        .orderBy(desc(dailyCheckInsTable.date))
+        .limit(1),
+    ]);
+
+    const [externalToday] = await db
+      .select()
+      .from(externalWorkoutsTable)
+      .where(and(eq(externalWorkoutsTable.userId, userId), eq(externalWorkoutsTable.workoutDate, today)))
+      .orderBy(desc(externalWorkoutsTable.createdAt))
+      .limit(1);
+
+    const [sessionToday] = await db
+      .select()
+      .from(workoutSessionsTable)
+      .where(and(eq(workoutSessionsTable.userId, userId), eq(workoutSessionsTable.workoutDate, today)))
+      .orderBy(desc(workoutSessionsTable.createdAt))
+      .limit(1);
+
+    const todayWorkout = sessionToday
+      ? {
+          label: sessionToday.workoutTitle ?? "Training Session",
+          intensity: sessionToday.avgRpe ?? 7,
+          durationMinutes: sessionToday.durationMinutes ?? 45,
+          muscleGroups: [],
+          isMetcon: false,
+        }
+      : externalToday
+      ? {
+          label: externalToday.label ?? "Workout",
+          intensity: externalToday.intensity ?? 7,
+          durationMinutes: externalToday.duration ?? 45,
+          muscleGroups: (externalToday.muscleGroups as string[]) ?? [],
+          isMetcon: externalToday.isMetcon ?? false,
+        }
+      : null;
+
+    const insights = await generateRecoveryInsights({
+      energyLevel: latestCheckin?.energyLevel ?? 3,
+      sleepQuality: latestCheckin?.sleepQuality ?? 3,
+      stressLevel: latestCheckin?.stressLevel ?? 3,
+      soreMuscles: (latestCheckin?.soreMuscleGroups as { muscle: string; severity: number }[]) ?? [],
+      todayWorkout,
+      fitnessGoal: (profile?.fitnessGoal as string) ?? "general fitness",
+      skillLevel: (profile?.skillLevel as string) ?? "intermediate",
+      notes: latestCheckin?.notes ?? null,
+    });
+
+    res.json(insights);
+  } catch (err) {
+    console.error("Recovery insights error:", err);
+    res.status(500).json({ error: "Failed to generate recovery insights" });
   }
 });
 

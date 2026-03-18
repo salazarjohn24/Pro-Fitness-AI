@@ -31,7 +31,7 @@ import {
   useRecentExternalWorkouts,
   computeReadinessScore,
 } from "@/hooks/useProfile";
-import { useGenerateWorkout, useDeloadCheck, useWorkoutHistory, type GeneratedWorkout, type GeneratedExercise } from "@/hooks/useWorkout";
+import { useGenerateWorkout, useDeloadCheck, useWorkoutHistory, useRecoveryInsights, type GeneratedWorkout, type GeneratedExercise } from "@/hooks/useWorkout";
 import { useRecoveryCorrelation } from "@/hooks/useRecoveryCorrelation";
 
 const TODAY = new Date().toLocaleDateString("en-US", {
@@ -116,6 +116,10 @@ export default function StatusScreen() {
   const todayInAppSession = workoutHistory?.find((w) => w.type === "internal" && w.date?.slice(0, 10) === todayStr);
   const activityDone = !!(todayExternalWorkout || todayInAppSession);
 
+  const { data: recoveryInsights, isLoading: isLoadingInsights } = useRecoveryInsights(
+    activityDone && checkInDone && !isRestDay
+  );
+
   const readinessScore = computeReadinessScore(todayCheckIn);
 
   const weeklyGoal = profile?.workoutFrequency ?? 3;
@@ -154,7 +158,7 @@ export default function StatusScreen() {
   }, [isLoading, checkInLoading, onboardingDone, checkInDone, autoCheckInTriggered]);
 
   useEffect(() => {
-    if (!isLoading && !checkInLoading && checkInDone && !generatedWorkout && !isGenerating && !autoGenerateAttempted.current) {
+    if (!isLoading && !checkInLoading && checkInDone && !activityDone && !generatedWorkout && !isGenerating && !autoGenerateAttempted.current) {
       autoGenerateAttempted.current = true;
       generateWorkout(undefined, {
         onSuccess: (workout) => {
@@ -163,7 +167,7 @@ export default function StatusScreen() {
         },
       });
     }
-  }, [isLoading, checkInLoading, checkInDone]);
+  }, [isLoading, checkInLoading, checkInDone, activityDone]);
 
   const handleCheckInComplete = (data: CheckInData) => {
     const wasAlreadyDone = checkInDone;
@@ -177,12 +181,14 @@ export default function StatusScreen() {
           const newProgress = Math.min(100, syncProgress + 50);
           updateProfile({ checkInCompleted: true, dailySyncProgress: newProgress });
         }
-        generateWorkout(undefined, {
-          onSuccess: (workout) => {
-            setGeneratedWorkout(workout);
-            sendWorkoutReadyNotification(workout.workoutTitle);
-          },
-        });
+        if (!activityDone) {
+          generateWorkout(undefined, {
+            onSuccess: (workout) => {
+              setGeneratedWorkout(workout);
+              sendWorkoutReadyNotification(workout.workoutTitle);
+            },
+          });
+        }
       },
       onError: () => {
         // Reset so the user can try again
@@ -400,65 +406,118 @@ export default function StatusScreen() {
           </View>
         </BentoCard>
 
-        <BentoCard style={[styles.recommendCard, !checkInDone && styles.recommendLocked]}>
-          <View style={styles.recommendHeader}>
-            <View style={styles.recommendHeaderLeft}>
-              <RationaleChip text="AI Smart Load" />
-            </View>
-            <Pressable
-              onPress={() => setInsightOpen(true)}
-              style={styles.infoBtn}
-            >
-              <Feather name="info" size={15} color={Colors.textSubtle} />
-            </Pressable>
-          </View>
-          {isGenerating ? (
-            <View style={styles.generatingBlock}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                <ActivityIndicator color={Colors.orange} size="small" />
-                <Text style={styles.generatingText}>Generating your workout...</Text>
+        {activityDone && !isRestDay ? (
+          <BentoCard style={[styles.recommendCard, { borderLeftColor: Colors.recovery }]}>
+            <View style={styles.recommendHeader}>
+              <View style={styles.recommendHeaderLeft}>
+                <RationaleChip text="Recovery Coach" />
               </View>
-              <Text style={styles.generatingSubtext}>This usually takes 30–60 seconds. You can leave the app — we'll send you a notification when it's ready.</Text>
+              <View style={[styles.chip, { backgroundColor: "rgba(119,156,175,0.15)", borderColor: "rgba(119,156,175,0.2)" }]}>
+                <Feather name="shield" size={10} color={Colors.recovery} />
+                <Text style={[styles.chipText, { color: Colors.recovery }]}>AI Personalized</Text>
+              </View>
             </View>
-          ) : (
-            <>
-              <Text style={styles.recommendTitle}>
-                {generatedWorkout ? generatedWorkout.workoutTitle.replace(" & ", "\n& ").replace(" Focus", "\nFocus") : "Back & Arms\nFocus"}
-              </Text>
-              <Text style={styles.recommendDesc}>{workoutRationale}</Text>
-              {generatedWorkout && (
-                <View style={styles.workoutMeta}>
-                  <View style={styles.metaItem}>
-                    <Feather name="layers" size={12} color={Colors.recovery} />
-                    <Text style={styles.metaText}>{generatedWorkout.totalSets} sets</Text>
-                  </View>
-                  <View style={styles.metaItem}>
-                    <Feather name="clock" size={12} color={Colors.orange} />
-                    <Text style={styles.metaText}>~{generatedWorkout.estimatedMinutes} min</Text>
-                  </View>
-                  <View style={styles.metaItem}>
-                    <Feather name="list" size={12} color={Colors.highlight} />
-                    <Text style={styles.metaText}>{generatedWorkout.exercises.length} exercises</Text>
-                  </View>
+
+            {isLoadingInsights || !recoveryInsights ? (
+              <View style={styles.generatingBlock}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <ActivityIndicator color={Colors.recovery} size="small" />
+                  <Text style={styles.generatingText}>Analyzing your recovery...</Text>
                 </View>
-              )}
-            </>
-          )}
-          <Pressable
-            style={({ pressed }) => [
-              styles.startButton,
-              !checkInDone && styles.startButtonDisabled,
-              { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
-            ]}
-            onPress={handleStartWorkout}
-            disabled={!checkInDone || isGenerating}
-          >
-            <Feather name="play" size={16} color="#fff" />
-            <Text style={styles.startButtonText}>
-              {isGenerating ? "GENERATING..." : checkInDone ? "START WORKOUT" : "COMPLETE CHECK-IN FIRST"}
-            </Text>
-          </Pressable>
-        </BentoCard>
+                <Text style={styles.generatingSubtext}>Personalizing tips based on today's workout and check-in.</Text>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.recoveryHeadline}>{recoveryInsights.headline}</Text>
+                <View style={styles.recoveryTips}>
+                  {recoveryInsights.tips.map((tip, i) => {
+                    const iconMap: Record<string, string> = {
+                      SLEEP: "moon", NUTRITION: "coffee", MOBILITY: "activity",
+                      HYDRATION: "droplet", STRESS: "heart", MINDSET: "eye",
+                    };
+                    const colorMap: Record<string, string> = {
+                      SLEEP: Colors.recovery, NUTRITION: Colors.orange, MOBILITY: Colors.highlight,
+                      HYDRATION: "#5BA4CF", STRESS: "#E07B8C", MINDSET: Colors.textMuted,
+                    };
+                    const icon = (iconMap[tip.category] ?? "star") as any;
+                    const color = colorMap[tip.category] ?? Colors.textMuted;
+                    return (
+                      <View key={i} style={styles.recoveryTip}>
+                        <View style={[styles.recoveryTipIcon, { backgroundColor: `${color}18` }]}>
+                          <Feather name={icon} size={13} color={color} />
+                        </View>
+                        <View style={styles.recoveryTipText}>
+                          <Text style={styles.recoveryTipTitle}>{tip.title}</Text>
+                          <Text style={styles.recoveryTipDetail}>{tip.detail}</Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+          </BentoCard>
+        ) : (
+          <BentoCard style={[styles.recommendCard, !checkInDone && styles.recommendLocked]}>
+            <View style={styles.recommendHeader}>
+              <View style={styles.recommendHeaderLeft}>
+                <RationaleChip text="AI Smart Load" />
+              </View>
+              <Pressable
+                onPress={() => setInsightOpen(true)}
+                style={styles.infoBtn}
+              >
+                <Feather name="info" size={15} color={Colors.textSubtle} />
+              </Pressable>
+            </View>
+            {isGenerating ? (
+              <View style={styles.generatingBlock}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <ActivityIndicator color={Colors.orange} size="small" />
+                  <Text style={styles.generatingText}>Generating your workout...</Text>
+                </View>
+                <Text style={styles.generatingSubtext}>This usually takes 30–60 seconds. You can leave the app — we'll send you a notification when it's ready.</Text>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.recommendTitle}>
+                  {generatedWorkout ? generatedWorkout.workoutTitle.replace(" & ", "\n& ").replace(" Focus", "\nFocus") : "Back & Arms\nFocus"}
+                </Text>
+                <Text style={styles.recommendDesc}>{workoutRationale}</Text>
+                {generatedWorkout && (
+                  <View style={styles.workoutMeta}>
+                    <View style={styles.metaItem}>
+                      <Feather name="layers" size={12} color={Colors.recovery} />
+                      <Text style={styles.metaText}>{generatedWorkout.totalSets} sets</Text>
+                    </View>
+                    <View style={styles.metaItem}>
+                      <Feather name="clock" size={12} color={Colors.orange} />
+                      <Text style={styles.metaText}>~{generatedWorkout.estimatedMinutes} min</Text>
+                    </View>
+                    <View style={styles.metaItem}>
+                      <Feather name="list" size={12} color={Colors.highlight} />
+                      <Text style={styles.metaText}>{generatedWorkout.exercises.length} exercises</Text>
+                    </View>
+                  </View>
+                )}
+              </>
+            )}
+            <Pressable
+              style={({ pressed }) => [
+                styles.startButton,
+                !checkInDone && styles.startButtonDisabled,
+                { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
+              ]}
+              onPress={handleStartWorkout}
+              disabled={!checkInDone || isGenerating}
+            >
+              <Feather name="play" size={16} color="#fff" />
+              <Text style={styles.startButtonText}>
+                {isGenerating ? "GENERATING..." : checkInDone ? "START WORKOUT" : "COMPLETE CHECK-IN FIRST"}
+              </Text>
+            </Pressable>
+          </BentoCard>
+        )}
 
         <Pressable
           style={({ pressed }) => [styles.card, styles.architectCard, { opacity: checkInDone ? (pressed ? 0.85 : 1) : 0.4 }]}
@@ -908,6 +967,45 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: "Inter_700Bold",
     color: Colors.textSubtle,
+  },
+  recoveryHeadline: {
+    fontSize: 14,
+    fontFamily: "Inter_700Bold",
+    color: Colors.text,
+    lineHeight: 21,
+    marginBottom: 4,
+  },
+  recoveryTips: {
+    gap: 10,
+  },
+  recoveryTip: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+  recoveryTipIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    marginTop: 1,
+  },
+  recoveryTipText: {
+    flex: 1,
+    gap: 3,
+  },
+  recoveryTipTitle: {
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+    color: Colors.text,
+  },
+  recoveryTipDetail: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textMuted,
+    lineHeight: 18,
   },
   startButton: {
     backgroundColor: Colors.orange,

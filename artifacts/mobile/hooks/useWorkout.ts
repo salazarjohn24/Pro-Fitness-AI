@@ -254,6 +254,34 @@ export function useUpdateSessionExercises() {
   });
 }
 
+export interface RecoveryTip {
+  category: string;
+  title: string;
+  detail: string;
+}
+
+export interface RecoveryInsights {
+  headline: string;
+  tips: RecoveryTip[];
+}
+
+export function useRecoveryInsights(enabled: boolean) {
+  return useQuery<RecoveryInsights>({
+    queryKey: ["recovery-insights", new Date().toLocaleDateString("en-CA")],
+    enabled,
+    staleTime: 1000 * 60 * 30,
+    queryFn: async () => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${getApiBase()}/api/workout/recovery-insights`, {
+        ...getFetchOptions(headers),
+        method: "POST",
+      });
+      if (!res.ok) throw new Error("Failed to fetch recovery insights");
+      return res.json();
+    },
+  });
+}
+
 export function useDeleteSession() {
   const queryClient = useQueryClient();
   return useMutation({

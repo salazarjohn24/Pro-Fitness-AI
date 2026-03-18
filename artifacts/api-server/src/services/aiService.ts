@@ -70,6 +70,34 @@ export interface ArchitectContext extends WorkoutContext {
   availableMinutes?: number;
 }
 
+export interface RecoveryTip {
+  category: string;
+  title: string;
+  detail: string;
+}
+
+export interface RecoveryInsightsResult {
+  headline: string;
+  tips: RecoveryTip[];
+}
+
+export interface RecoveryContext {
+  energyLevel: number;
+  sleepQuality: number;
+  stressLevel: number;
+  soreMuscles: { muscle: string; severity: number }[];
+  todayWorkout: {
+    label: string;
+    intensity: number;
+    durationMinutes: number;
+    muscleGroups: string[];
+    isMetcon: boolean;
+  } | null;
+  fitnessGoal: string;
+  skillLevel: string;
+  notes?: string | null;
+}
+
 function buildExerciseListForPrompt(exercises: ExerciseData[]): string {
   return exercises.map(ex =>
     `[${ex.id}] ${ex.name} | primary: ${ex.primaryMuscle} | secondary: ${ex.secondaryMuscles.join(", ")} | equipment: ${ex.equipment.join(", ")} | difficulty: ${ex.difficulty} | category: ${ex.category} | yt: ${ex.youtubeKeyword}`
@@ -655,6 +683,88 @@ Rules:
       workoutType: "Other",
       label: "Workout",
       movements: [],
+    };
+  }
+}
+
+export async function generateRecoveryInsights(ctx: RecoveryContext): Promise<RecoveryInsightsResult> {
+  const sorenesList = ctx.soreMuscles.length > 0
+    ? ctx.soreMuscles.map(s => `${s.muscle} (severity ${s.severity}/10)`).join(", ")
+    : "none reported";
+
+  const workoutSummary = ctx.todayWorkout
+    ? `${ctx.todayWorkout.label} — ${ctx.todayWorkout.durationMinutes} min, intensity ${ctx.todayWorkout.intensity}/10, muscles: ${ctx.todayWorkout.muscleGroups.join(", ") || "general"}${ctx.todayWorkout.isMetcon ? ", high-intensity metabolic conditioning" : ""}`
+    : "no workout data";
+
+  const system = `You are an elite personal trainer and sports recovery coach. Generate concise, science-backed, and highly personalized recovery insights based on the user's check-in data and today's workout. Always reference their specific muscle groups, numbers, and situation. Keep tone warm, direct, and motivating — like a knowledgeable training partner. Return valid JSON only.`;
+
+  const user = `User completed a workout today. Generate recovery insights.
+
+CHECK-IN DATA:
+- Energy level: ${ctx.energyLevel}/5
+- Sleep quality: ${ctx.sleepQuality}/5
+- Stress level: ${ctx.stressLevel}/5
+- Sore muscles: ${sorenesList}
+- Notes: ${ctx.notes || "none"}
+
+TODAY'S WORKOUT:
+${workoutSummary}
+
+PROFILE:
+- Goal: ${ctx.fitnessGoal}
+- Level: ${ctx.skillLevel}
+
+Return JSON:
+{
+  "headline": "1-2 sentence congratulation + main focus for rest of today (max 120 chars)",
+  "tips": [
+    { "category": "SLEEP|NUTRITION|MOBILITY|HYDRATION|STRESS|MINDSET", "title": "action headline (max 6 words)", "detail": "2 sentences specific to this user's data" }
+  ]
+}
+
+Rules:
+- Generate exactly 4 tips
+- If energy ≤ 2, include NUTRITION tip focused on glycogen and energy restoration
+- If stress ≥ 4, include STRESS tip with concrete de-stress technique
+- If sleep ≤ 2, make SLEEP the first tip
+- If soreness reported, include MOBILITY tip naming those exact muscles
+- Reference the actual workout muscles, duration, intensity in tip details
+- Never give generic advice — always tie to their specific numbers`;
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    temperature: 0.7,
+    max_tokens: 800,
+    response_format: { type: "json_object" },
+  });
+
+  const content = response.choices[0]?.message?.content ?? "{}";
+  try {
+    const parsed = JSON.parse(content.trim());
+    const tips: RecoveryTip[] = Array.isArray(parsed.tips)
+      ? parsed.tips.slice(0, 5).map((t: any) => ({
+          category: String(t.category ?? "MINDSET").toUpperCase(),
+          title: String(t.title ?? "Recovery tip"),
+          detail: String(t.detail ?? ""),
+        }))
+      : [];
+    return {
+      headline: String(parsed.headline ?? "Great session — prioritize recovery now."),
+      tips,
+    };
+  } catch {
+    return {
+      headline: "Great session — here's how to recover well.",
+      tips: [
+        { category: "NUTRITION", title: "Refuel within 90 minutes", detail: "Have a meal with 30–40g protein and quality carbs to kick off muscle repair and restore glycogen." },
+        { category: "HYDRATION", title: "Drink water consistently", detail: "Aim for 500ml in the next hour to replace fluids lost during training and support recovery processes." },
+        { category: "SLEEP", title: "Protect tonight's sleep", detail: "Sleep is when muscle protein synthesis peaks. Wind down early and avoid screens 60 min before bed." },
+        { category: "MOBILITY", title: "Light stretch before bed", detail: "5–10 minutes of static stretching on your worked muscles reduces next-day soreness and improves flexibility." },
+      ],
     };
   }
 }
