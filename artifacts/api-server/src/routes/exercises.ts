@@ -152,7 +152,7 @@ router.get("/exercises/:id/history", async (req: Request, res: Response) => {
   let isPlateaued = false;
   if (sessions.length >= 3) {
     const volumes = sessions.map((s) => s.totalVolume);
-    isPlateaued = volumes[0] <= volumes[1] && volumes[1] <= volumes[2];
+    isPlateaued = volumes[0] <= volumes[volumes.length - 1];
   }
 
   const restRecommendation = exercise ? getRestRecommendation(exercise.goal) : null;

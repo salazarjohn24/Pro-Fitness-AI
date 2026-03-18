@@ -118,7 +118,7 @@ export function useExerciseFavorites() {
 export function useToggleFavorite() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, favorited }: { id: number; favorited: boolean }) => {
+    mutationFn: async ({ id, favorited }: { id: number; favorited: boolean; exercise?: Exercise }) => {
       const headers = await getAuthHeaders();
       const res = await fetch(`${getApiBase()}/api/exercises/${id}/favorite`, {
         ...getFetchOptions(headers),
@@ -127,12 +127,18 @@ export function useToggleFavorite() {
       if (!res.ok) throw new Error("Failed to toggle favorite");
       return res.json();
     },
-    onMutate: async ({ id, favorited }) => {
+    onMutate: async ({ id, favorited, exercise }) => {
       await queryClient.cancelQueries({ queryKey: ["exercise-favorites"] });
       const prev = queryClient.getQueryData<Exercise[]>(["exercise-favorites"]);
-      queryClient.setQueryData<Exercise[]>(["exercise-favorites"], (old = []) =>
-        favorited ? old.filter((e) => e.id !== id) : old
-      );
+      queryClient.setQueryData<Exercise[]>(["exercise-favorites"], (old = []) => {
+        if (favorited) {
+          return old.filter((e) => e.id !== id);
+        }
+        if (exercise && !old.some((e) => e.id === id)) {
+          return [...old, exercise];
+        }
+        return old;
+      });
       return { prev };
     },
     onError: (_err, _vars, ctx) => {

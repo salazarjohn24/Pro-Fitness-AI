@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -59,11 +59,17 @@ const EQUIPMENT_ICONS: Record<string, string> = {
 export default function VaultScreen() {
   const insets = useSafeAreaInsets();
   const [searchText, setSearchText] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [muscleGroup, setMuscleGroup] = useState("");
   const [equipment, setEquipment] = useState("");
   const [goal, setGoal] = useState("");
   const [activeFilter, setActiveFilter] = useState<"muscle" | "equipment" | "goal">("muscle");
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchText), 300);
+    return () => clearTimeout(t);
+  }, [searchText]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const botPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -72,7 +78,7 @@ export default function VaultScreen() {
     muscle_group: muscleGroup || undefined,
     equipment: equipment || undefined,
     goal: goal || undefined,
-    search: searchText || undefined,
+    search: debouncedSearch || undefined,
   });
   const { data: favorites } = useExerciseFavorites();
   const { mutate: toggleFavorite } = useToggleFavorite();
@@ -250,7 +256,7 @@ export default function VaultScreen() {
                 isFavorited={favoriteIds.has(exercise.id)}
                 onToggleFavorite={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  toggleFavorite({ id: exercise.id, favorited: favoriteIds.has(exercise.id) });
+                  toggleFavorite({ id: exercise.id, favorited: favoriteIds.has(exercise.id), exercise });
                 }}
               />
             ))}
