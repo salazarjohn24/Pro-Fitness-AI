@@ -19,7 +19,7 @@ import { Colors } from "@/constants/colors";
 import { EQUIPMENT_CATEGORIES } from "@/components/EquipmentChecklist";
 import { CheckInModal } from "@/components/CheckInModal";
 import { useEnvironments, useCreateEnvironment, type GymEnvironment } from "@/hooks/useEnvironments";
-import { useTodayCheckIn, useProfile, useSubmitCheckIn } from "@/hooks/useProfile";
+import { useTodayCheckIn, useProfile, useSubmitCheckIn, useUpdateProfile } from "@/hooks/useProfile";
 import {
   useArchitectGenerate,
   fetchExerciseAlternatives,
@@ -107,6 +107,7 @@ export default function WorkoutArchitectScreen() {
   const { data: environments } = useEnvironments();
   const { mutate: createEnv, isPending: isCreatingEnv } = useCreateEnvironment();
   const { data: profile } = useProfile();
+  const { mutate: updateProfile } = useUpdateProfile();
   const { mutate: submitCheckIn, isPending: isSubmittingCheckIn } = useSubmitCheckIn();
   const [showCheckInModal, setShowCheckInModal] = useState(false);
 
@@ -418,6 +419,7 @@ export default function WorkoutArchitectScreen() {
               onSuccess: () => {
                 setShowCheckInModal(false);
                 refetchCheckIn();
+                updateProfile({ checkInCompleted: true, dailySyncProgress: Math.min(100, (profile?.dailySyncProgress ?? 0) + 50) });
               },
             });
           }}

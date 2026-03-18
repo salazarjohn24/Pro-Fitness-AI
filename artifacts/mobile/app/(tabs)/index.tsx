@@ -100,7 +100,7 @@ export default function StatusScreen() {
   const onboardingDone = profile?.onboardingCompleted ?? false;
 
   const now = new Date();
-  const todayStr = now.toISOString().slice(0, 10);
+  const todayStr = now.toLocaleDateString("en-CA");
 
   function isToday(w: any): boolean {
     const dateStr = w.workoutDate ?? w.createdAt?.slice(0, 10);

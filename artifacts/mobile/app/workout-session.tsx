@@ -677,7 +677,20 @@ export default function WorkoutSessionScreen() {
   return (
     <View style={[styles.container, { paddingTop: topPad }]}>
       <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
+        <Pressable
+          onPress={() => {
+            if (completedSets === 0) { router.back(); return; }
+            Alert.alert(
+              "Quit Session?",
+              "Your progress will be lost. Are you sure you want to leave?",
+              [
+                { text: "Keep Going", style: "cancel" },
+                { text: "Quit", style: "destructive", onPress: () => { if (timerRef.current) clearInterval(timerRef.current); router.back(); } },
+              ]
+            );
+          }}
+          style={styles.backBtn}
+        >
           <Feather name="x" size={20} color={Colors.textMuted} />
         </Pressable>
         <View style={styles.timerBlock}>

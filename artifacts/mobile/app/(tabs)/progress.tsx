@@ -387,6 +387,7 @@ export default function ProgressScreen() {
   const kpiItems = KPI_ITEMS.map((item) => {
     if (item.label === "Avg RPE") return { ...item, value: avgRpeAll };
     if (item.label === "Volume") return { ...item, value: volumeLabel };
+    if (item.label === "Recovery") return { ...item, value: readinessScore > 0 ? readinessScore.toString() : "—" };
     return item;
   });
 
