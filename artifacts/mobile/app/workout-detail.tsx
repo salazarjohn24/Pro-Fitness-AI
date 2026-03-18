@@ -163,6 +163,7 @@ export default function WorkoutDetailScreen() {
     if (!session) return;
     if (!isDirty) {
       setIsEditMode(false);
+      router.back();
       return;
     }
     updateSession({ id: session.id, exercises: editExercises as any }, {
@@ -171,6 +172,7 @@ export default function WorkoutDetailScreen() {
         setEditExercises(null);
         setIsEditMode(false);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        router.back();
       },
       onError: () => {
         Alert.alert("Save Failed", "Could not save your edits. Please check your connection and try again.");
@@ -178,15 +180,19 @@ export default function WorkoutDetailScreen() {
     });
   };
 
-  const handleDiscardEdits = (navigateBack = false) => {
+  const handleDiscardEdits = () => {
+    if (!isDirty) {
+      setEditExercises(null);
+      setIsEditMode(false);
+      return;
+    }
     if (Platform.OS === "web") {
       if (!confirm("Discard your changes?")) return;
       setEditExercises(null);
       setIsDirty(false);
       setIsEditMode(false);
-      if (navigateBack) router.back();
     } else {
-      Alert.alert("Discard Changes", "Your weight/rep edits won't be saved.", [
+      Alert.alert("Discard Changes", "Your edits won't be saved.", [
         { text: "Keep Editing", style: "cancel" },
         {
           text: "Discard",
@@ -195,10 +201,42 @@ export default function WorkoutDetailScreen() {
             setEditExercises(null);
             setIsDirty(false);
             setIsEditMode(false);
-            if (navigateBack) router.back();
           },
         },
       ]);
+    }
+  };
+
+  const handleBackPress = () => {
+    if (isEditMode) {
+      if (isDirty) {
+        if (Platform.OS === "web") {
+          if (!confirm("Leave without saving?")) return;
+          setEditExercises(null);
+          setIsDirty(false);
+          setIsEditMode(false);
+          router.back();
+        } else {
+          Alert.alert("Unsaved Changes", "Leave without saving your edits?", [
+            { text: "Keep Editing", style: "cancel" },
+            {
+              text: "Leave",
+              style: "destructive",
+              onPress: () => {
+                setEditExercises(null);
+                setIsDirty(false);
+                setIsEditMode(false);
+                router.back();
+              },
+            },
+          ]);
+        }
+      } else {
+        setIsEditMode(false);
+        router.back();
+      }
+    } else {
+      router.back();
     }
   };
 
@@ -232,13 +270,7 @@ export default function WorkoutDetailScreen() {
     <View style={[styles.container, { paddingTop: topPad }]}>
       <View style={styles.topBar}>
         <Pressable
-          onPress={() => {
-            if (isEditMode) {
-              if (isDirty) { handleDiscardEdits(false); } else { setIsEditMode(false); }
-            } else {
-              router.back();
-            }
-          }}
+          onPress={handleBackPress}
           style={styles.backBtn}
         >
           <Feather name="arrow-left" size={20} color={Colors.textMuted} />
@@ -348,7 +380,7 @@ export default function WorkoutDetailScreen() {
           <View style={styles.editBanner}>
             <Feather name="edit-2" size={12} color={Colors.highlight} />
             <Text style={styles.editBannerText}>Edit mode — tap DONE to save</Text>
-            <Pressable onPress={() => handleDiscardEdits(false)} style={{ marginLeft: "auto" }}>
+            <Pressable onPress={handleDiscardEdits} style={{ marginLeft: "auto" }}>
               <Text style={styles.editBannerDiscard}>Cancel</Text>
             </Pressable>
           </View>
