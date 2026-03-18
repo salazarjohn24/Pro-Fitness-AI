@@ -4,7 +4,9 @@ import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -209,7 +211,10 @@ export function CheckInModal({ visible, onClose, onComplete, initialData, isSubm
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-      <View style={styles.backdrop}>
+      <KeyboardAvoidingView
+        style={styles.backdrop}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
         <Pressable style={styles.backdropTouch} onPress={handleClose} />
         <View style={styles.sheet}>
           <View style={styles.handle} />
@@ -333,7 +338,7 @@ export function CheckInModal({ visible, onClose, onComplete, initialData, isSubm
             </>
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
