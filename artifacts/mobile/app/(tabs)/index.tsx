@@ -21,6 +21,7 @@ import WorkoutReviewModal from "@/components/WorkoutReviewModal";
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
 import { sendWorkoutReadyNotification } from "@/lib/notifications";
+import { loadDrafts, type WorkoutDraft } from "@/services/workoutGenerator";
 import {
   useProfile,
   useUpdateProfile,
@@ -92,6 +93,7 @@ export default function StatusScreen() {
   const [rpeInfoOpen, setRpeInfoOpen] = useState(false);
   const [weeklySessionsInfoOpen, setWeeklySessionsInfoOpen] = useState(false);
   const autoGenerateAttempted = React.useRef(false);
+  const [architectDrafts, setArchitectDrafts] = React.useState<WorkoutDraft[]>([]);
 
   const streak = profile?.streakDays ?? 0;
   const syncProgress = profile?.dailySyncProgress ?? 0;
@@ -146,6 +148,10 @@ export default function StatusScreen() {
 
   const completedTasks = [checkInDone, activityDone].filter(Boolean).length;
   const pct = Math.round((completedTasks / 2) * 100);
+
+  useEffect(() => {
+    loadDrafts().then(setArchitectDrafts);
+  }, []);
 
   useEffect(() => {
     if (!isLoading && !checkInLoading && onboardingDone && !checkInDone && !autoCheckInTriggered) {
@@ -537,6 +543,33 @@ export default function StatusScreen() {
           </View>
           <Feather name="arrow-right" size={18} color={Colors.highlight} />
         </Pressable>
+
+        {architectDrafts.length > 0 && (
+          <Pressable
+            style={({ pressed }) => [styles.draftCTA, { opacity: pressed ? 0.88 : 1 }]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              router.push("/workout-architect");
+            }}
+          >
+            <View style={styles.draftCTALeft}>
+              <Feather name="bookmark" size={16} color={Colors.orange} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.draftCTATitle}>
+                  {architectDrafts.length} SAVED DRAFT{architectDrafts.length > 1 ? "S" : ""}
+                </Text>
+                <Text style={styles.draftCTASub} numberOfLines={1}>
+                  {architectDrafts[0].workoutName || "Untitled Workout"}
+                  {architectDrafts.length > 1 ? ` + ${architectDrafts.length - 1} more` : ""}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.draftCTABtn}>
+              <Text style={styles.draftCTABtnText}>RESUME</Text>
+              <Feather name="arrow-right" size={13} color="#fff" />
+            </View>
+          </Pressable>
+        )}
 
         <View style={styles.secondaryActions}>
           <Pressable
@@ -1195,5 +1228,49 @@ const styles = StyleSheet.create({
     color: Colors.textSubtle,
     letterSpacing: 0.5,
     textTransform: "uppercase",
+  },
+  draftCTA: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "rgba(255, 149, 0, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 149, 0, 0.30)",
+    borderRadius: 16,
+    padding: 14,
+    gap: 12,
+  },
+  draftCTALeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+  draftCTATitle: {
+    fontSize: 10,
+    fontFamily: "Inter_900Black",
+    color: Colors.orange,
+    letterSpacing: 0.5,
+  },
+  draftCTASub: {
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
+    color: Colors.text,
+    marginTop: 2,
+  },
+  draftCTABtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: Colors.orange,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  draftCTABtnText: {
+    fontSize: 11,
+    fontFamily: "Inter_900Black",
+    color: "#fff",
+    letterSpacing: 0.5,
   },
 });

@@ -183,6 +183,7 @@ export async function sendArchitectWorkoutReadyNotification(workoutTitle: string
         title: "Custom Workout Ready",
         body: `"${workoutTitle}" is ready to review. Tap to check it out.`,
         sound: true,
+        data: { screen: "architect" },
       },
       trigger: null,
     });

@@ -4,9 +4,10 @@ import { getApiBase, getAuthHeaders, getFetchOptions } from "@/hooks/apiHelpers"
 import type { GeneratedWorkout, GeneratedExercise } from "@/hooks/useWorkout";
 
 const PENDING_KEY = "arch_pending_workout";
-const DRAFT_KEY = "arch_draft_workout";
+const DRAFTS_KEY = "arch_draft_workouts_v2";
 
 export type WorkoutDraft = {
+  id: string;
   workoutName: string;
   generatedWorkout: GeneratedWorkout;
   reviewExercises: GeneratedExercise[];
@@ -16,31 +17,59 @@ export type WorkoutDraft = {
   savedAt: string;
 };
 
-export async function saveDraft(draft: Omit<WorkoutDraft, "savedAt">): Promise<void> {
+function makeId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export async function saveDraft(draft: Omit<WorkoutDraft, "id" | "savedAt">): Promise<WorkoutDraft> {
   try {
-    const data: WorkoutDraft = { ...draft, savedAt: new Date().toISOString() };
-    await AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(data));
+    const existing = await loadDrafts();
+    const newDraft: WorkoutDraft = { ...draft, id: makeId(), savedAt: new Date().toISOString() };
+    const updated = [newDraft, ...existing];
+    await AsyncStorage.setItem(DRAFTS_KEY, JSON.stringify(updated));
+    return newDraft;
   } catch {
-    // ignore storage errors
+    return { ...draft, id: makeId(), savedAt: new Date().toISOString() };
   }
 }
 
-export async function loadDraft(): Promise<WorkoutDraft | null> {
+export async function loadDrafts(): Promise<WorkoutDraft[]> {
   try {
-    const raw = await AsyncStorage.getItem(DRAFT_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as WorkoutDraft;
+    const raw = await AsyncStorage.getItem(DRAFTS_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as WorkoutDraft[];
   } catch {
-    return null;
+    return [];
   }
 }
 
-export async function clearDraft(): Promise<void> {
+export async function deleteDraft(id: string): Promise<WorkoutDraft[]> {
   try {
-    await AsyncStorage.removeItem(DRAFT_KEY);
+    const existing = await loadDrafts();
+    const updated = existing.filter(d => d.id !== id);
+    await AsyncStorage.setItem(DRAFTS_KEY, JSON.stringify(updated));
+    return updated;
   } catch {
-    // ignore
+    return [];
   }
+}
+
+export async function deleteDrafts(ids: string[]): Promise<WorkoutDraft[]> {
+  try {
+    const existing = await loadDrafts();
+    const idSet = new Set(ids);
+    const updated = existing.filter(d => !idSet.has(d.id));
+    await AsyncStorage.setItem(DRAFTS_KEY, JSON.stringify(updated));
+    return updated;
+  } catch {
+    return [];
+  }
+}
+
+export async function clearAllDrafts(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(DRAFTS_KEY);
+  } catch {}
 }
 
 type GenerationCallback = (workout: GeneratedWorkout | null) => void;

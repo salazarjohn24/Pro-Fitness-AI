@@ -199,7 +199,7 @@ User exercise preferences (honor these substitutions):
 ${substitutionLines}
 
 User's custom workout preferences (IMPORTANT — always honor these when designing the session):
-${ctx.workoutPreferences?.trim() ? ctx.workoutPreferences.trim() : "None provided"}
+${ctx.workoutPreferences?.trim() ? sanitizeUserInput(ctx.workoutPreferences) : "None provided"}
 
 Generate the ideal workout. Apply progressive overload where previous performance data exists. Honor substitution preferences. CRITICALLY: respect the external training fatigue above to avoid muscle overload.`;
 
@@ -301,10 +301,10 @@ User exercise preferences (honor these substitutions):
 ${substitutionLinesA}
 
 User's custom workout preferences (IMPORTANT — always honor these):
-${ctx.workoutPreferences?.trim() ? ctx.workoutPreferences.trim() : "None provided"}
+${ctx.workoutPreferences?.trim() ? sanitizeUserInput(ctx.workoutPreferences) : "None provided"}
 
 Additional notes for today's session (IMPORTANT — honor these for this specific workout):
-${ctx.sessionNotes?.trim() ? ctx.sessionNotes.trim() : "None"}
+${ctx.sessionNotes?.trim() ? sanitizeUserInput(ctx.sessionNotes) : "None"}
 
 Generate the custom workout targeting the requested muscle groups. Adjust exercise count and sets to fit the time available. Apply progressive overload and honor substitution preferences. Mention any external fatigue overlap in the rationale.`;
 

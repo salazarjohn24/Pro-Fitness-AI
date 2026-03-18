@@ -74,6 +74,7 @@ export default function ProfileScreen() {
   const [pendingFrequency, setPendingFrequency] = useState<number | null>(null);
   const [pendingDuration, setPendingDuration] = useState<number | null>(null);
   const [workoutPrefsText, setWorkoutPrefsText] = useState("");
+  const [prefsTouched, setPrefsTouched] = useState(false);
 
   const [showNewEnvModal, setShowNewEnvModal] = useState(false);
   const [newEnvName, setNewEnvName] = useState("");
@@ -168,6 +169,7 @@ export default function ProfileScreen() {
   useEffect(() => {
     if (profile?.workoutPreferences != null) {
       setWorkoutPrefsText(profile.workoutPreferences);
+      setPrefsTouched(false);
     }
   }, [profile?.workoutPreferences]);
 
@@ -657,9 +659,13 @@ export default function ProfileScreen() {
         <TextInput
           style={styles.prefsInput}
           value={workoutPrefsText}
-          onChangeText={setWorkoutPrefsText}
+          onChangeText={(t) => {
+            setWorkoutPrefsText(t);
+            setPrefsTouched(true);
+          }}
           onBlur={() => {
             updateProfile({ workoutPreferences: workoutPrefsText || null });
+            setPrefsTouched(true);
           }}
           placeholder="Write your preferences here..."
           placeholderTextColor={Colors.textSubtle}
@@ -667,13 +673,21 @@ export default function ProfileScreen() {
           textAlignVertical="top"
           returnKeyType="default"
           blurOnSubmit={false}
+          maxLength={500}
         />
-        {workoutPrefsText.length > 0 && (
-          <View style={styles.prefsSavedRow}>
-            <Feather name="check-circle" size={12} color={Colors.orange} />
-            <Text style={styles.prefsSavedText}>Saved · used by AI Workout Builder</Text>
-          </View>
-        )}
+        <View style={styles.prefsFooterRow}>
+          {prefsTouched && workoutPrefsText.length > 0 ? (
+            <View style={styles.prefsSavedRow}>
+              <Feather name="check-circle" size={12} color={Colors.orange} />
+              <Text style={styles.prefsSavedText}>Saved · used by AI Workout Builder</Text>
+            </View>
+          ) : (
+            <View />
+          )}
+          <Text style={[styles.prefsCharCount, workoutPrefsText.length >= 450 && styles.prefsCharCountWarn]}>
+            {workoutPrefsText.length}/500
+          </Text>
+        </View>
       </View>
 
       <View style={styles.sectionCard}>
@@ -1344,15 +1358,28 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     minHeight: 110,
   },
+  prefsFooterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 6,
+  },
   prefsSavedRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    marginTop: 8,
   },
   prefsSavedText: {
     fontSize: 10,
     fontFamily: "Inter_400Regular",
+    color: Colors.orange,
+  },
+  prefsCharCount: {
+    fontSize: 10,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
+  },
+  prefsCharCountWarn: {
     color: Colors.orange,
   },
   envList: { gap: 8 },

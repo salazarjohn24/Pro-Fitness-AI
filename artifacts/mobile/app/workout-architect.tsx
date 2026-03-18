@@ -37,8 +37,9 @@ import {
   sendToBackground,
   takePendingWorkout,
   saveDraft,
-  loadDraft,
-  clearDraft,
+  loadDrafts,
+  deleteDraft,
+  deleteDrafts,
   type WorkoutDraft,
 } from "@/services/workoutGenerator";
 
@@ -181,7 +182,9 @@ export default function WorkoutArchitectScreen() {
   const [exerciseWeights, setExerciseWeights] = useState<Record<string, string>>({});
 
   const [sessionNotes, setSessionNotes] = useState("");
-  const [savedDraft, setSavedDraft] = useState<WorkoutDraft | null>(null);
+  const [drafts, setDrafts] = useState<WorkoutDraft[]>([]);
+  const [selectedDraftIds, setSelectedDraftIds] = useState<string[]>([]);
+  const [draftSaved, setDraftSaved] = useState(false);
   const [draftSaving, setDraftSaving] = useState(false);
 
   const [swappingId, setSwappingId] = useState<string | null>(null);
@@ -265,16 +268,17 @@ export default function WorkoutArchitectScreen() {
         setStep("review");
       }
     });
-    loadDraft().then(draft => {
-      if (draft) setSavedDraft(draft);
-    });
+    loadDrafts().then(d => setDrafts(d));
   }, [applyWorkout]);
 
-  const handleGenerate = () => {
+  const doGenerate = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setDraftSaved(false);
     setStep("generating");
+    const notesToSend = sessionNotes.trim() || undefined;
+    setSessionNotes("");
     startGeneration(
-      { muscleGroups: selectedMuscles, equipment: selectedEquipment, availableMinutes, sessionNotes: sessionNotes.trim() || undefined },
+      { muscleGroups: selectedMuscles, equipment: selectedEquipment, availableMinutes, sessionNotes: notesToSend },
       (workout) => {
         if (!workout) {
           setStep("notes");
@@ -289,6 +293,21 @@ export default function WorkoutArchitectScreen() {
         setStep("review");
       }
     );
+  };
+
+  const handleGenerate = () => {
+    if (drafts.length > 0) {
+      Alert.alert(
+        "You Have Saved Drafts",
+        `You have ${drafts.length} saved draft${drafts.length > 1 ? "s" : ""}. Generating a new workout won't affect your saved drafts.`,
+        [
+          { text: "View My Drafts", style: "cancel", onPress: () => setStep("muscles") },
+          { text: "Build New Workout", onPress: doGenerate },
+        ]
+      );
+      return;
+    }
+    doGenerate();
   };
 
   const adjustSets = (id: string, delta: number) => {
@@ -419,35 +438,66 @@ export default function WorkoutArchitectScreen() {
     if (!generatedWorkout || reviewExercises.length === 0) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setDraftSaving(true);
-    await saveDraft({
-      workoutName,
+    const newDraft = await saveDraft({
+      workoutName: workoutName || "Untitled Workout",
       generatedWorkout,
       reviewExercises,
       exerciseSets,
       exerciseReps,
       exerciseWeights,
     });
-    const updated = await loadDraft();
-    setSavedDraft(updated);
+    setDrafts(prev => [newDraft, ...prev]);
+    setDraftSaved(true);
     setDraftSaving(false);
   };
 
   const handleResumeDraft = (draft: WorkoutDraft) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setGeneratedWorkout(draft.generatedWorkout);
-    setWorkoutName(draft.workoutName);
+    setWorkoutName(draft.workoutName || "Untitled Workout");
     setReviewExercises(draft.reviewExercises);
     setExerciseSets(draft.exerciseSets);
     setExerciseReps(draft.exerciseReps);
     setExerciseWeights(draft.exerciseWeights);
-    setSavedDraft(null);
+    setDrafts(prev => prev.filter(d => d.id !== draft.id));
+    setSelectedDraftIds(prev => prev.filter(id => id !== draft.id));
+    setDraftSaved(false);
     setStep("review");
   };
 
-  const handleDiscardDraft = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    await clearDraft();
-    setSavedDraft(null);
+  const handleDeleteDraft = async (id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const updated = await deleteDraft(id);
+    setDrafts(updated);
+    setSelectedDraftIds(prev => prev.filter(i => i !== id));
+  };
+
+  const handleBulkDeleteDrafts = () => {
+    if (selectedDraftIds.length === 0) return;
+    Alert.alert(
+      "Delete Drafts",
+      `Delete ${selectedDraftIds.length} draft${selectedDraftIds.length > 1 ? "s" : ""}? This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            const updated = await deleteDrafts(selectedDraftIds);
+            setDrafts(updated);
+            setSelectedDraftIds([]);
+          },
+        },
+      ]
+    );
+  };
+
+  const toggleDraftSelection = (id: string) => {
+    Haptics.selectionAsync();
+    setSelectedDraftIds(prev =>
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
   };
 
   const handleStartWorkout = () => {
@@ -468,9 +518,6 @@ export default function WorkoutArchitectScreen() {
       totalSets: finalExercises.reduce((a, e) => a + e.sets, 0),
       estimatedMinutes: Math.round(finalExercises.reduce((a, e) => a + e.sets * 2.5, 0)),
     };
-
-    clearDraft();
-    setSavedDraft(null);
 
     router.push({
       pathname: "/workout-session",
@@ -568,12 +615,11 @@ export default function WorkoutArchitectScreen() {
           <View style={{ width: 36 }} />
         </View>
 
-        <View style={styles.stepIndicator}>
-          <View style={styles.stepDotDone} />
-          <View style={styles.stepLine} />
-          <View style={styles.stepDotDone} />
-          <View style={styles.stepLine} />
-          <View style={styles.stepDotActive} />
+        <View style={styles.optionalBadgeRow}>
+          <View style={styles.optionalBadge}>
+            <Feather name="edit-3" size={11} color={Colors.textSubtle} />
+            <Text style={styles.optionalBadgeText}>OPTIONAL STEP</Text>
+          </View>
         </View>
 
         <ScrollView
@@ -645,7 +691,7 @@ export default function WorkoutArchitectScreen() {
           <Pressable
             onPress={() => {
               cancelGeneration();
-              setStep("equipment");
+              setStep("notes");
             }}
             style={styles.backBtn}
           >
@@ -684,7 +730,7 @@ export default function WorkoutArchitectScreen() {
     return (
       <View style={[styles.container, { paddingTop: topPad }]}>
         <View style={styles.topBar}>
-          <Pressable onPress={() => setStep("equipment")} style={styles.backBtn}>
+          <Pressable onPress={() => setStep("notes")} style={styles.backBtn}>
             <Feather name="arrow-left" size={18} color={Colors.textMuted} />
           </Pressable>
           <Text style={styles.topBarTitle}>REVIEW WORKOUT</Text>
@@ -694,10 +740,13 @@ export default function WorkoutArchitectScreen() {
             disabled={draftSaving}
           >
             <Feather
-              name={savedDraft ? "bookmark" : "bookmark"}
+              name="bookmark"
               size={16}
-              color={savedDraft ? Colors.orange : Colors.textSubtle}
+              color={draftSaved ? Colors.orange : Colors.textSubtle}
             />
+            {draftSaved && (
+              <Text style={styles.draftBtnSavedLabel}>SAVED</Text>
+            )}
           </Pressable>
         </View>
 
@@ -1205,34 +1254,72 @@ export default function WorkoutArchitectScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: botPad + 100 }]}
         showsVerticalScrollIndicator={false}
       >
-        {savedDraft && (
-          <View style={styles.draftBanner}>
-            <View style={styles.draftBannerLeft}>
-              <Feather name="bookmark" size={15} color={Colors.orange} />
-              <View>
-                <Text style={styles.draftBannerTitle}>SAVED DRAFT</Text>
-                <Text style={styles.draftBannerSub} numberOfLines={1}>{savedDraft.workoutName}</Text>
-                <Text style={styles.draftBannerTime}>
-                  {new Date(savedDraft.savedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                  {" · "}
-                  {new Date(savedDraft.savedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+        {drafts.length > 0 && (
+          <View style={styles.draftsSection}>
+            <View style={styles.draftsSectionHeader}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Feather name="bookmark" size={13} color={Colors.orange} />
+                <Text style={styles.draftsSectionTitle}>
+                  SAVED DRAFTS ({drafts.length})
                 </Text>
               </View>
+              {selectedDraftIds.length > 0 && (
+                <Pressable
+                  style={({ pressed }) => [styles.draftsBulkDelete, { opacity: pressed ? 0.8 : 1 }]}
+                  onPress={handleBulkDeleteDrafts}
+                >
+                  <Feather name="trash-2" size={13} color={Colors.orange} />
+                  <Text style={styles.draftsBulkDeleteText}>
+                    DELETE {selectedDraftIds.length}
+                  </Text>
+                </Pressable>
+              )}
             </View>
-            <View style={styles.draftBannerBtns}>
-              <Pressable
-                style={({ pressed }) => [styles.draftResumeBtn, { opacity: pressed ? 0.8 : 1 }]}
-                onPress={() => handleResumeDraft(savedDraft)}
-              >
-                <Text style={styles.draftResumeBtnText}>RESUME</Text>
-              </Pressable>
-              <Pressable
-                style={({ pressed }) => [styles.draftDiscardBtn, { opacity: pressed ? 0.8 : 1 }]}
-                onPress={handleDiscardDraft}
-              >
-                <Feather name="trash-2" size={13} color={Colors.textSubtle} />
-              </Pressable>
-            </View>
+            {drafts.map(draft => {
+              const isSelected = selectedDraftIds.includes(draft.id);
+              return (
+                <View
+                  key={draft.id}
+                  style={[styles.draftBanner, isSelected && styles.draftBannerSelected]}
+                >
+                  <Pressable
+                    onPress={() => toggleDraftSelection(draft.id)}
+                    hitSlop={6}
+                    style={styles.draftCheckboxArea}
+                  >
+                    <View style={[styles.draftCheckboxInner, isSelected && styles.draftCheckboxSelected]}>
+                      {isSelected && <Feather name="check" size={10} color="#fff" />}
+                    </View>
+                  </Pressable>
+                  <View style={styles.draftBannerLeft}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.draftBannerSub} numberOfLines={1}>
+                        {draft.workoutName || "Untitled Workout"}
+                      </Text>
+                      <Text style={styles.draftBannerTime}>
+                        {new Date(draft.savedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                        {" · "}
+                        {new Date(draft.savedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.draftBannerBtns}>
+                    <Pressable
+                      style={({ pressed }) => [styles.draftResumeBtn, { opacity: pressed ? 0.8 : 1 }]}
+                      onPress={() => handleResumeDraft(draft)}
+                    >
+                      <Text style={styles.draftResumeBtnText}>RESUME</Text>
+                    </Pressable>
+                    <Pressable
+                      style={({ pressed }) => [styles.draftDiscardBtn, { opacity: pressed ? 0.8 : 1 }]}
+                      onPress={() => handleDeleteDraft(draft.id)}
+                    >
+                      <Feather name="trash-2" size={13} color={Colors.textSubtle} />
+                    </Pressable>
+                  </View>
+                </View>
+              );
+            })}
           </View>
         )}
 
@@ -1815,10 +1902,19 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   draftBtn: {
-    width: 36,
-    height: 36,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    minWidth: 36,
+  },
+  draftBtnSavedLabel: {
+    fontSize: 9,
+    fontFamily: "Inter_900Black",
+    color: Colors.orange,
+    letterSpacing: 0.5,
   },
   draftBanner: {
     flexDirection: "row",
@@ -2146,5 +2242,81 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     color: Colors.textMuted,
     lineHeight: 20,
+  },
+  optionalBadgeRow: {
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  optionalBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  optionalBadgeText: {
+    fontSize: 10,
+    fontFamily: "Inter_700Bold",
+    color: Colors.textSubtle,
+    letterSpacing: 1,
+  },
+  draftsSection: {
+    gap: 8,
+    marginBottom: 12,
+  },
+  draftsSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 2,
+  },
+  draftsSectionTitle: {
+    fontSize: 10,
+    fontFamily: "Inter_900Black",
+    color: Colors.orange,
+    letterSpacing: 0.5,
+  },
+  draftsBulkDelete: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: Colors.orange + "15",
+    borderWidth: 1,
+    borderColor: Colors.orange + "40",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  draftsBulkDeleteText: {
+    fontSize: 10,
+    fontFamily: "Inter_900Black",
+    color: Colors.orange,
+    letterSpacing: 0.5,
+  },
+  draftBannerSelected: {
+    borderColor: Colors.orange + "60",
+    backgroundColor: Colors.orange + "12",
+  },
+  draftCheckboxArea: {
+    paddingRight: 6,
+    paddingVertical: 4,
+  },
+  draftCheckboxInner: {
+    width: 18,
+    height: 18,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: "#555",
+    backgroundColor: "transparent",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  draftCheckboxSelected: {
+    borderColor: Colors.orange,
+    backgroundColor: Colors.orange,
   },
 });
