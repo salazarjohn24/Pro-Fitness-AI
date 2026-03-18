@@ -224,3 +224,6 @@ Known low-severity issues confirmed during QA passes across all screens. None ar
 | L30 | Session | `app/workout-session.tsx` | `submitExternalWorkout` in `handleSubmitFeedback` has no `onError` — silent failure means the workout won't appear in activity history if the second write fails. |
 | L31 | Session | `app/workout-session.tsx` | `pct` is computed from original planned sets only; finish-screen "Sets Done" stat adds extra exercises — the two figures are inconsistent (e.g. 100% complete but 12/10 sets). |
 | L32 | Session | `app/workout-session.tsx` | Extra exercise name input in the review screen has no `maxLength` constraint — an extremely long name could break the review layout. |
+| L33 | Detail | `app/workout-detail.tsx` | `updateExternal` and `isSavingExternal` are declared but never used — external workouts have no edit UI in this screen (dead imports/bindings). |
+| L34 | Detail | `app/workout-detail.tsx` | Internal session date uses `createdAt` (server UTC) with no `workoutDate` field on sessions — late-night sessions in UTC+ timezones may show tomorrow's date. |
+| L35 | Detail | `app/workout-detail.tsx` | External workout not-found lookup relies on the full `useRecentExternalWorkouts` list — if the backend ever limits/paginates that route, older workouts would show "not found" instead of fetching by ID. |

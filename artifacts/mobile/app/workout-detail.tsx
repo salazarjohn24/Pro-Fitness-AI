@@ -173,27 +173,38 @@ export default function WorkoutDetailScreen() {
         setEditExercises(null);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       },
+      onError: () => {
+        Alert.alert("Save Failed", "Could not save your edits. Please check your connection and try again.");
+      },
     });
   };
 
-  const handleDiscardEdits = () => {
+  const handleDiscardEdits = (navigateBack = false) => {
     if (Platform.OS === "web") {
       if (!confirm("Discard your changes?")) return;
+      setEditExercises(null);
+      setIsDirty(false);
+      if (navigateBack) router.back();
     } else {
       Alert.alert("Discard Changes", "Your weight/rep edits won't be saved.", [
         { text: "Keep Editing", style: "cancel" },
-        { text: "Discard", style: "destructive", onPress: () => { setEditExercises(null); setIsDirty(false); } },
+        {
+          text: "Discard",
+          style: "destructive",
+          onPress: () => {
+            setEditExercises(null);
+            setIsDirty(false);
+            if (navigateBack) router.back();
+          },
+        },
       ]);
-      return;
     }
-    setEditExercises(null);
-    setIsDirty(false);
   };
 
   return (
     <View style={[styles.container, { paddingTop: topPad }]}>
       <View style={styles.topBar}>
-        <Pressable onPress={() => { if (isDirty) { handleDiscardEdits(); } else { router.back(); } }} style={styles.backBtn}>
+        <Pressable onPress={() => { if (isDirty) { handleDiscardEdits(true); } else { router.back(); } }} style={styles.backBtn}>
           <Feather name="arrow-left" size={20} color={Colors.textMuted} />
         </Pressable>
         <Text style={styles.topBarTitle} numberOfLines={1}>
