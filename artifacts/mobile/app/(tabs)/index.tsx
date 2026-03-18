@@ -15,7 +15,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CheckInModal, type CheckInData } from "@/components/CheckInModal";
-import { EditWorkoutModal, type WorkoutItem } from "@/components/EditWorkoutModal";
+
 import { InsightInfoModal } from "@/components/InsightInfoModal";
 import WorkoutReviewModal from "@/components/WorkoutReviewModal";
 import { Colors } from "@/constants/colors";
@@ -29,7 +29,6 @@ import {
   useSubmitExternalWorkout,
   useDeleteExternalWorkout,
   useRecentExternalWorkouts,
-  useUpdateExternalWorkout,
   computeReadinessScore,
 } from "@/hooks/useProfile";
 import { useGenerateWorkout, useDeloadCheck, useWorkoutHistory, type GeneratedWorkout, type GeneratedExercise } from "@/hooks/useWorkout";
@@ -75,9 +74,8 @@ export default function StatusScreen() {
   const { mutate: updateProfile } = useUpdateProfile();
   const { data: todayCheckIn, isLoading: checkInLoading } = useTodayCheckIn();
   const { mutate: submitCheckIn, isPending: isSubmittingCheckIn } = useSubmitCheckIn();
-  const { mutate: submitExternalWorkout } = useSubmitExternalWorkout();
+  const { mutate: submitExternalWorkout, isPending: isSubmittingRestDay } = useSubmitExternalWorkout();
   const { mutate: deleteExternalWorkout } = useDeleteExternalWorkout();
-  const { mutate: updateExternalWorkout, isPending: isUpdatingWorkout } = useUpdateExternalWorkout();
   const { data: recentExternalWorkouts } = useRecentExternalWorkouts();
   const { data: workoutHistory } = useWorkoutHistory(60);
   const { mutate: generateWorkout, isPending: isGenerating } = useGenerateWorkout();
@@ -91,8 +89,6 @@ export default function StatusScreen() {
   const [autoCheckInTriggered, setAutoCheckInTriggered] = useState(false);
   const [generatedWorkout, setGeneratedWorkout] = useState<GeneratedWorkout | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
-  const [editWorkout, setEditWorkout] = useState<WorkoutItem | null>(null);
-  const [editWorkoutOpen, setEditWorkoutOpen] = useState(false);
   const [rpeInfoOpen, setRpeInfoOpen] = useState(false);
   const [weeklySessionsInfoOpen, setWeeklySessionsInfoOpen] = useState(false);
   const autoGenerateAttempted = React.useRef(false);
@@ -171,6 +167,8 @@ export default function StatusScreen() {
 
   const handleCheckInComplete = (data: CheckInData) => {
     const wasAlreadyDone = checkInDone;
+    // Mark auto-generate as attempted so the useEffect doesn't also fire a concurrent generation
+    autoGenerateAttempted.current = true;
     submitCheckIn(data, {
       onSuccess: () => {
         setCheckInOpen(false);
@@ -187,6 +185,8 @@ export default function StatusScreen() {
         });
       },
       onError: () => {
+        // Reset so the user can try again
+        autoGenerateAttempted.current = false;
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         Alert.alert("Check-in Failed", "Could not save your check-in. Tap COMPLETE to try again.");
       },
@@ -220,34 +220,6 @@ export default function StatusScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     deleteExternalWorkout(todayRestWorkout.id, {
       onSuccess: () => {
-        const newProgress = Math.max(0, syncProgress - 50);
-        updateProfile({ activityImported: false, dailySyncProgress: newProgress });
-      },
-    });
-  };
-
-  const handleEditWorkoutSave = (id: number, data: {
-    label: string;
-    duration: number;
-    workoutType: string;
-    intensity: number;
-    muscleGroups: string[];
-    stimulusPoints: number;
-    workoutDate: string;
-  }) => {
-    updateExternalWorkout({ id, ...data }, {
-      onSuccess: () => {
-        setEditWorkoutOpen(false);
-        setEditWorkout(null);
-      },
-    });
-  };
-
-  const handleEditWorkoutDelete = (id: number) => {
-    deleteExternalWorkout(id, {
-      onSuccess: () => {
-        setEditWorkoutOpen(false);
-        setEditWorkout(null);
         const newProgress = Math.max(0, syncProgress - 50);
         updateProfile({ activityImported: false, dailySyncProgress: newProgress });
       },
@@ -290,7 +262,6 @@ export default function StatusScreen() {
     );
   }
 
-  const workoutTitle = generatedWorkout?.workoutTitle ?? "Back & Arms\nFocus";
   const workoutRationale = generatedWorkout?.rationale ??
     "The AI suggests this to balance your recent volume and improve posture.";
 
@@ -321,10 +292,7 @@ export default function StatusScreen() {
         </View>
 
         {deloadCheck?.recommended && deloadCheck.reason && (
-          <Pressable
-            style={({ pressed }) => [styles.deloadBanner, { opacity: pressed ? 0.85 : 1 }]}
-            onPress={() => {}}
-          >
+          <View style={styles.deloadBanner}>
             <View style={styles.deloadIconWrap}>
               <Feather name="alert-triangle" size={16} color="#f59e0b" />
             </View>
@@ -332,7 +300,7 @@ export default function StatusScreen() {
               <Text style={styles.deloadTitle}>Recovery Day Recommended</Text>
               <Text style={styles.deloadBody}>{deloadCheck.reason}</Text>
             </View>
-          </Pressable>
+          </View>
         )}
 
         <BentoCard>
@@ -519,7 +487,7 @@ export default function StatusScreen() {
 
           <Pressable
             style={({ pressed }) => {
-              const canTap = checkInDone && (isRestDay || !activityDone);
+              const canTap = checkInDone && (isRestDay || !activityDone) && !isSubmittingRestDay;
               return [
                 styles.secondaryCard,
                 isRestDay ? styles.secondaryCardDone : undefined,
@@ -527,13 +495,14 @@ export default function StatusScreen() {
               ];
             }}
             onPress={() => {
-              if (!checkInDone) return;
+              if (!checkInDone || isSubmittingRestDay) return;
               if (isRestDay) {
                 handleUndoRestDay();
               } else if (!activityDone) {
                 handleRestDay();
               }
             }}
+            disabled={isSubmittingRestDay}
           >
             <View style={[styles.secondaryIcon, styles.secondaryIconRecovery]}>
               <Feather name="moon" size={16} color={Colors.recovery} />
@@ -727,16 +696,6 @@ export default function StatusScreen() {
           why: "Understanding this correlation helps you optimize training timing. If the delta is large, scheduling hard sessions on well-recovered days yields significantly better results.",
           how: "Log your daily check-in consistently and complete workouts through the app. The more data points the engine has, the more accurate and actionable this insight becomes.",
         }}
-      />
-
-      <EditWorkoutModal
-        visible={editWorkoutOpen}
-        workout={editWorkout}
-        skillLevel={profile?.skillLevel}
-        onClose={() => { setEditWorkoutOpen(false); setEditWorkout(null); }}
-        onSave={handleEditWorkoutSave}
-        onDelete={handleEditWorkoutDelete}
-        isSaving={isUpdatingWorkout}
       />
 
       <WorkoutReviewModal
