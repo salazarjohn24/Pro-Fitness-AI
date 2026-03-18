@@ -15,6 +15,7 @@
     },
     "ios": {
       "supportsTablet": false,
+      "bundleIdentifier": "app.replit.profitnessai",
       "usesAppleSignIn": true,
       "buildNumber": "3",
       "infoPlist": {
@@ -47,6 +48,11 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "3f93f71c-bfa3-43b3-96c5-070d97b2ce4e"
+      }
     }
   }
 }
