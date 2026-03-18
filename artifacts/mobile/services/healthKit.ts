@@ -1,20 +1,26 @@
-import { Platform, Alert } from "react-native";
+import { Platform } from "react-native";
 import AppleHealthKit, {
   HealthKitPermissions,
   HealthValue,
   HealthInputOptions,
 } from "react-native-health";
 
-const PERMISSIONS: HealthKitPermissions = {
-  permissions: {
-    read: [
-      AppleHealthKit.Constants.Permissions.Workout,
-      AppleHealthKit.Constants.Permissions.Steps,
-      AppleHealthKit.Constants.Permissions.ActiveEnergyBurned,
-    ],
-    write: [],
-  },
-};
+function buildPermissions(): HealthKitPermissions | null {
+  try {
+    return {
+      permissions: {
+        read: [
+          AppleHealthKit.Constants.Permissions.Workout,
+          AppleHealthKit.Constants.Permissions.Steps,
+          AppleHealthKit.Constants.Permissions.ActiveEnergyBurned,
+        ],
+        write: [],
+      },
+    };
+  } catch {
+    return null;
+  }
+}
 
 export function isHealthKitAvailable(): boolean {
   return Platform.OS === "ios";
@@ -27,14 +33,25 @@ export function requestHealthKitPermissions(): Promise<boolean> {
       return;
     }
 
-    AppleHealthKit.initHealthKit(PERMISSIONS, (error: string) => {
-      if (error) {
-        console.error("HealthKit permission error:", error);
-        resolve(false);
-        return;
-      }
-      resolve(true);
-    });
+    const permissions = buildPermissions();
+    if (!permissions) {
+      resolve(false);
+      return;
+    }
+
+    try {
+      AppleHealthKit.initHealthKit(permissions, (error: string) => {
+        if (error) {
+          console.error("HealthKit permission error:", error);
+          resolve(false);
+          return;
+        }
+        resolve(true);
+      });
+    } catch (e) {
+      console.error("HealthKit initHealthKit threw:", e);
+      resolve(false);
+    }
   });
 }
 
@@ -47,16 +64,20 @@ export function getStepCount(
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString(),
     };
-    AppleHealthKit.getDailyStepCountSamples(
-      options,
-      (error: string, results: HealthValue[]) => {
-        if (error) {
-          reject(new Error(error));
-          return;
+    try {
+      AppleHealthKit.getDailyStepCountSamples(
+        options,
+        (error: string, results: HealthValue[]) => {
+          if (error) {
+            reject(new Error(error));
+            return;
+          }
+          resolve(results);
         }
-        resolve(results);
-      }
-    );
+      );
+    } catch (e) {
+      reject(e);
+    }
   });
 }
 
@@ -69,16 +90,20 @@ export function getActiveEnergyBurned(
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString(),
     };
-    AppleHealthKit.getActiveEnergyBurned(
-      options,
-      (error: string, results: HealthValue[]) => {
-        if (error) {
-          reject(new Error(error));
-          return;
+    try {
+      AppleHealthKit.getActiveEnergyBurned(
+        options,
+        (error: string, results: HealthValue[]) => {
+          if (error) {
+            reject(new Error(error));
+            return;
+          }
+          resolve(results);
         }
-        resolve(results);
-      }
-    );
+      );
+    } catch (e) {
+      reject(e);
+    }
   });
 }
 
@@ -91,16 +116,20 @@ export function getWorkouts(
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString(),
     };
-    AppleHealthKit.getSamples(
-      { ...options, type: "Workout" } as any,
-      (error: string, results: HealthValue[]) => {
-        if (error) {
-          reject(new Error(error));
-          return;
+    try {
+      AppleHealthKit.getSamples(
+        { ...options, type: "Workout" } as any,
+        (error: string, results: HealthValue[]) => {
+          if (error) {
+            reject(new Error(error));
+            return;
+          }
+          resolve(results);
         }
-        resolve(results);
-      }
-    );
+      );
+    } catch (e) {
+      reject(e);
+    }
   });
 }
 
@@ -114,7 +143,14 @@ export async function syncWithAppleHealth(): Promise<{
     return { success: false };
   }
 
-  const granted = await requestHealthKitPermissions();
+  let granted = false;
+  try {
+    granted = await requestHealthKitPermissions();
+  } catch (e) {
+    console.error("HealthKit permissions request failed:", e);
+    return { success: false };
+  }
+
   if (!granted) {
     return { success: false };
   }

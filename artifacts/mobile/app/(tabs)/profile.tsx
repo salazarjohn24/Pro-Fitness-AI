@@ -147,9 +147,15 @@ export default function ProfileScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         Alert.alert(
           "Sync Failed",
-          "Could not connect to Apple Health. Please check your permissions in Settings > Privacy & Security > Health."
+          "Could not connect to Apple Health. Make sure the app has permission in Settings > Privacy & Security > Health, or rebuild the app with HealthKit enabled."
         );
       }
+    } catch {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert(
+        "Sync Failed",
+        "Could not connect to Apple Health. Make sure the app has permission in Settings > Privacy & Security > Health, or rebuild the app with HealthKit enabled."
+      );
     } finally {
       setHealthSyncing(false);
     }
