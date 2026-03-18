@@ -187,3 +187,17 @@ Every package extends `tsconfig.base.json` which sets `composite: true`. The roo
 
 Run codegen: `pnpm --filter @workspace/api-spec run codegen`
 Push DB schema: `pnpm --filter @workspace/db run push`
+
+---
+
+## Backlog — Low Priority
+
+These are known low-severity issues confirmed during the audit-screen QA pass. None are blocking, but all are worth cleaning up in a future pass.
+
+| # | File | Issue | Detail |
+|---|------|-------|--------|
+| L1 | `artifacts/mobile/hooks/useVolumeStats.ts` | Missing `staleTime` | No `staleTime` set — hook refetches on every tab focus. Add `staleTime: 1000 * 60 * 2` to match other hooks. |
+| L2 | `artifacts/mobile/app/(tabs)/progress.tsx` | `AlertChip` key uses `alert.muscle` | Key is `${alert.type}-${alert.muscle}-${i}`. `alert.muscle` is typed as required but the consistency alerts could theoretically be undefined. Safer key: `${alert.type}-${i}`. |
+| L3 | `artifacts/mobile/app/(tabs)/progress.tsx` | `recoveryCorrelation` accordion renders with zero data | The accordion renders whenever `recoveryCorrelation` is truthy (the object always exists). Should gate on `recoveryCorrelation.hasEnoughData` or at minimum check that both counts are > 0. |
+| L4 | `artifacts/mobile/app/(tabs)/progress.tsx` | Tied-max volume bars all highlighted as "Peak" | `isBest = d.volume === maxVal && d.volume > 0` marks all bars tied at the maximum orange. If two periods share the same peak, both show orange. Should highlight only the single most-recent peak. |
+| L5 | `artifacts/api-server/src/routes/audit.ts` | External workouts contribute 1 set/muscle to muscle focus | In `/audit/volume-stats`, the `externalWkts` loop adds exactly 1 set per listed muscle group regardless of how much work was done. In-app sessions count every individual completed set. Muscle focus percentages are not apples-to-apples between external and in-app users. |
