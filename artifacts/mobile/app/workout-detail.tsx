@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Colors } from "@/constants/colors";
 import { useRecentExternalWorkouts, useUpdateExternalWorkout, type ExternalWorkout } from "@/hooks/useProfile";
-import { useSessionDetail, useUpdateSessionExercises } from "@/hooks/useWorkout";
+import { useSessionDetail, useUpdateSessionExercises, useDeleteSession } from "@/hooks/useWorkout";
 
 function formatDuration(minutes: number): string {
   if (minutes < 60) return `${minutes}m`;
@@ -86,6 +86,7 @@ export default function WorkoutDetailScreen() {
   const { data: externalWorkouts, isLoading: externalLoading } = useRecentExternalWorkouts();
   const { mutate: updateSession, isPending: isSaving } = useUpdateSessionExercises();
   const { mutate: updateExternal, isPending: isSavingExternal } = useUpdateExternalWorkout();
+  const { mutate: deleteSession, isPending: isDeleting } = useDeleteSession();
 
   const [editingSet, setEditingSet] = useState<EditingSet | null>(null);
   const [editExercises, setEditExercises] = useState<typeof session extends undefined ? never : NonNullable<typeof session>["exercises"] | null>(null);
@@ -199,6 +200,32 @@ export default function WorkoutDetailScreen() {
         },
       ]);
     }
+  };
+
+  const handleDeleteSession = () => {
+    if (!session) return;
+    Alert.alert(
+      "Delete Session?",
+      "This will permanently remove this workout from your history. This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            deleteSession(session.id, {
+              onSuccess: () => {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                router.back();
+              },
+              onError: () => {
+                Alert.alert("Delete Failed", "Could not delete this session. Please try again.");
+              },
+            });
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -481,6 +508,22 @@ export default function WorkoutDetailScreen() {
               </View>
             )}
           </>
+        )}
+
+        {/* ===== DELETE (internal sessions only) ===== */}
+        {type === "internal" && (
+          <Pressable
+            onPress={handleDeleteSession}
+            disabled={isDeleting}
+            style={({ pressed }) => [styles.deleteBtn, { opacity: pressed || isDeleting ? 0.7 : 1 }]}
+          >
+            {isDeleting ? (
+              <ActivityIndicator size={14} color={Colors.orange} />
+            ) : (
+              <Feather name="trash-2" size={14} color={Colors.orange} />
+            )}
+            <Text style={styles.deleteBtnText}>{isDeleting ? "Deleting…" : "Delete Session"}</Text>
+          </Pressable>
         )}
       </ScrollView>
     </View>
@@ -865,5 +908,23 @@ const styles = StyleSheet.create({
     color: Colors.textSubtle,
     textAlign: "center",
     lineHeight: 18,
+  },
+  deleteBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 24,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(252,82,0,0.25)",
+    backgroundColor: "rgba(252,82,0,0.06)",
+  },
+  deleteBtnText: {
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
+    color: Colors.orange,
+    letterSpacing: 0.5,
   },
 });

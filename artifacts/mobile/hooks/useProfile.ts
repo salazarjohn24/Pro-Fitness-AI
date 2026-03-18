@@ -286,6 +286,7 @@ export function useDeleteExternalWorkout() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recent-external-workouts"] });
+      queryClient.invalidateQueries({ queryKey: ["workoutHistory"] });
       queryClient.invalidateQueries({ queryKey: ["profile"] });
     },
   });

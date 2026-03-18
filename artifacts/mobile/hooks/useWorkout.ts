@@ -253,3 +253,23 @@ export function useUpdateSessionExercises() {
     },
   });
 }
+
+export function useDeleteSession() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${getApiBase()}/api/workouts/sessions/${id}`, {
+        ...getFetchOptions(headers),
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Failed to delete session");
+      return res.json();
+    },
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ["sessionDetail", id] });
+      queryClient.invalidateQueries({ queryKey: ["workoutHistory"] });
+      queryClient.invalidateQueries({ queryKey: ["recent-external-workouts"] });
+    },
+  });
+}

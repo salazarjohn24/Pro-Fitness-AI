@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, externalWorkoutsTable, workoutSessionsTable } from "@workspace/db";
-import { desc, eq, and, gte } from "drizzle-orm";
+import { desc, eq, and, gte, ne } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -275,6 +275,32 @@ router.patch("/workouts/sessions/:id/exercises", async (req: Request, res: Respo
   if (!updated) { res.status(404).json({ error: "Session not found" }); return; }
 
   res.json(updated);
+});
+
+router.delete("/workouts/sessions/:id", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const sessionId = parseInt(req.params.id, 10);
+  if (isNaN(sessionId)) { res.status(400).json({ error: "Invalid session ID" }); return; }
+
+  const [deleted] = await db.delete(workoutSessionsTable)
+    .where(and(eq(workoutSessionsTable.id, sessionId), eq(workoutSessionsTable.userId, req.user.id)))
+    .returning();
+
+  if (!deleted) { res.status(404).json({ error: "Session not found" }); return; }
+
+  // Also remove the companion external-workout entry created by the in-app session
+  // (workout-session.tsx calls submitExternalWorkout with source:"in-app" when finishing)
+  if (deleted.workoutTitle) {
+    await db.delete(externalWorkoutsTable)
+      .where(and(
+        eq(externalWorkoutsTable.userId, req.user.id),
+        eq(externalWorkoutsTable.source, "in-app"),
+        eq(externalWorkoutsTable.label, deleted.workoutTitle),
+      ));
+  }
+
+  res.json({ success: true });
 });
 
 export default router;
