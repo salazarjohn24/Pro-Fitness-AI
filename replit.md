@@ -192,33 +192,18 @@ Push DB schema: `pnpm --filter @workspace/db run push`
 
 ## Backlog — Low Priority
 
-Known low-severity issues confirmed during QA passes across all screens. None are blocking. Grouped by originating screen.
-
-### Audit / Progress screen
-
-| # | File | Issue | Detail |
-|---|------|-------|--------|
-| L2 | `app/(tabs)/progress.tsx` | `AlertChip` key uses `alert.muscle` | Key `${alert.type}-${alert.muscle}-${i}` — `alert.muscle` can be undefined for consistency alerts. Safer: `${alert.type}-${i}`. |
-| L3 | `app/(tabs)/progress.tsx` | Recovery correlation accordion shown with zero data | Accordion always renders when `recoveryCorrelation` object exists. Should gate on `recoveryCorrelation.hasEnoughData`. |
-| L4 | `app/(tabs)/progress.tsx` | Tied-peak bars both highlighted orange | `isBest = d.volume === maxVal` marks all bars tied at the max orange. Should highlight only the most-recent peak. |
-| L5 | `api-server/src/routes/audit.ts` | External workouts contribute 1 set/muscle regardless of volume | `externalWkts` loop adds exactly 1 set per muscle group. In-app sessions count every completed set. Muscle focus % is not apples-to-apples. |
-
-### Exercise Vault
-
-| # | File | Issue | Detail |
-|---|------|-------|--------|
-| L10 | `api-server/src/routes/exercises.ts` | Docs comment references non-existent `/alternatives` endpoint | Internal comment references `/alternatives` — the actual endpoint is `/api/exercises/:id/alternatives`. |
-
-### Profile screen
-
-| # | File | Issue | Detail |
-|---|------|-------|--------|
-| L14 | `app/(tabs)/profile.tsx` | Quick-tap `updateProfile` calls have no `onError` handler | Insight level toggle, view-mode preference changes — silent failures if the server returns an error. |
-| L15 | `app/(tabs)/profile.tsx` | `markTourSeen()` fires when tour opens, not when it finishes | "Replay App Tour" immediately marks the tour as seen before the user has viewed it. Should fire inside the `onDone` callback. |
+Known low-severity issues confirmed during QA passes across all screens. None are blocking — all tabled for a future cleanup pass.
 
 ### Tabled — future release
 
-| # | File | Issue | Detail |
-|---|------|-------|--------|
-| L9 | `api-server/src/routes/exercises.ts` | `consistencyIndex` not written when logging a set | `POST /exercises/:id/history` always writes `null` for `consistencyIndex`. Fix when a feature consumes this field. |
-| L11 | `app/(tabs)/profile.tsx` | "PRO MEMBER" badge is hardcoded for all users | Gate on a real membership field once subscriptions are added. |
+| # | Screen | File | Issue |
+|---|--------|------|-------|
+| L2 | Audit | `app/(tabs)/progress.tsx` | `AlertChip` key uses `alert.muscle` which can be undefined for consistency alerts. Safer key: `${alert.type}-${i}`. |
+| L3 | Audit | `app/(tabs)/progress.tsx` | Recovery correlation accordion renders even when `hasEnoughData` is false — should be gated. |
+| L4 | Audit | `app/(tabs)/progress.tsx` | Tied-peak volume bars both highlighted orange — should highlight only the most-recent peak. |
+| L5 | Audit | `api-server/src/routes/audit.ts` | External workouts contribute 1 set/muscle regardless of actual volume — muscle focus % not apples-to-apples with in-app sessions. |
+| L9 | Vault | `api-server/src/routes/exercises.ts` | `consistencyIndex` always written as `null` when logging a set — fix when a feature consumes this field. |
+| L10 | Vault | `api-server/src/routes/exercises.ts` | Internal docs comment references `/alternatives` — actual endpoint is `/api/exercises/:id/alternatives`. |
+| L11 | Profile | `app/(tabs)/profile.tsx` | "PRO MEMBER" badge hardcoded for all users — gate on a real membership field once subscriptions are added. |
+| L14 | Profile | `app/(tabs)/profile.tsx` | Quick-tap `updateProfile` calls (insight level, etc.) have no `onError` handler — silent failures. |
+| L15 | Profile | `app/(tabs)/profile.tsx` | `markTourSeen()` fires on tour open rather than on completion — should move to `onDone` callback. |
