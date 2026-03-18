@@ -74,7 +74,7 @@ export default function VaultScreen() {
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const botPad = Platform.OS === "web" ? 34 : insets.bottom;
 
-  const { data: exercises, isLoading } = useExercises({
+  const { data: exercises, isLoading, isError, refetch } = useExercises({
     muscle_group: muscleGroup || undefined,
     equipment: equipment || undefined,
     goal: goal || undefined,
@@ -159,6 +159,8 @@ export default function VaultScreen() {
                 setMuscleGroup("");
                 setEquipment("");
                 setGoal("");
+                setSearchText("");
+                setDebouncedSearch("");
               }
               return !v;
             });
@@ -240,6 +242,14 @@ export default function VaultScreen() {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.orange} />
           <Text style={styles.loadingText}>Loading exercises...</Text>
+        </View>
+      ) : isError ? (
+        <View style={styles.loadingContainer}>
+          <Feather name="alert-circle" size={36} color={Colors.textMuted} />
+          <Text style={styles.errorText}>Couldn't load exercises</Text>
+          <Pressable style={styles.retryBtn} onPress={() => refetch()}>
+            <Text style={styles.retryBtnText}>RETRY</Text>
+          </Pressable>
         </View>
       ) : (
         <>
@@ -462,6 +472,25 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: "Inter_400Regular",
     color: Colors.textMuted,
+  },
+  errorText: {
+    fontSize: 14,
+    fontFamily: "Inter_700Bold",
+    color: Colors.textMuted,
+    textAlign: "center",
+  },
+  retryBtn: {
+    backgroundColor: Colors.orange,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 12,
+    marginTop: 4,
+  },
+  retryBtnText: {
+    fontSize: 11,
+    fontFamily: "Inter_900Black",
+    color: "#fff",
+    letterSpacing: 1,
   },
   resultCount: {
     fontSize: 11,

@@ -203,12 +203,12 @@ export default function ExerciseDetailScreen() {
 
       {history && (
         <>
-          {history.estimated1RM !== null && (
-            <View style={styles.coachCard}>
-              <View style={styles.coachHeader}>
-                <Feather name="cpu" size={18} color={Colors.highlight} />
-                <Text style={styles.coachTitle}>COACH'S NOTE</Text>
-              </View>
+          <View style={styles.coachCard}>
+            <View style={styles.coachHeader}>
+              <Feather name="cpu" size={18} color={Colors.highlight} />
+              <Text style={styles.coachTitle}>COACH'S NOTE</Text>
+            </View>
+            {history.estimated1RM !== null && (
               <View style={styles.coachStats}>
                 <View style={styles.coachStat}>
                   <Text style={styles.coachStatValue}>{Math.round(history.estimated1RM)} lbs</Text>
@@ -225,24 +225,24 @@ export default function ExerciseDetailScreen() {
                   <Text style={styles.coachStatLabel}>Sessions</Text>
                 </View>
               </View>
-              {coachNoteLoading ? (
-                <View style={styles.restRec}>
-                  <ActivityIndicator size="small" color={Colors.highlight} />
-                  <Text style={[styles.restRecText, { marginLeft: 6 }]}>Generating AI insight...</Text>
-                </View>
-              ) : coachNoteData?.coachNote ? (
-                <View style={styles.aiNoteContainer}>
-                  <Feather name="zap" size={12} color={Colors.highlight} />
-                  <Text style={styles.aiNoteText}>{coachNoteData.coachNote}</Text>
-                </View>
-              ) : history.restRecommendation ? (
-                <View style={styles.restRec}>
-                  <Feather name="clock" size={12} color={Colors.highlight} />
-                  <Text style={styles.restRecText}>{history.restRecommendation}</Text>
-                </View>
-              ) : null}
-            </View>
-          )}
+            )}
+            {coachNoteLoading ? (
+              <View style={styles.restRec}>
+                <ActivityIndicator size="small" color={Colors.highlight} />
+                <Text style={[styles.restRecText, { marginLeft: 6 }]}>Generating AI insight...</Text>
+              </View>
+            ) : coachNoteData?.coachNote ? (
+              <View style={styles.aiNoteContainer}>
+                <Feather name="zap" size={12} color={Colors.highlight} />
+                <Text style={styles.aiNoteText}>{coachNoteData.coachNote}</Text>
+              </View>
+            ) : history.restRecommendation ? (
+              <View style={styles.restRec}>
+                <Feather name="clock" size={12} color={Colors.highlight} />
+                <Text style={styles.restRecText}>{history.restRecommendation}</Text>
+              </View>
+            ) : null}
+          </View>
 
           {history.isPlateaued && (
             <View style={styles.plateauAlert}>
@@ -260,7 +260,7 @@ export default function ExerciseDetailScreen() {
                     style={styles.plateauSwapBtn}
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                      router.replace({ pathname: "/exercise/[id]" as any, params: { id: String(exercise.alternatives[0].id) } });
+                      router.push({ pathname: "/exercise/[id]" as any, params: { id: String(exercise.alternatives[0].id) } });
                     }}
                   >
                     <Text style={styles.plateauSwapText}>SWAP</Text>

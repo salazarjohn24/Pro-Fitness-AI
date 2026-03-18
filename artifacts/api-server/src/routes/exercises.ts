@@ -122,6 +122,11 @@ router.get("/exercises/:id/history", async (req: Request, res: Response) => {
     .from(exerciseLibraryTable)
     .where(eq(exerciseLibraryTable.id, exerciseId));
 
+  if (!exercise) {
+    res.status(404).json({ error: "Exercise not found" });
+    return;
+  }
+
   const history = await db
     .select()
     .from(workoutHistoryTable)
