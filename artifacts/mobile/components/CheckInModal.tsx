@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -159,6 +160,7 @@ export function CheckInModal({ visible, onClose, onComplete, initialData, isSubm
   }, [visible]);
 
   const handleFinish = () => {
+    Keyboard.dismiss();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     const sorenessVal = answers["soreness"] ?? 3;
@@ -198,6 +200,7 @@ export function CheckInModal({ visible, onClose, onComplete, initialData, isSubm
   };
 
   const handleBack = () => {
+    Keyboard.dismiss();
     Haptics.selectionAsync();
     if (phase === "notes") {
       setPhase("bodymap");
@@ -301,7 +304,11 @@ export function CheckInModal({ visible, onClose, onComplete, initialData, isSubm
           )}
 
           {phase === "notes" && (
-            <>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ flexGrow: 1 }}
+            >
               <View style={styles.questionBlock}>
                 <View style={[styles.questionIcon, { backgroundColor: "#A78BFA20" }]}>
                   <Feather name="edit-3" size={24} color="#A78BFA" />
@@ -319,7 +326,18 @@ export function CheckInModal({ visible, onClose, onComplete, initialData, isSubm
                 multiline
                 numberOfLines={3}
                 textAlignVertical="top"
+                blurOnSubmit
+                returnKeyType="done"
+                onSubmitEditing={() => Keyboard.dismiss()}
               />
+
+              <Pressable
+                onPress={() => Keyboard.dismiss()}
+                style={styles.dismissKeyboardBtn}
+              >
+                <Feather name="chevron-down" size={14} color={Colors.textSubtle} />
+                <Text style={styles.dismissKeyboardText}>Dismiss keyboard</Text>
+              </Pressable>
 
               <View style={styles.bodyMapFooter}>
                 <Pressable onPress={handleBack} style={styles.backBtn}>
@@ -335,7 +353,7 @@ export function CheckInModal({ visible, onClose, onComplete, initialData, isSubm
                   <Text style={styles.continueBtnText}>{isSubmitting ? "SAVING..." : "COMPLETE"}</Text>
                 </Pressable>
               </View>
-            </>
+            </ScrollView>
           )}
         </View>
       </KeyboardAvoidingView>
@@ -486,6 +504,20 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     color: Colors.text,
     minHeight: 100,
-    marginBottom: 8,
+    marginBottom: 4,
+  },
+  dismissKeyboardBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-end",
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    marginBottom: 4,
+  },
+  dismissKeyboardText: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
   },
 });
