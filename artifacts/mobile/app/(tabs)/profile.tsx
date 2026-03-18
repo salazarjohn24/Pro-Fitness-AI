@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import type { ComponentProps } from "react";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
@@ -52,7 +52,7 @@ const PRIMARY_GOALS = ["Muscle Growth", "Fat Loss", "Strength", "Flexibility \u0
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
-  const { data: profile, isLoading } = useProfile();
+  const { data: profile, isLoading, isError, refetch } = useProfile();
   const { mutate: updateProfile } = useUpdateProfile();
   const { mutate: deleteAccount, isPending: isDeleting } = useDeleteAccount();
   const { data: environments } = useEnvironments();
@@ -71,6 +71,8 @@ export default function ProfileScreen() {
   const [editLevel, setEditLevel] = useState("");
   const [editGoal, setEditGoal] = useState("");
   const [editUnitSystem, setEditUnitSystem] = useState<"imperial" | "metric">("imperial");
+  const [pendingFrequency, setPendingFrequency] = useState<number | null>(null);
+  const [pendingDuration, setPendingDuration] = useState<number | null>(null);
 
   const [showNewEnvModal, setShowNewEnvModal] = useState(false);
   const [newEnvName, setNewEnvName] = useState("");
@@ -178,6 +180,34 @@ export default function ProfileScreen() {
     setDisplayUnit(newSystem);
   };
 
+  const switchEditUnit = (newSystem: "imperial" | "metric") => {
+    if (editUnitSystem === newSystem) return;
+    Haptics.selectionAsync();
+    const w = editWeight ? parseInt(editWeight) : null;
+    if (newSystem === "metric") {
+      if (w != null && !isNaN(w)) setEditWeight(Math.round(w / 2.2046).toString());
+      const ft = parseInt(editHeightFt) || 0;
+      const ins = parseInt(editHeightIn) || 0;
+      const totalIn = ft * 12 + ins;
+      setEditHeightCm(totalIn > 0 ? Math.round(totalIn * 2.54).toString() : "");
+      setEditHeightFt("");
+      setEditHeightIn("");
+    } else {
+      if (w != null && !isNaN(w)) setEditWeight(Math.round(w * 2.2046).toString());
+      const cm = parseInt(editHeightCm) || 0;
+      if (cm > 0) {
+        const totalIn = cm / 2.54;
+        setEditHeightFt(Math.floor(totalIn / 12).toString());
+        setEditHeightIn(Math.round(totalIn % 12).toString());
+      } else {
+        setEditHeightFt("");
+        setEditHeightIn("");
+      }
+      setEditHeightCm("");
+    }
+    setEditUnitSystem(newSystem);
+  };
+
   const convertedWeight = (() => {
     const w = profile?.weight;
     if (w == null) return null;
@@ -214,7 +244,6 @@ export default function ProfileScreen() {
   };
 
   const saveGeneral = () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     let computedHeight: number | null = null;
     if (editUnitSystem === "imperial") {
       const ft = parseInt(editHeightFt) || 0;
@@ -224,16 +253,25 @@ export default function ProfileScreen() {
     } else {
       computedHeight = editHeightCm ? parseInt(editHeightCm) : null;
     }
-    updateProfile({
-      age: editAge ? parseInt(editAge) : null,
-      weight: editWeight ? parseInt(editWeight) : null,
-      height: computedHeight,
-      gender: editGender || null,
-      experienceLevel: editLevel || null,
-      primaryGoal: editGoal || null,
-      unitSystem: editUnitSystem,
-    });
-    setEditingGeneral(false);
+    updateProfile(
+      {
+        age: editAge ? parseInt(editAge) : null,
+        weight: editWeight ? parseInt(editWeight) : null,
+        height: computedHeight,
+        gender: editGender || null,
+        experienceLevel: editLevel || null,
+        primaryGoal: editGoal || null,
+        unitSystem: editUnitSystem,
+      },
+      {
+        onSuccess: () => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          setEditingGeneral(false);
+        },
+        onError: () =>
+          Alert.alert("Save Failed", "Could not save your profile. Please try again."),
+      }
+    );
   };
 
   const toggleEquipment = (category: string, item: string) => {
@@ -297,6 +335,23 @@ export default function ProfileScreen() {
     return (
       <View style={[styles.loadingContainer, { paddingTop: topPad }]}>
         <ActivityIndicator color={Colors.orange} size="large" />
+      </View>
+    );
+  }
+
+  if (isError) {
+    return (
+      <View style={[styles.loadingContainer, { paddingTop: topPad }]}>
+        <Ionicons name="alert-circle-outline" size={44} color={Colors.orange} />
+        <Text style={{ color: Colors.textMuted, fontFamily: "Inter_700Bold", fontSize: 15, marginTop: 14 }}>
+          Could not load your profile
+        </Text>
+        <Pressable
+          onPress={() => refetch()}
+          style={{ marginTop: 18, backgroundColor: Colors.orange, paddingHorizontal: 28, paddingVertical: 11, borderRadius: 10 }}
+        >
+          <Text style={{ color: "#fff", fontFamily: "Inter_900Black", fontSize: 13 }}>RETRY</Text>
+        </Pressable>
       </View>
     );
   }
@@ -394,7 +449,7 @@ export default function ProfileScreen() {
                 <Pressable
                   key={sys}
                   style={[styles.unitToggleBtnProfile, editUnitSystem === sys && styles.unitToggleBtnProfileActive]}
-                  onPress={() => { Haptics.selectionAsync(); setEditUnitSystem(sys); }}
+                  onPress={() => switchEditUnit(sys)}
                 >
                   <Text style={[styles.unitToggleTextProfile, editUnitSystem === sys && styles.unitToggleTextProfileActive]}>
                     {sys === "imperial" ? "LB · FT" : "KG · CM"}
@@ -522,22 +577,29 @@ export default function ProfileScreen() {
           <Text style={styles.auditTitle}>WEEKLY FREQUENCY</Text>
         </View>
         <View style={styles.freqRow}>
-          {FREQUENCIES.map((f) => (
-            <Pressable
-              key={f}
-              style={({ pressed }) => [
-                styles.freqBtn,
-                profile?.workoutFrequency === f && styles.freqBtnActive,
-                { opacity: pressed ? 0.8 : 1 },
-              ]}
-              onPress={() => {
-                Haptics.selectionAsync();
-                updateProfile({ workoutFrequency: f });
-              }}
-            >
-              <Text style={[styles.freqBtnText, profile?.workoutFrequency === f && styles.freqBtnTextActive]}>{f}x</Text>
-            </Pressable>
-          ))}
+          {FREQUENCIES.map((f) => {
+            const isActive = (pendingFrequency ?? profile?.workoutFrequency) === f;
+            return (
+              <Pressable
+                key={f}
+                style={({ pressed }) => [
+                  styles.freqBtn,
+                  isActive && styles.freqBtnActive,
+                  { opacity: pressed ? 0.8 : 1 },
+                ]}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setPendingFrequency(f);
+                  updateProfile({ workoutFrequency: f }, {
+                    onSuccess: () => setPendingFrequency(null),
+                    onError: () => setPendingFrequency(null),
+                  });
+                }}
+              >
+                <Text style={[styles.freqBtnText, isActive && styles.freqBtnTextActive]}>{f}x</Text>
+              </Pressable>
+            );
+          })}
         </View>
       </View>
 
@@ -547,24 +609,31 @@ export default function ProfileScreen() {
         </View>
         <Text style={styles.envHint}>Set your preferred session length — used by AI when building your workouts</Text>
         <View style={styles.freqRow}>
-          {[30, 45, 60, 75, 90].map((mins) => (
-            <Pressable
-              key={mins}
-              style={({ pressed }) => [
-                styles.freqBtn,
-                (profile?.preferredWorkoutDuration ?? 60) === mins && styles.freqBtnActive,
-                { opacity: pressed ? 0.8 : 1 },
-              ]}
-              onPress={() => {
-                Haptics.selectionAsync();
-                updateProfile({ preferredWorkoutDuration: mins });
-              }}
-            >
-              <Text style={[styles.freqBtnText, (profile?.preferredWorkoutDuration ?? 60) === mins && styles.freqBtnTextActive]}>
-                {mins}m
-              </Text>
-            </Pressable>
-          ))}
+          {[30, 45, 60, 75, 90].map((mins) => {
+            const isActive = (pendingDuration ?? profile?.preferredWorkoutDuration ?? 60) === mins;
+            return (
+              <Pressable
+                key={mins}
+                style={({ pressed }) => [
+                  styles.freqBtn,
+                  isActive && styles.freqBtnActive,
+                  { opacity: pressed ? 0.8 : 1 },
+                ]}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setPendingDuration(mins);
+                  updateProfile({ preferredWorkoutDuration: mins }, {
+                    onSuccess: () => setPendingDuration(null),
+                    onError: () => setPendingDuration(null),
+                  });
+                }}
+              >
+                <Text style={[styles.freqBtnText, isActive && styles.freqBtnTextActive]}>
+                  {mins}m
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
       </View>
 

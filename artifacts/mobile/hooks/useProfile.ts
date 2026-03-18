@@ -66,6 +66,7 @@ export function useProfile() {
       if (!res.ok) throw new Error(`Failed to load profile: ${res.status}`);
       return res.json();
     },
+    staleTime: 30_000,
     retry: (count, error) => {
       if (error?.message?.includes("401")) return false;
       return count < 2;
