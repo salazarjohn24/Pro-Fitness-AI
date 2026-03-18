@@ -343,12 +343,14 @@ router.post("/workout/generate", aiRateLimit, async (req: Request, res: Response
 
   const exerciseNames = availableForAI.map(e => e.name);
   const [perfRecords, substitutionRecords] = await Promise.all([
-    db.select().from(exercisePerformanceTable)
-      .where(and(
-        eq(exercisePerformanceTable.userId, userId),
-        inArray(exercisePerformanceTable.exerciseName, exerciseNames.slice(0, 50))
-      ))
-      .orderBy(desc(exercisePerformanceTable.performedAt)),
+    exerciseNames.length > 0
+      ? db.select().from(exercisePerformanceTable)
+          .where(and(
+            eq(exercisePerformanceTable.userId, userId),
+            inArray(exercisePerformanceTable.exerciseName, exerciseNames.slice(0, 50))
+          ))
+          .orderBy(desc(exercisePerformanceTable.performedAt))
+      : Promise.resolve([]),
     db.select().from(exerciseSubstitutionsTable)
       .where(eq(exerciseSubstitutionsTable.userId, userId))
       .orderBy(desc(exerciseSubstitutionsTable.count))
@@ -669,20 +671,21 @@ router.post("/workout/architect-generate", aiRateLimit, async (req: Request, res
       .where(eq(userProfilesTable.userId, userId));
 
     const today = new Date().toISOString().split("T")[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
     const [latestCheckin] = await db
       .select()
       .from(dailyCheckInsTable)
-      .where(and(eq(dailyCheckInsTable.userId, userId), eq(dailyCheckInsTable.date, today)));
-
-    if (!latestCheckin) {
-      res.status(400).json({ error: "Daily check-in required before generating a workout" });
-      return;
-    }
+      .where(and(
+        eq(dailyCheckInsTable.userId, userId),
+        sql`${dailyCheckInsTable.date} IN (${today}, ${yesterday})`,
+      ))
+      .orderBy(desc(dailyCheckInsTable.date))
+      .limit(1);
 
     const skillLevel = profile?.skillLevel ?? "intermediate";
     const userInjuries = normalizeInjuries((profile?.injuries as string[]) ?? []);
-    const energyLevel = latestCheckin.energyLevel;
-    const soreMuscleGroups = (latestCheckin.soreMuscleGroups as { muscle: string; severity: number }[]) ?? [];
+    const energyLevel = latestCheckin?.energyLevel ?? 3;
+    const soreMuscleGroups = ((latestCheckin?.soreMuscleGroups as { muscle: string; severity: number }[]) ?? []);
 
     const highSorenessGroups = [...new Set(soreMuscleGroups.filter(s => s.severity > 7).map(s => normalizeMuscle(s.muscle)))];
     const moderateSorenessGroups = [...new Set(soreMuscleGroups.filter(s => s.severity >= 4 && s.severity <= 7).map(s => normalizeMuscle(s.muscle)))];
@@ -802,12 +805,14 @@ router.post("/workout/architect-generate", aiRateLimit, async (req: Request, res
 
     const archExerciseNames = availableForAI.map(e => e.name);
     const [archPerfRecords, archSubRecords] = await Promise.all([
-      db.select().from(exercisePerformanceTable)
-        .where(and(
-          eq(exercisePerformanceTable.userId, userId),
-          inArray(exercisePerformanceTable.exerciseName, archExerciseNames.slice(0, 50))
-        ))
-        .orderBy(desc(exercisePerformanceTable.performedAt)),
+      archExerciseNames.length > 0
+        ? db.select().from(exercisePerformanceTable)
+            .where(and(
+              eq(exercisePerformanceTable.userId, userId),
+              inArray(exercisePerformanceTable.exerciseName, archExerciseNames.slice(0, 50))
+            ))
+            .orderBy(desc(exercisePerformanceTable.performedAt))
+        : Promise.resolve([]),
       db.select().from(exerciseSubstitutionsTable)
         .where(eq(exerciseSubstitutionsTable.userId, userId))
         .orderBy(desc(exerciseSubstitutionsTable.count))
