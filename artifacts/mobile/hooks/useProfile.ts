@@ -298,4 +298,18 @@ export function computeReadinessScore(checkIn: DailyCheckIn | null | undefined):
   return Math.round((weighted / 5) * 100);
 }
 
+export function useDeleteAccount() {
+  return useMutation({
+    mutationFn: async () => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${getApiBase()}/api/auth/account`, {
+        ...getFetchOptions(headers),
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Failed to delete account");
+      return res.json();
+    },
+  });
+}
+
 export { getApiBase, getAuthHeaders, getFetchOptions };

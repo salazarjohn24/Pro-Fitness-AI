@@ -31,7 +31,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
-import { useProfile, useUpdateProfile } from "@/hooks/useProfile";
+import { useProfile, useUpdateProfile, useDeleteAccount } from "@/hooks/useProfile";
 import { syncWithAppleHealth, isHealthKitAvailable } from "@/services/healthKit";
 import { useEnvironments, useCreateEnvironment, useUpdateEnvironment, useActivateEnvironment, useDeleteEnvironment } from "@/hooks/useEnvironments";
 import { EquipmentChecklist } from "@/components/EquipmentChecklist";
@@ -54,6 +54,7 @@ export default function ProfileScreen() {
   const { user, logout } = useAuth();
   const { data: profile, isLoading } = useProfile();
   const { mutate: updateProfile } = useUpdateProfile();
+  const { mutate: deleteAccount, isPending: isDeleting } = useDeleteAccount();
   const { data: environments } = useEnvironments();
   const { mutate: activateEnv } = useActivateEnvironment();
   const { mutate: createEnv, isPending: isCreating } = useCreateEnvironment();
@@ -110,10 +111,13 @@ export default function ProfileScreen() {
         {
           text: "Delete",
           style: "destructive",
-          onPress: async () => {
+          onPress: () => {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-            await logout();
-            router.replace("/welcome");
+            deleteAccount(undefined, {
+              onSuccess: () => router.replace("/welcome"),
+              onError: () =>
+                Alert.alert("Error", "Could not delete your account. Please try again."),
+            });
           },
         },
       ]
@@ -152,6 +156,11 @@ export default function ProfileScreen() {
     : user?.email?.split("@")[0] ?? "Athlete";
 
   const activeUnit = (profile?.unitSystem ?? "imperial") as "imperial" | "metric";
+  const [displayUnit, setDisplayUnit] = useState<"imperial" | "metric">("imperial");
+
+  useEffect(() => {
+    setDisplayUnit(activeUnit);
+  }, [activeUnit]);
 
   const formatHeightDisplay = (h: number | null | undefined, unit: "imperial" | "metric") => {
     if (!h) return "—";
@@ -163,22 +172,25 @@ export default function ProfileScreen() {
     return `${h} cm`;
   };
 
-  const toggleUnitSystem = (newSystem: "imperial" | "metric") => {
-    if (activeUnit === newSystem) return;
+  const toggleDisplayUnit = (newSystem: "imperial" | "metric") => {
+    if (displayUnit === newSystem) return;
     Haptics.selectionAsync();
-    const w = profile?.weight ?? null;
-    const h = profile?.height ?? null;
-    let newWeight = w;
-    let newHeight = h;
-    if (newSystem === "metric") {
-      if (w != null) newWeight = Math.round(w / 2.2046);
-      if (h != null) newHeight = Math.round(h * 2.54);
-    } else {
-      if (w != null) newWeight = Math.round(w * 2.2046);
-      if (h != null) newHeight = Math.round(h / 2.54);
-    }
-    updateProfile({ unitSystem: newSystem, weight: newWeight, height: newHeight });
+    setDisplayUnit(newSystem);
   };
+
+  const convertedWeight = (() => {
+    const w = profile?.weight;
+    if (w == null) return null;
+    if (displayUnit === activeUnit) return w;
+    return displayUnit === "metric" ? Math.round(w / 2.2046) : Math.round(w * 2.2046);
+  })();
+
+  const convertedHeight = (() => {
+    const h = profile?.height;
+    if (h == null) return null;
+    if (displayUnit === activeUnit) return h;
+    return displayUnit === "metric" ? Math.round(h * 2.54) : Math.round(h / 2.54);
+  })();
 
   const startEditingGeneral = () => {
     const unit = activeUnit;
@@ -343,10 +355,10 @@ export default function ProfileScreen() {
               {(["imperial", "metric"] as const).map((sys) => (
                 <Pressable
                   key={sys}
-                  style={[styles.unitToggleBtnProfile, activeUnit === sys && styles.unitToggleBtnProfileActive]}
-                  onPress={() => toggleUnitSystem(sys)}
+                  style={[styles.unitToggleBtnProfile, displayUnit === sys && styles.unitToggleBtnProfileActive]}
+                  onPress={() => toggleDisplayUnit(sys)}
                 >
-                  <Text style={[styles.unitToggleTextProfile, activeUnit === sys && styles.unitToggleTextProfileActive]}>
+                  <Text style={[styles.unitToggleTextProfile, displayUnit === sys && styles.unitToggleTextProfileActive]}>
                     {sys === "imperial" ? "LB · FT" : "KG · CM"}
                   </Text>
                 </Pressable>
@@ -356,8 +368,8 @@ export default function ProfileScreen() {
             <View style={styles.onboardingGrid}>
               {[
                 { label: "Age", value: profile?.age ? `${profile.age} yrs` : "—" },
-                { label: "Weight", value: profile?.weight ? `${profile.weight} ${activeUnit === "imperial" ? "lbs" : "kg"}` : "—" },
-                { label: "Height", value: formatHeightDisplay(profile?.height, activeUnit) },
+                { label: "Weight", value: convertedWeight != null ? `${convertedWeight} ${displayUnit === "imperial" ? "lbs" : "kg"}` : "—" },
+                { label: "Height", value: formatHeightDisplay(convertedHeight, displayUnit) },
                 { label: "Gender", value: profile?.gender ?? "—" },
                 { label: "Level", value: profile?.experienceLevel ?? "—" },
                 { label: "Goal", value: profile?.primaryGoal ?? "—" },

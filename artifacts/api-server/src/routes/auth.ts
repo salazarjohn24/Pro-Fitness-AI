@@ -347,4 +347,22 @@ router.post("/mobile-auth/logout", async (req: Request, res: Response) => {
   res.json(LogoutMobileSessionResponse.parse({ success: true }));
 });
 
+router.delete("/auth/account", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const userId = req.user.id;
+
+  const sid = getSessionId(req);
+  if (sid) {
+    await clearSession(res, sid);
+  }
+
+  await db.delete(usersTable).where(eq(usersTable.id, userId));
+
+  res.json({ success: true });
+});
+
 export default router;
