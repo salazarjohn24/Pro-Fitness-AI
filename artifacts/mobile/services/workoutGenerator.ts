@@ -1,9 +1,47 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { sendArchitectWorkoutReadyNotification } from "@/lib/notifications";
 import { getApiBase, getAuthHeaders, getFetchOptions } from "@/hooks/apiHelpers";
-import type { GeneratedWorkout } from "@/hooks/useWorkout";
+import type { GeneratedWorkout, GeneratedExercise } from "@/hooks/useWorkout";
 
 const PENDING_KEY = "arch_pending_workout";
+const DRAFT_KEY = "arch_draft_workout";
+
+export type WorkoutDraft = {
+  workoutName: string;
+  generatedWorkout: GeneratedWorkout;
+  reviewExercises: GeneratedExercise[];
+  exerciseSets: Record<string, number>;
+  exerciseReps: Record<string, number>;
+  exerciseWeights: Record<string, string>;
+  savedAt: string;
+};
+
+export async function saveDraft(draft: Omit<WorkoutDraft, "savedAt">): Promise<void> {
+  try {
+    const data: WorkoutDraft = { ...draft, savedAt: new Date().toISOString() };
+    await AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(data));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export async function loadDraft(): Promise<WorkoutDraft | null> {
+  try {
+    const raw = await AsyncStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as WorkoutDraft;
+  } catch {
+    return null;
+  }
+}
+
+export async function clearDraft(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(DRAFT_KEY);
+  } catch {
+    // ignore
+  }
+}
 
 type GenerationCallback = (workout: GeneratedWorkout | null) => void;
 

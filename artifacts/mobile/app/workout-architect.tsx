@@ -36,6 +36,10 @@ import {
   cancelGeneration,
   sendToBackground,
   takePendingWorkout,
+  saveDraft,
+  loadDraft,
+  clearDraft,
+  type WorkoutDraft,
 } from "@/services/workoutGenerator";
 
 const MUSCLE_GROUPS = [
@@ -177,6 +181,8 @@ export default function WorkoutArchitectScreen() {
   const [exerciseWeights, setExerciseWeights] = useState<Record<string, string>>({});
 
   const [sessionNotes, setSessionNotes] = useState("");
+  const [savedDraft, setSavedDraft] = useState<WorkoutDraft | null>(null);
+  const [draftSaving, setDraftSaving] = useState(false);
 
   const [swappingId, setSwappingId] = useState<string | null>(null);
   const [swapAlternatives, setSwapAlternatives] = useState<AlternativeExercise[]>([]);
@@ -258,6 +264,9 @@ export default function WorkoutArchitectScreen() {
         applyWorkout(workout);
         setStep("review");
       }
+    });
+    loadDraft().then(draft => {
+      if (draft) setSavedDraft(draft);
     });
   }, [applyWorkout]);
 
@@ -406,6 +415,41 @@ export default function WorkoutArchitectScreen() {
     });
   };
 
+  const handleSaveDraft = async () => {
+    if (!generatedWorkout || reviewExercises.length === 0) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setDraftSaving(true);
+    await saveDraft({
+      workoutName,
+      generatedWorkout,
+      reviewExercises,
+      exerciseSets,
+      exerciseReps,
+      exerciseWeights,
+    });
+    const updated = await loadDraft();
+    setSavedDraft(updated);
+    setDraftSaving(false);
+  };
+
+  const handleResumeDraft = (draft: WorkoutDraft) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setGeneratedWorkout(draft.generatedWorkout);
+    setWorkoutName(draft.workoutName);
+    setReviewExercises(draft.reviewExercises);
+    setExerciseSets(draft.exerciseSets);
+    setExerciseReps(draft.exerciseReps);
+    setExerciseWeights(draft.exerciseWeights);
+    setSavedDraft(null);
+    setStep("review");
+  };
+
+  const handleDiscardDraft = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    await clearDraft();
+    setSavedDraft(null);
+  };
+
   const handleStartWorkout = () => {
     if (!generatedWorkout || reviewExercises.length === 0) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -424,6 +468,9 @@ export default function WorkoutArchitectScreen() {
       totalSets: finalExercises.reduce((a, e) => a + e.sets, 0),
       estimatedMinutes: Math.round(finalExercises.reduce((a, e) => a + e.sets * 2.5, 0)),
     };
+
+    clearDraft();
+    setSavedDraft(null);
 
     router.push({
       pathname: "/workout-session",
@@ -641,7 +688,17 @@ export default function WorkoutArchitectScreen() {
             <Feather name="arrow-left" size={18} color={Colors.textMuted} />
           </Pressable>
           <Text style={styles.topBarTitle}>REVIEW WORKOUT</Text>
-          <View style={{ width: 36 }} />
+          <Pressable
+            style={[styles.draftBtn, draftSaving && { opacity: 0.5 }]}
+            onPress={handleSaveDraft}
+            disabled={draftSaving}
+          >
+            <Feather
+              name={savedDraft ? "bookmark" : "bookmark"}
+              size={16}
+              color={savedDraft ? Colors.orange : Colors.textSubtle}
+            />
+          </Pressable>
         </View>
 
         <ScrollView
@@ -1148,6 +1205,37 @@ export default function WorkoutArchitectScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: botPad + 100 }]}
         showsVerticalScrollIndicator={false}
       >
+        {savedDraft && (
+          <View style={styles.draftBanner}>
+            <View style={styles.draftBannerLeft}>
+              <Feather name="bookmark" size={15} color={Colors.orange} />
+              <View>
+                <Text style={styles.draftBannerTitle}>SAVED DRAFT</Text>
+                <Text style={styles.draftBannerSub} numberOfLines={1}>{savedDraft.workoutName}</Text>
+                <Text style={styles.draftBannerTime}>
+                  {new Date(savedDraft.savedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                  {" · "}
+                  {new Date(savedDraft.savedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.draftBannerBtns}>
+              <Pressable
+                style={({ pressed }) => [styles.draftResumeBtn, { opacity: pressed ? 0.8 : 1 }]}
+                onPress={() => handleResumeDraft(savedDraft)}
+              >
+                <Text style={styles.draftResumeBtnText}>RESUME</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.draftDiscardBtn, { opacity: pressed ? 0.8 : 1 }]}
+                onPress={handleDiscardDraft}
+              >
+                <Feather name="trash-2" size={13} color={Colors.textSubtle} />
+              </Pressable>
+            </View>
+          </View>
+        )}
+
         <View style={styles.selectionGrid}>
           {MUSCLE_GROUPS.map(mg => {
             const sel = selectedMuscles.includes(mg.id);
@@ -1725,6 +1813,74 @@ const styles = StyleSheet.create({
     color: Colors.textSubtle,
     marginTop: 8,
     textAlign: "center",
+  },
+  draftBtn: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  draftBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "rgba(255, 149, 0, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 149, 0, 0.25)",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 16,
+    gap: 10,
+  },
+  draftBannerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+  draftBannerTitle: {
+    fontSize: 10,
+    fontFamily: "Inter_900Black",
+    color: Colors.orange,
+    letterSpacing: 0.5,
+  },
+  draftBannerSub: {
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+    color: Colors.text,
+    marginTop: 2,
+  },
+  draftBannerTime: {
+    fontSize: 10,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
+    marginTop: 2,
+  },
+  draftBannerBtns: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  draftResumeBtn: {
+    backgroundColor: Colors.orange,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  draftResumeBtnText: {
+    fontSize: 11,
+    fontFamily: "Inter_900Black",
+    color: "#fff",
+    letterSpacing: 0.5,
+  },
+  draftDiscardBtn: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderRadius: 8,
   },
   savedPrefsCard: {
     backgroundColor: "rgba(255,255,255,0.04)",
