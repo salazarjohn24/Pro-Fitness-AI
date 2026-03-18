@@ -83,7 +83,7 @@ export default function WorkoutDetailScreen() {
   const id = parseInt(params.id ?? "0", 10);
 
   const { data: session, isLoading: sessionLoading } = useSessionDetail(type === "internal" ? id : null);
-  const { data: externalWorkouts } = useRecentExternalWorkouts();
+  const { data: externalWorkouts, isLoading: externalLoading } = useRecentExternalWorkouts();
   const { mutate: updateSession, isPending: isSaving } = useUpdateSessionExercises();
   const { mutate: updateExternal, isPending: isSavingExternal } = useUpdateExternalWorkout();
 
@@ -93,7 +93,7 @@ export default function WorkoutDetailScreen() {
 
   const external = type === "external" ? externalWorkouts?.find((w: ExternalWorkout) => w.id === id) : null;
 
-  if (type === "internal" && sessionLoading) {
+  if ((type === "internal" && sessionLoading) || (type === "external" && externalLoading)) {
     return (
       <View style={[styles.container, { paddingTop: topPad, justifyContent: "center", alignItems: "center" }]}>
         <ActivityIndicator color={Colors.orange} size="large" />
@@ -101,7 +101,7 @@ export default function WorkoutDetailScreen() {
     );
   }
 
-  if (type === "internal" && !session) {
+  if ((type === "internal" && !session) || (type === "external" && !external && !externalLoading)) {
     return (
       <View style={[styles.container, { paddingTop: topPad }]}>
         <View style={styles.topBar}>
@@ -111,8 +111,17 @@ export default function WorkoutDetailScreen() {
           <Text style={styles.topBarTitle}>WORKOUT DETAIL</Text>
           <View style={{ width: 36 }} />
         </View>
-        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-          <Text style={{ color: Colors.textMuted, fontFamily: "Inter_400Regular" }}>Session not found</Text>
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", gap: 12, paddingHorizontal: 40 }}>
+          <Feather name="alert-circle" size={32} color={Colors.textSubtle} />
+          <Text style={{ color: Colors.textMuted, fontFamily: "Inter_700Bold", fontSize: 14, textAlign: "center" }}>
+            {type === "internal" ? "Session not found" : "Workout not found"}
+          </Text>
+          <Text style={{ color: Colors.textSubtle, fontFamily: "Inter_400Regular", fontSize: 12, textAlign: "center", lineHeight: 18 }}>
+            This workout may have been deleted, or it's older than your current history window.
+          </Text>
+          <Pressable onPress={() => router.back()} style={{ marginTop: 8, paddingVertical: 10, paddingHorizontal: 20, borderRadius: 12, backgroundColor: Colors.bgCard, borderWidth: 1, borderColor: Colors.border }}>
+            <Text style={{ color: Colors.textMuted, fontFamily: "Inter_700Bold", fontSize: 12 }}>Go Back</Text>
+          </Pressable>
         </View>
       </View>
     );

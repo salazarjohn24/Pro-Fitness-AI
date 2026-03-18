@@ -33,39 +33,39 @@ interface TourStep {
 
 const TOUR_STEPS: TourStep[] = [
   {
-    tabIcon: "home",
-    tabLabel: "HOME",
+    tabIcon: "zap",
+    tabLabel: "STATUS",
     tabIndex: 0,
     accentColor: Colors.highlight,
     bgColor: "rgba(246,234,152,0.08)",
     headline: "Your daily command center",
     description:
-      "Every morning starts here. Your readiness score — built from sleep, energy, and soreness — tells the AI how hard to push you today.",
-    tip: "Check in daily for smarter workouts. Skipping check-ins means generic programming.",
+      "This is where your day starts. Check in to log your energy, sleep, and soreness — the AI uses that to decide how hard to push you today and build a workout that actually fits how you feel.",
+    tip: "More check-ins = smarter sessions. Even a 20-second log makes a difference.",
     tipIcon: "zap",
   },
   {
-    tabIcon: "book-open",
+    tabIcon: "grid",
     tabLabel: "VAULT",
     tabIndex: 1,
     accentColor: Colors.orange,
     bgColor: "rgba(252,82,0,0.08)",
-    headline: "Your exercise library",
+    headline: "Build your perfect workout",
     description:
-      "Browse 100+ exercises filtered by muscle, equipment, or goal. Tap the heart icon on any exercise to save it — favorites get prioritized in your AI-built workouts.",
-    tip: "Save the exercises you love and the AI will reach for them first.",
-    tipIcon: "heart",
+      "Browse 100+ exercises by muscle, equipment, or goal. Hit the heart on any exercise to save it — your favorites get pulled into AI-generated workouts automatically. Then hit the AI Builder button to generate a full custom session.",
+    tip: "The AI Builder at the top of Vault is the fastest way to get a personalized session.",
+    tipIcon: "cpu",
   },
   {
     tabIcon: "bar-chart-2",
-    tabLabel: "PROGRESS",
+    tabLabel: "AUDIT",
     tabIndex: 2,
     accentColor: "#A78BFA",
     bgColor: "rgba(167,139,250,0.08)",
-    headline: "Your performance audit",
+    headline: "See exactly how you're progressing",
     description:
-      "The more you log, the sharper the insights. See which muscles are undertrained, track volume trends, and get alerted before a plateau hits.",
-    tip: "Patterns emerge after 4–6 sessions. The data compounds over time.",
+      "Volume charts, muscle group breakdowns, plateau alerts, and recovery correlation all live here. The more sessions you log, the sharper the picture gets.",
+    tip: "After 4–6 logged sessions, patterns emerge that you can't spot on your own.",
     tipIcon: "trending-up",
   },
   {
@@ -74,15 +74,15 @@ const TOUR_STEPS: TourStep[] = [
     tabIndex: 3,
     accentColor: Colors.recovery,
     bgColor: "rgba(119,156,175,0.08)",
-    headline: "Personalize everything",
+    headline: "The smarter you set this up, the better it works",
     description:
-      "Tell the AI about your injuries, set your gym equipment, and dial in your training goal. This is what separates a generic plan from one built for you.",
-    tip: "Keep your injuries up to date — the AI actively avoids them.",
+      "Add your injuries, set your gym equipment, and choose your training goal. The AI reads all of this before building your workouts — so an accurate profile means workouts built specifically for you, not a generic template.",
+    tip: "Update your injuries any time — the AI actively programs around them.",
     tipIcon: "shield",
   },
 ];
 
-const TAB_ICONS = ["home", "book-open", "bar-chart-2", "user"] as const;
+const TAB_ICONS = ["zap", "grid", "bar-chart-2", "user"] as const;
 
 interface AppTourOverlayProps {
   visible: boolean;

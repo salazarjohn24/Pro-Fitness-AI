@@ -84,7 +84,7 @@ router.get("/workouts/external", async (req: Request, res: Response) => {
     .from(externalWorkoutsTable)
     .where(eq(externalWorkoutsTable.userId, req.user.id))
     .orderBy(desc(externalWorkoutsTable.createdAt))
-    .limit(10);
+    .limit(100);
 
   res.json(workouts);
 });
