@@ -126,10 +126,10 @@ export default function StatusScreen() {
     return d.toISOString().slice(0, 10);
   })();
 
-  // Count all workouts this week: external + in-app sessions from unified history
+  // Count all workouts this week: external (excluding rest days) + in-app sessions from unified history
   const thisWeekExternal = (recentExternalWorkouts ?? []).filter((w: any) => {
     const d = (w.workoutDate ?? w.createdAt?.slice(0, 10) ?? "");
-    return d >= weekMonday;
+    return d >= weekMonday && w.workoutType !== "rest";
   });
   const thisWeekInternal = (workoutHistory ?? []).filter((w) => w.type === "internal" && (w.date ?? "").slice(0, 10) >= weekMonday);
   const weeklySessionCount = thisWeekExternal.length + thisWeekInternal.length;
@@ -211,6 +211,10 @@ export default function StatusScreen() {
           const newProgress = Math.min(100, syncProgress + 50);
           updateProfile({ activityImported: true, dailySyncProgress: newProgress });
         },
+        onError: () => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          Alert.alert("Failed", "Could not log rest day. Please try again.");
+        },
       }
     );
   };
@@ -222,6 +226,9 @@ export default function StatusScreen() {
       onSuccess: () => {
         const newProgress = Math.max(0, syncProgress - 50);
         updateProfile({ activityImported: false, dailySyncProgress: newProgress });
+      },
+      onError: () => {
+        Alert.alert("Failed", "Could not remove rest day. Please try again.");
       },
     });
   };
@@ -238,6 +245,13 @@ export default function StatusScreen() {
           setGeneratedWorkout(workout);
           sendWorkoutReadyNotification(workout.workoutTitle);
           setReviewOpen(true);
+        },
+        onError: () => {
+          Alert.alert(
+            "Generation Failed",
+            "Could not build your workout. Check your connection and try again.",
+            [{ text: "OK" }]
+          );
         },
       });
     }

@@ -212,3 +212,7 @@ Known low-severity issues confirmed during QA passes across all screens. None ar
 | L18 | Builder | `app/workout-architect.tsx` | Swap fetch failure shows "No alternatives available" — indistinguishable from a genuinely empty result. |
 | L19 | Builder | `app/workout-architect.tsx` | Workout name `TextInput` has no `placeholder` prop — blank if AI returns an empty title. |
 | L20 | Builder | `app/workout-architect.tsx` | Deleting all exercises disables START with no explanation text — user may not know why the button is greyed out. |
+| L21 | Home | `app/(tabs)/index.tsx` | `TODAY` display string is a module-level constant computed at import time — stale if app is left open past midnight. |
+| L22 | Home | `app/(tabs)/index.tsx` | Auto-generate `useEffect` dep array omits `generateWorkout` and `isGenerating` — React hooks lint violation, guarded in practice by `autoGenerateAttempted` ref. |
+| L23 | Home | `app/(tabs)/index.tsx` | Post-check-in auto-generation in `handleCheckInComplete` has no `onError` — silent failure if AI call fails after a successful check-in. |
+| L24 | Home | `app/(tabs)/index.tsx` | Deload banner has no dismiss button — the recommendation is shown on every app load with no way to acknowledge it. |
