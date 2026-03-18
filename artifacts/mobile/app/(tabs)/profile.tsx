@@ -175,7 +175,7 @@ export default function ProfileScreen() {
   useEffect(() => {
     if (profile?.workoutPreferences != null) {
       setWorkoutPrefsText(profile.workoutPreferences);
-      setPrefsTouched(false);
+      setPrefsTouched(profile.workoutPreferences.length > 0);
     }
   }, [profile?.workoutPreferences]);
 

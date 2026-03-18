@@ -150,6 +150,8 @@ ${exerciseList}
 
 OUTPUT FORMAT: First output a JSON object on its own line with "workoutTitle" and "rationale" keys. Then output one exercise per line as a JSON object with these exact keys: exerciseId, name, sets, reps, weight (use "BW" for bodyweight, "Light", "Moderate", "Heavy", or "Max Effort").
 
+The "rationale" field must be 1-2 sentences that specifically explain what shaped this session. If the user provided custom workout preferences, explicitly call out how they influenced the workout design (e.g. "Based on your preference for compound movements and Hyrox training, this session prioritizes..."). If energy or sleep is low, mention it. Make the rationale feel personalized, not generic.
+
 RULES:
 - Always include 2-3 warmup exercises, 2-4 compound lifts, 2-4 accessory exercises, 1-2 core exercises, and 1-2 cooldowns
 - weight field: "BW" for warmup/cooldown/bodyweight, otherwise "Light"/"Moderate"/"Heavy"/"Max Effort" based on goal and skill
@@ -201,7 +203,7 @@ ${substitutionLines}
 User's custom workout preferences (IMPORTANT — always honor these when designing the session):
 ${ctx.workoutPreferences?.trim() ? sanitizeUserInput(ctx.workoutPreferences) : "None provided"}
 
-Generate the ideal workout. Apply progressive overload where previous performance data exists. Honor substitution preferences. CRITICALLY: respect the external training fatigue above to avoid muscle overload.`;
+Generate the ideal workout. Apply progressive overload where previous performance data exists. Honor substitution preferences. CRITICALLY: respect the external training fatigue above to avoid muscle overload. In the rationale, explicitly mention how the user's custom preferences (if any) shaped this session — do not write a generic rationale.`;
 
   const response = await openai.chat.completions.create({
     model: "gpt-5-mini",
@@ -251,6 +253,8 @@ AVAILABLE EXERCISES (only use these, referenced by ID):
 ${exerciseList}
 
 OUTPUT FORMAT: First output a JSON object on its own line with "workoutTitle" and "rationale" keys. Then output one exercise per line as a JSON object with these exact keys: exerciseId, name, sets, reps, weight.
+
+The "rationale" field must be 1-2 sentences that specifically explain what shaped this session. Explicitly call out: (1) how session notes influenced this specific workout if provided, (2) how custom workout preferences affected exercise selection or structure if provided, (3) any external fatigue adjustments made. Make it feel personal and specific — not generic.
 
 RULES:
 - Prioritize the requested muscle groups for compound and accessory exercises
@@ -306,7 +310,7 @@ ${ctx.workoutPreferences?.trim() ? sanitizeUserInput(ctx.workoutPreferences) : "
 Additional notes for today's session (IMPORTANT — honor these for this specific workout):
 ${ctx.sessionNotes?.trim() ? sanitizeUserInput(ctx.sessionNotes) : "None"}
 
-Generate the custom workout targeting the requested muscle groups. Adjust exercise count and sets to fit the time available. Apply progressive overload and honor substitution preferences. Mention any external fatigue overlap in the rationale.`;
+Generate the custom workout targeting the requested muscle groups. Adjust exercise count and sets to fit the time available. Apply progressive overload and honor substitution preferences. In the rationale, specifically reference how session notes (if any) and workout preferences (if any) shaped this session — never write a generic rationale.`;
 
   const response = await openai.chat.completions.create({
     model: "gpt-5-mini",
