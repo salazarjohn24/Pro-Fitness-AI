@@ -129,10 +129,68 @@ export function useArchitectGenerate() {
   });
 }
 
-export async function fetchExerciseAlternatives(exerciseId: string): Promise<AlternativeExercise[]> {
+export async function fetchExerciseAlternatives(exerciseName: string, excludeNames: string[] = []): Promise<AlternativeExercise[]> {
   const headers = await getAuthHeaders();
-  const res = await fetch(`${getApiBase()}/api/exercises/${exerciseId}/alternatives`, getFetchOptions(headers));
+  const exclude = encodeURIComponent(excludeNames.join(","));
+  const res = await fetch(
+    `${getApiBase()}/api/exercises/by-name/${encodeURIComponent(exerciseName)}/alternatives?exclude=${exclude}`,
+    getFetchOptions(headers)
+  );
   if (!res.ok) return [];
+  return res.json();
+}
+
+export async function fetchExerciseSearch(query: string): Promise<AlternativeExercise[]> {
+  const headers = await getAuthHeaders();
+  const res = await fetch(
+    `${getApiBase()}/api/exercises?search=${encodeURIComponent(query)}`,
+    getFetchOptions(headers)
+  );
+  if (!res.ok) return [];
+  const data = await res.json() as Array<{
+    id: number;
+    name: string;
+    muscleGroup: string;
+    equipment: string;
+    goal: string;
+    difficulty: string;
+    primaryMuscles: string[];
+    secondaryMuscles: string[];
+  }>;
+  return data.slice(0, 10).map(e => ({
+    id: String(e.id),
+    name: e.name,
+    primaryMuscle: e.primaryMuscles?.[0] ?? e.muscleGroup,
+    secondaryMuscles: e.secondaryMuscles ?? [],
+    equipment: [e.equipment],
+    category: e.goal,
+    difficulty: e.difficulty,
+    alternatives: [],
+    youtubeKeyword: e.name,
+  }));
+}
+
+export interface ExerciseInfo {
+  id: number;
+  name: string;
+  muscleGroup: string;
+  difficulty: string;
+  equipment: string;
+  primaryMuscles: string[];
+  secondaryMuscles: string[];
+  tertiaryMuscles: string[];
+  instructions: string[];
+  commonMistakes: string[];
+  youtubeUrl: string | null;
+}
+
+export async function fetchExerciseInfo(name: string): Promise<ExerciseInfo | null> {
+  const headers = await getAuthHeaders();
+  const res = await fetch(
+    `${getApiBase()}/api/exercises/by-name/${encodeURIComponent(name)}/describe`,
+    getFetchOptions(headers)
+  );
+  if (!res.ok) return null;
   return res.json();
 }
 

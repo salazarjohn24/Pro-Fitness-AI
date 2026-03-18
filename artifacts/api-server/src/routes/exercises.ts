@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, exerciseLibraryTable, workoutHistoryTable, userProfilesTable, userFavoriteExercisesTable } from "@workspace/db";
-import { eq, and, ilike, inArray, desc } from "drizzle-orm";
+import { eq, and, ilike, inArray, desc, ne } from "drizzle-orm";
 import { generateCoachNote } from "../services/aiService";
 import { aiRateLimit } from "../middlewares/rateLimitMiddleware";
 
@@ -56,6 +56,86 @@ router.get("/exercises/favorites", async (req: Request, res: Response) => {
     .where(inArray(exerciseLibraryTable.id, ids));
 
   res.json(exercises);
+});
+
+router.get("/exercises/by-name/:name/alternatives", async (req: Request, res: Response) => {
+  const name = decodeURIComponent(req.params.name);
+  const excludeParam = typeof req.query.exclude === "string" ? req.query.exclude : "";
+  const excludeNames = excludeParam ? excludeParam.split(",").map(n => n.toLowerCase().trim()) : [];
+
+  const [exercise] = await db
+    .select()
+    .from(exerciseLibraryTable)
+    .where(ilike(exerciseLibraryTable.name, name))
+    .limit(1);
+
+  let results: typeof exerciseLibraryTable.$inferSelect[] = [];
+
+  if (exercise) {
+    results = await db
+      .select()
+      .from(exerciseLibraryTable)
+      .where(
+        and(
+          eq(exerciseLibraryTable.muscleGroup, exercise.muscleGroup),
+          ne(exerciseLibraryTable.id, exercise.id)
+        )
+      )
+      .limit(12);
+  } else {
+    results = await db
+      .select()
+      .from(exerciseLibraryTable)
+      .where(ilike(exerciseLibraryTable.name, `%${name.split(" ")[0]}%`))
+      .limit(12);
+  }
+
+  const filtered = excludeNames.length > 0
+    ? results.filter(e => !excludeNames.includes(e.name.toLowerCase()))
+    : results;
+
+  res.json(
+    filtered.slice(0, 8).map(e => ({
+      id: String(e.id),
+      name: e.name,
+      primaryMuscle: (e.primaryMuscles as string[])?.[0] ?? e.muscleGroup,
+      secondaryMuscles: (e.secondaryMuscles as string[]) ?? [],
+      equipment: [e.equipment],
+      category: e.goal,
+      difficulty: e.difficulty,
+      alternatives: [],
+      youtubeKeyword: e.name,
+    }))
+  );
+});
+
+router.get("/exercises/by-name/:name/describe", async (req: Request, res: Response) => {
+  const name = decodeURIComponent(req.params.name);
+
+  const [exercise] = await db
+    .select()
+    .from(exerciseLibraryTable)
+    .where(ilike(exerciseLibraryTable.name, name))
+    .limit(1);
+
+  if (!exercise) {
+    res.status(404).json({ error: "Exercise not found" });
+    return;
+  }
+
+  res.json({
+    id: exercise.id,
+    name: exercise.name,
+    muscleGroup: exercise.muscleGroup,
+    difficulty: exercise.difficulty,
+    equipment: exercise.equipment,
+    primaryMuscles: (exercise.primaryMuscles as string[]) ?? [],
+    secondaryMuscles: (exercise.secondaryMuscles as string[]) ?? [],
+    tertiaryMuscles: (exercise.tertiaryMuscles as string[]) ?? [],
+    instructions: (exercise.instructions as string[]) ?? [],
+    commonMistakes: (exercise.commonMistakes as string[]) ?? [],
+    youtubeUrl: exercise.youtubeUrl,
+  });
 });
 
 router.get("/exercises/:id", async (req: Request, res: Response) => {

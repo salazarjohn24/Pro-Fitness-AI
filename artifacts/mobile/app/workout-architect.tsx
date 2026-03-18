@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -22,13 +22,21 @@ import { CheckInModal } from "@/components/CheckInModal";
 import { useEnvironments, useCreateEnvironment, type GymEnvironment } from "@/hooks/useEnvironments";
 import { useTodayCheckIn, useProfile, useSubmitCheckIn, useUpdateProfile } from "@/hooks/useProfile";
 import {
-  useArchitectGenerate,
   fetchExerciseAlternatives,
+  fetchExerciseSearch,
+  fetchExerciseInfo,
   recordExerciseSubstitution,
   type AlternativeExercise,
   type GeneratedExercise,
   type GeneratedWorkout,
+  type ExerciseInfo,
 } from "@/hooks/useWorkout";
+import {
+  startGeneration,
+  cancelGeneration,
+  sendToBackground,
+  takePendingWorkout,
+} from "@/services/workoutGenerator";
 
 const MUSCLE_GROUPS = [
   { id: "chest", label: "Chest", icon: "💪" },
@@ -104,7 +112,6 @@ const DURATION_OPTIONS = [30, 45, 60, 75, 90, 120];
 export default function WorkoutArchitectScreen() {
   const insets = useSafeAreaInsets();
   const { data: todayCheckIn, isLoading: checkInLoading, refetch: refetchCheckIn } = useTodayCheckIn();
-  const { mutate: architectGenerate, isPending: isGenerating } = useArchitectGenerate();
   const { data: environments } = useEnvironments();
   const { mutate: createEnv, isPending: isCreatingEnv } = useCreateEnvironment();
   const { data: profile } = useProfile();
@@ -172,8 +179,13 @@ export default function WorkoutArchitectScreen() {
   const [swappingId, setSwappingId] = useState<string | null>(null);
   const [swapAlternatives, setSwapAlternatives] = useState<AlternativeExercise[]>([]);
   const [swapLoading, setSwapLoading] = useState(false);
+  const [swapSearch, setSwapSearch] = useState("");
+  const [swapSearchResults, setSwapSearchResults] = useState<AlternativeExercise[]>([]);
+  const [swapSearchLoading, setSwapSearchLoading] = useState(false);
 
-  const generationCancelledRef = useRef(false);
+  const [infoExercise, setInfoExercise] = useState<GeneratedExercise | null>(null);
+  const [infoData, setInfoData] = useState<ExerciseInfo | null>(null);
+  const [infoLoading, setInfoLoading] = useState(false);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const botPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -221,41 +233,49 @@ export default function WorkoutArchitectScreen() {
     });
   };
 
+  const applyWorkout = useCallback((workout: GeneratedWorkout) => {
+    setGeneratedWorkout(workout);
+    setWorkoutName(workout.workoutTitle);
+    setReviewExercises(workout.exercises);
+    const sets: Record<string, number> = {};
+    const reps: Record<string, number> = {};
+    const weights: Record<string, string> = {};
+    workout.exercises.forEach(ex => {
+      sets[ex.exerciseId] = ex.sets;
+      reps[ex.exerciseId] = ex.reps;
+      weights[ex.exerciseId] = ex.weight;
+    });
+    setExerciseSets(sets);
+    setExerciseReps(reps);
+    setExerciseWeights(weights);
+  }, []);
+
+  useEffect(() => {
+    takePendingWorkout().then(workout => {
+      if (workout) {
+        applyWorkout(workout);
+        setStep("review");
+      }
+    });
+  }, [applyWorkout]);
+
   const handleGenerate = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    generationCancelledRef.current = false;
     setStep("generating");
-
-    architectGenerate(
+    startGeneration(
       { muscleGroups: selectedMuscles, equipment: selectedEquipment, availableMinutes },
-      {
-        onSuccess: (workout) => {
-          if (generationCancelledRef.current) return;
-          setGeneratedWorkout(workout);
-          setWorkoutName(workout.workoutTitle);
-          setReviewExercises(workout.exercises);
-          const sets: Record<string, number> = {};
-          const reps: Record<string, number> = {};
-          const weights: Record<string, string> = {};
-          workout.exercises.forEach(ex => {
-            sets[ex.exerciseId] = ex.sets;
-            reps[ex.exerciseId] = ex.reps;
-            weights[ex.exerciseId] = ex.weight;
-          });
-          setExerciseSets(sets);
-          setExerciseReps(reps);
-          setExerciseWeights(weights);
-          setStep("review");
-        },
-        onError: () => {
-          if (generationCancelledRef.current) return;
+      (workout) => {
+        if (!workout) {
           setStep("equipment");
           Alert.alert(
             "Generation Failed",
             "Could not build your workout. Check your connection and try again.",
             [{ text: "OK" }]
           );
-        },
+          return;
+        }
+        applyWorkout(workout);
+        setStep("review");
       }
     );
   };
@@ -283,16 +303,56 @@ export default function WorkoutArchitectScreen() {
 
   const handleSwap = useCallback(async (exerciseId: string) => {
     setSwappingId(exerciseId);
+    setSwapSearch("");
+    setSwapSearchResults([]);
     setSwapLoading(true);
+    const ex = reviewExercises.find(e => e.exerciseId === exerciseId);
+    const exerciseName = ex?.name ?? exerciseId;
+    const currentNames = reviewExercises.map(e => e.name);
     try {
-      const alts = await fetchExerciseAlternatives(exerciseId);
-      const currentIds = new Set(reviewExercises.map(e => e.exerciseId));
-      setSwapAlternatives(alts.filter(a => !currentIds.has(a.id)));
+      const alts = await fetchExerciseAlternatives(exerciseName, currentNames);
+      setSwapAlternatives(alts);
     } catch {
       setSwapAlternatives([]);
     }
     setSwapLoading(false);
   }, [reviewExercises]);
+
+  useEffect(() => {
+    const trimmed = swapSearch.trim();
+    if (!trimmed) {
+      setSwapSearchResults([]);
+      return;
+    }
+    const t = setTimeout(async () => {
+      setSwapSearchLoading(true);
+      try {
+        const results = await fetchExerciseSearch(trimmed);
+        const swappingEx = reviewExercises.find(e => e.exerciseId === swappingId);
+        const currentNames = new Set(reviewExercises.map(e => e.name.toLowerCase()));
+        setSwapSearchResults(
+          results.filter(r => r.name.toLowerCase() !== swappingEx?.name.toLowerCase() && !currentNames.has(r.name.toLowerCase()))
+        );
+      } catch {
+        setSwapSearchResults([]);
+      }
+      setSwapSearchLoading(false);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [swapSearch, swappingId, reviewExercises]);
+
+  const handleOpenInfo = useCallback(async (ex: GeneratedExercise) => {
+    setInfoExercise(ex);
+    setInfoData(null);
+    setInfoLoading(true);
+    try {
+      const data = await fetchExerciseInfo(ex.name);
+      setInfoData(data);
+    } catch {
+      setInfoData(null);
+    }
+    setInfoLoading(false);
+  }, []);
 
   const confirmSwap = (alt: AlternativeExercise) => {
     if (!swappingId) return;
@@ -453,7 +513,7 @@ export default function WorkoutArchitectScreen() {
         <View style={styles.topBar}>
           <Pressable
             onPress={() => {
-              generationCancelledRef.current = true;
+              cancelGeneration();
               setStep("equipment");
             }}
             style={styles.backBtn}
@@ -469,6 +529,17 @@ export default function WorkoutArchitectScreen() {
           <Text style={styles.generatingDesc}>
             Analyzing your check-in data, soreness map, and selected muscle groups to create your optimal session...
           </Text>
+          <Pressable
+            style={({ pressed }) => [styles.bgBtn, { opacity: pressed ? 0.8 : 1 }]}
+            onPress={() => {
+              sendToBackground();
+              router.replace("/(tabs)");
+            }}
+          >
+            <Feather name="bell" size={13} color={Colors.orange} />
+            <Text style={styles.bgBtnText}>BUILD IN BACKGROUND</Text>
+          </Pressable>
+          <Text style={styles.bgHint}>We'll notify you when it's ready</Text>
         </View>
       </View>
     );
@@ -538,8 +609,10 @@ export default function WorkoutArchitectScreen() {
                   </Pressable>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                    <Text style={styles.reviewExName}>{ex.name}</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <Pressable onPress={() => handleOpenInfo(ex)} hitSlop={8}>
+                      <Text style={[styles.reviewExName, styles.reviewExNameTappable]}>{ex.name}</Text>
+                    </Pressable>
                     <View style={styles.catBadge}>
                       <Text style={styles.catBadgeText}>{CATEGORY_LABELS[ex.category] ?? ex.category}</Text>
                     </View>
@@ -619,35 +692,158 @@ export default function WorkoutArchitectScreen() {
             <View style={styles.swapSheet}>
               <View style={styles.swapHandle} />
               <Text style={styles.swapTitle}>SWAP EXERCISE</Text>
+
+              <View style={styles.swapSearchRow}>
+                <Feather name="search" size={14} color={Colors.textSubtle} style={{ marginRight: 8 }} />
+                <TextInput
+                  style={styles.swapSearchInput}
+                  value={swapSearch}
+                  onChangeText={setSwapSearch}
+                  placeholder="Search any exercise..."
+                  placeholderTextColor={Colors.textSubtle}
+                  autoCorrect={false}
+                  returnKeyType="search"
+                />
+                {swapSearch.length > 0 && (
+                  <Pressable onPress={() => { setSwapSearch(""); setSwapSearchResults([]); }} hitSlop={8}>
+                    <Feather name="x" size={14} color={Colors.textSubtle} />
+                  </Pressable>
+                )}
+              </View>
+
               {swapLoading ? (
-                <ActivityIndicator color={Colors.orange} style={{ paddingVertical: 30 }} />
-              ) : swapAlternatives.length === 0 ? (
-                <View style={{ paddingVertical: 30, alignItems: "center" }}>
-                  <Text style={styles.swapEmpty}>No alternatives available</Text>
-                </View>
+                <ActivityIndicator color={Colors.orange} style={{ paddingVertical: 24 }} />
               ) : (
-                <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false}>
-                  {swapAlternatives.map((alt) => (
-                    <Pressable
-                      key={alt.id}
-                      style={({ pressed }) => [styles.swapOption, pressed && { opacity: 0.8 }]}
-                      onPress={() => confirmSwap(alt)}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.swapOptionName}>{alt.name}</Text>
-                        <Text style={styles.swapOptionMuscle}>{alt.primaryMuscle} · {alt.difficulty}</Text>
-                      </View>
-                      <Feather name="arrow-right" size={16} color={Colors.highlight} />
-                    </Pressable>
-                  ))}
+                <ScrollView style={{ maxHeight: 340 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                  {swapSearch.trim().length > 0 ? (
+                    <>
+                      {swapSearchLoading ? (
+                        <ActivityIndicator color={Colors.highlight} style={{ paddingVertical: 16 }} size="small" />
+                      ) : swapSearchResults.length === 0 ? (
+                        <View style={{ paddingVertical: 16, alignItems: "center" }}>
+                          <Text style={styles.swapEmpty}>No exercises found</Text>
+                        </View>
+                      ) : (
+                        <>
+                          <Text style={styles.swapSectionLabel}>SEARCH RESULTS</Text>
+                          {swapSearchResults.map((alt) => (
+                            <Pressable
+                              key={alt.id}
+                              style={({ pressed }) => [styles.swapOption, pressed && { opacity: 0.8 }]}
+                              onPress={() => confirmSwap(alt)}
+                            >
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.swapOptionName}>{alt.name}</Text>
+                                <Text style={styles.swapOptionMuscle}>{alt.primaryMuscle} · {alt.difficulty}</Text>
+                              </View>
+                              <Feather name="arrow-right" size={16} color={Colors.highlight} />
+                            </Pressable>
+                          ))}
+                        </>
+                      )}
+                    </>
+                  ) : swapAlternatives.length === 0 ? (
+                    <View style={{ paddingVertical: 16, alignItems: "center" }}>
+                      <Text style={styles.swapEmpty}>No alternatives — use search above</Text>
+                    </View>
+                  ) : (
+                    <>
+                      <Text style={styles.swapSectionLabel}>SAME MUSCLE GROUP</Text>
+                      {swapAlternatives.map((alt) => (
+                        <Pressable
+                          key={alt.id}
+                          style={({ pressed }) => [styles.swapOption, pressed && { opacity: 0.8 }]}
+                          onPress={() => confirmSwap(alt)}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.swapOptionName}>{alt.name}</Text>
+                            <Text style={styles.swapOptionMuscle}>{alt.primaryMuscle} · {alt.difficulty}</Text>
+                          </View>
+                          <Feather name="arrow-right" size={16} color={Colors.highlight} />
+                        </Pressable>
+                      ))}
+                    </>
+                  )}
                 </ScrollView>
               )}
+
               <Pressable
                 style={({ pressed }) => [styles.swapCancel, { opacity: pressed ? 0.9 : 1 }]}
-                onPress={() => { setSwappingId(null); setSwapAlternatives([]); }}
+                onPress={() => { setSwappingId(null); setSwapAlternatives([]); setSwapSearch(""); setSwapSearchResults([]); }}
               >
                 <Text style={styles.swapCancelText}>CANCEL</Text>
               </Pressable>
+            </View>
+          </View>
+        </Modal>
+
+        <Modal visible={infoExercise !== null} transparent animationType="slide">
+          <View style={styles.swapOverlay}>
+            <View style={[styles.swapSheet, { maxHeight: "80%" }]}>
+              <View style={styles.swapHandle} />
+              <View style={styles.infoHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.infoExName}>{infoExercise?.name ?? ""}</Text>
+                  {infoData && (
+                    <Text style={styles.infoExMeta}>
+                      {infoData.muscleGroup.toUpperCase()} · {infoData.difficulty.toUpperCase()} · {infoData.equipment.toUpperCase()}
+                    </Text>
+                  )}
+                </View>
+                <Pressable
+                  onPress={() => { setInfoExercise(null); setInfoData(null); }}
+                  style={styles.infoCloseBtn}
+                  hitSlop={10}
+                >
+                  <Feather name="x" size={16} color={Colors.textMuted} />
+                </Pressable>
+              </View>
+
+              {infoLoading ? (
+                <View style={{ paddingVertical: 30, alignItems: "center" }}>
+                  <ActivityIndicator color={Colors.orange} />
+                  <Text style={[styles.swapEmpty, { marginTop: 12 }]}>Loading...</Text>
+                </View>
+              ) : !infoData ? (
+                <View style={{ paddingVertical: 30, alignItems: "center" }}>
+                  <Text style={styles.swapEmpty}>No details available</Text>
+                </View>
+              ) : (
+                <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 4 }}>
+                  {infoData.primaryMuscles.length > 0 && (
+                    <View style={styles.infoSection}>
+                      <Text style={styles.infoSectionTitle}>MUSCLES</Text>
+                      <Text style={styles.infoBodyText}>
+                        {infoData.primaryMuscles.join(", ")}
+                        {infoData.secondaryMuscles.length > 0 ? `  ·  ${infoData.secondaryMuscles.join(", ")}` : ""}
+                      </Text>
+                    </View>
+                  )}
+                  {infoData.instructions.length > 0 && (
+                    <View style={styles.infoSection}>
+                      <Text style={styles.infoSectionTitle}>HOW TO PERFORM</Text>
+                      {infoData.instructions.map((step, idx) => (
+                        <View key={idx} style={styles.infoStep}>
+                          <Text style={styles.infoStepNum}>{idx + 1}</Text>
+                          <Text style={styles.infoStepText}>{step}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                  {infoData.commonMistakes.length > 0 && (
+                    <View style={styles.infoSection}>
+                      <Text style={styles.infoSectionTitle}>COMMON MISTAKES</Text>
+                      {infoData.commonMistakes.map((mistake, idx) => (
+                        <View key={idx} style={styles.infoMistake}>
+                          <Feather name="alert-circle" size={12} color={Colors.orange} style={{ marginTop: 2 }} />
+                          <Text style={styles.infoMistakeText}>{mistake}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                  <View style={{ height: 16 }} />
+                </ScrollView>
+              )}
             </View>
           </View>
         </Modal>
@@ -1534,5 +1730,145 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: Colors.highlight,
     marginLeft: 2,
+  },
+  bgBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 20,
+    paddingVertical: 13,
+    paddingHorizontal: 22,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.orange + "50",
+    backgroundColor: Colors.orange + "12",
+  },
+  bgBtnText: {
+    fontSize: 11,
+    fontFamily: "Inter_900Black",
+    color: Colors.orange,
+    letterSpacing: 1.2,
+    fontStyle: "italic",
+  },
+  bgHint: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
+    marginTop: -4,
+  },
+  reviewExNameTappable: {
+    textDecorationLine: "underline",
+    textDecorationColor: Colors.highlight + "88",
+  },
+  swapSearchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 14,
+  },
+  swapSearchInput: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    color: Colors.text,
+  },
+  swapSectionLabel: {
+    fontSize: 9,
+    fontFamily: "Inter_900Black",
+    color: Colors.textSubtle,
+    letterSpacing: 1.5,
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  infoHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    marginBottom: 16,
+  },
+  infoExName: {
+    fontSize: 16,
+    fontFamily: "Inter_900Black",
+    color: Colors.text,
+    textTransform: "uppercase",
+    fontStyle: "italic",
+    letterSpacing: 0.5,
+    lineHeight: 20,
+  },
+  infoExMeta: {
+    fontSize: 10,
+    fontFamily: "Inter_700Bold",
+    color: Colors.highlight,
+    letterSpacing: 0.8,
+    marginTop: 4,
+  },
+  infoCloseBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  infoSection: {
+    marginBottom: 20,
+  },
+  infoSectionTitle: {
+    fontSize: 9,
+    fontFamily: "Inter_900Black",
+    color: Colors.textSubtle,
+    letterSpacing: 2,
+    marginBottom: 10,
+  },
+  infoBodyText: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textMuted,
+    lineHeight: 20,
+  },
+  infoStep: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 8,
+    alignItems: "flex-start",
+  },
+  infoStepNum: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: Colors.highlight + "22",
+    textAlign: "center",
+    lineHeight: 20,
+    fontSize: 10,
+    fontFamily: "Inter_900Black",
+    color: Colors.highlight,
+    overflow: "hidden",
+  },
+  infoStepText: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textMuted,
+    lineHeight: 20,
+  },
+  infoMistake: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 8,
+    alignItems: "flex-start",
+  },
+  infoMistakeText: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textMuted,
+    lineHeight: 20,
   },
 });
