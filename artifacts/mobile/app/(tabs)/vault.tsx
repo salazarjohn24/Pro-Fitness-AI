@@ -148,7 +148,14 @@ export default function VaultScreen() {
         <Pressable
           onPress={() => {
             Haptics.selectionAsync();
-            setShowFavoritesOnly((v) => !v);
+            setShowFavoritesOnly((v) => {
+              if (!v) {
+                setMuscleGroup("");
+                setEquipment("");
+                setGoal("");
+              }
+              return !v;
+            });
           }}
           style={[styles.filterTab, styles.favTab, showFavoritesOnly && styles.favTabActive]}
         >

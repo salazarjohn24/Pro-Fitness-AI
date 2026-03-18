@@ -605,7 +605,18 @@ export default function ProfileScreen() {
                     style={styles.envDeleteBtn}
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                      deleteEnv(env.id);
+                      Alert.alert(
+                        "Delete Environment",
+                        `Remove "${env.name}" from your gym environments? This cannot be undone.`,
+                        [
+                          { text: "Cancel", style: "cancel" },
+                          {
+                            text: "Delete",
+                            style: "destructive",
+                            onPress: () => deleteEnv(env.id),
+                          },
+                        ]
+                      );
                     }}
                   >
                     <Feather name="trash-2" size={14} color={Colors.textSubtle} />

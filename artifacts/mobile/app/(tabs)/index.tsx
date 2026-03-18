@@ -95,6 +95,7 @@ export default function StatusScreen() {
   const [editWorkoutOpen, setEditWorkoutOpen] = useState(false);
   const [rpeInfoOpen, setRpeInfoOpen] = useState(false);
   const [weeklySessionsInfoOpen, setWeeklySessionsInfoOpen] = useState(false);
+  const autoGenerateAttempted = React.useRef(false);
 
   const streak = profile?.streakDays ?? 0;
   const syncProgress = profile?.dailySyncProgress ?? 0;
@@ -113,8 +114,11 @@ export default function StatusScreen() {
 
   const todayRestWorkout = recentExternalWorkouts?.find((w: any) => w.workoutType === "rest" && isToday(w));
   const isRestDay = !!todayRestWorkout;
-  const todayAnyWorkout = recentExternalWorkouts?.find((w: any) => isToday(w));
-  const activityDone = !!todayAnyWorkout;
+
+  // activityDone: true if any external workout OR any in-app session happened today
+  const todayExternalWorkout = recentExternalWorkouts?.find((w: any) => isToday(w));
+  const todayInAppSession = workoutHistory?.find((w) => w.type === "internal" && w.date?.slice(0, 10) === todayStr);
+  const activityDone = !!(todayExternalWorkout || todayInAppSession);
 
   const readinessScore = computeReadinessScore(todayCheckIn);
 
@@ -125,12 +129,17 @@ export default function StatusScreen() {
     d.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
     return d.toISOString().slice(0, 10);
   })();
-  const thisWeekWorkouts = (recentExternalWorkouts ?? []).filter((w: any) => {
+
+  // Count all workouts this week: external + in-app sessions from unified history
+  const thisWeekExternal = (recentExternalWorkouts ?? []).filter((w: any) => {
     const d = (w.workoutDate ?? w.createdAt?.slice(0, 10) ?? "");
     return d >= weekMonday;
   });
-  const weeklySessionCount = thisWeekWorkouts.length;
-  const rpeWorkouts = thisWeekWorkouts.filter((w: any) => w.intensity);
+  const thisWeekInternal = (workoutHistory ?? []).filter((w) => w.type === "internal" && (w.date ?? "").slice(0, 10) >= weekMonday);
+  const weeklySessionCount = thisWeekExternal.length + thisWeekInternal.length;
+
+  // RPE only from external workouts (internal sessions don't have RPE logged the same way)
+  const rpeWorkouts = thisWeekExternal.filter((w: any) => w.intensity);
   const weeklyAvgRPE = rpeWorkouts.length > 0
     ? Math.round(rpeWorkouts.reduce((s: number, w: any) => s + (w.intensity ?? 0), 0) / rpeWorkouts.length * 10) / 10
     : null;
@@ -149,7 +158,8 @@ export default function StatusScreen() {
   }, [isLoading, checkInLoading, onboardingDone, checkInDone, autoCheckInTriggered]);
 
   useEffect(() => {
-    if (!isLoading && !checkInLoading && checkInDone && !generatedWorkout && !isGenerating) {
+    if (!isLoading && !checkInLoading && checkInDone && !generatedWorkout && !isGenerating && !autoGenerateAttempted.current) {
+      autoGenerateAttempted.current = true;
       generateWorkout(undefined, {
         onSuccess: (workout) => {
           setGeneratedWorkout(workout);
@@ -157,7 +167,7 @@ export default function StatusScreen() {
         },
       });
     }
-  }, [isLoading, checkInLoading, checkInDone, generatedWorkout, isGenerating]);
+  }, [isLoading, checkInLoading, checkInDone]);
 
   const handleCheckInComplete = (data: CheckInData) => {
     const wasAlreadyDone = checkInDone;
