@@ -216,3 +216,8 @@ Known low-severity issues confirmed during QA passes across all screens. None ar
 | L22 | Home | `app/(tabs)/index.tsx` | Auto-generate `useEffect` dep array omits `generateWorkout` and `isGenerating` — React hooks lint violation, guarded in practice by `autoGenerateAttempted` ref. |
 | L23 | Home | `app/(tabs)/index.tsx` | Post-check-in auto-generation in `handleCheckInComplete` has no `onError` — silent failure if AI call fails after a successful check-in. |
 | L24 | Home | `app/(tabs)/index.tsx` | Deload banner has no dismiss button — the recommendation is shown on every app load with no way to acknowledge it. |
+| L25 | Check-In | `components/CheckInModal.tsx` | `phase === "done"` is dead code — `setPhase("done")` is never called anywhere in the component. |
+| L26 | Check-In | `components/CheckInModal.tsx` / `components/BodyMap.tsx` | BodyMap muscle IDs (`biceps_l`, `upper_back`, etc.) don't match workout builder muscle IDs (`biceps`, `back`) — AI receives soreness data with underscored left/right IDs. |
+| L27 | Check-In | `components/CheckInModal.tsx` | All sore muscles receive the same severity derived from the single global soreness score — no per-muscle severity granularity. |
+| L28 | Check-In | `api-server/src/routes/checkins.ts` | Backend falsy validation `!energyLevel` would silently reject score `0` — not an issue since min value is 1, but fragile. |
+| L29 | Check-In | `components/CheckInModal.tsx` | `handleAnswer` auto-advances in 180ms with no debounce — a fast accidental double-tap could skip a question. |

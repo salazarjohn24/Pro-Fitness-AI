@@ -111,7 +111,8 @@ export function useTodayCheckIn() {
     queryKey: ["checkin-today"],
     queryFn: async () => {
       const headers = await getAuthHeaders();
-      const res = await fetch(`${getApiBase()}/api/checkins/today`, getFetchOptions(headers));
+      const localDate = new Date().toLocaleDateString("en-CA");
+      const res = await fetch(`${getApiBase()}/api/checkins/today?date=${localDate}`, getFetchOptions(headers));
       if (!res.ok) throw new Error(`Failed to load check-in: ${res.status}`);
       return res.json();
     },
@@ -134,10 +135,11 @@ export function useSubmitCheckIn() {
       notes?: string;
     }) => {
       const headers = await getAuthHeaders();
+      const localDate = new Date().toLocaleDateString("en-CA");
       const res = await fetch(`${getApiBase()}/api/checkins`, {
         ...getFetchOptions(headers),
         method: "POST",
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, date: localDate }),
       });
       if (!res.ok) throw new Error("Failed to submit check-in");
       return res.json();

@@ -10,7 +10,7 @@ router.post("/checkins", async (req: Request, res: Response) => {
     return;
   }
 
-  const { energyLevel, sleepQuality, stressLevel, sorenessScore, soreMuscleGroups, notes } = req.body;
+  const { energyLevel, sleepQuality, stressLevel, sorenessScore, soreMuscleGroups, notes, date: clientDate } = req.body;
 
   if (!energyLevel || !sleepQuality || !stressLevel || !sorenessScore) {
     res.status(400).json({ error: "Missing required fields" });
@@ -19,7 +19,7 @@ router.post("/checkins", async (req: Request, res: Response) => {
 
   const sleepScore = Math.round((sleepQuality / 5) * 100);
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = clientDate ?? new Date().toISOString().split("T")[0];
 
   const existing = await db
     .select()
@@ -68,7 +68,7 @@ router.get("/checkins/today", async (req: Request, res: Response) => {
     return;
   }
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = (req.query.date as string) ?? new Date().toISOString().split("T")[0];
 
   const [checkin] = await db
     .select()

@@ -352,7 +352,7 @@ export default function ProgressScreen() {
   })();
   const thisWeekExternal = (recentExternalWorkouts ?? []).filter((w: any) => {
     const d = (w.workoutDate ?? w.createdAt?.slice(0, 10) ?? "");
-    return d >= weekMonday;
+    return d >= weekMonday && w.workoutType !== "rest";
   });
   const thisWeekInternal = (workoutHistory ?? []).filter(
     (w) => w.type === "internal" && (w.date ?? "").slice(0, 10) >= weekMonday

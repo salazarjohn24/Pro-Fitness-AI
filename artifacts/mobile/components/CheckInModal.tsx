@@ -3,6 +3,7 @@ import * as Haptics from "expo-haptics";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -174,6 +175,23 @@ export function CheckInModal({ visible, onClose, onComplete, initialData, isSubm
 
   const handleClose = () => {
     if (isSubmitting) return;
+    const hasProgress =
+      Object.keys(answers).length > 0 ||
+      soreMuscles.length > 0 ||
+      notes.length > 0 ||
+      phase !== "questions" ||
+      questionStep > 0;
+    if (hasProgress) {
+      Alert.alert(
+        "Discard Check-In?",
+        "You'll lose your progress and need to start over.",
+        [
+          { text: "Keep Going", style: "cancel" },
+          { text: "Discard", style: "destructive", onPress: onClose },
+        ]
+      );
+      return;
+    }
     onClose();
   };
 
