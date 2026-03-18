@@ -64,7 +64,7 @@ const EQUIPMENT_OPTIONS = Object.entries(EQUIPMENT_CATEGORIES).flatMap(([, items
   items.map(item => ({ id: item, label: item, icon: EQUIPMENT_ICONS[item] ?? "🔧" }))
 );
 
-type Step = "muscles" | "equipment" | "generating" | "review";
+type Step = "muscles" | "equipment" | "notes" | "generating" | "review";
 
 const CATEGORY_LABELS: Record<string, string> = {
   warmup: "DYNAMIC WARM-UP",
@@ -176,6 +176,8 @@ export default function WorkoutArchitectScreen() {
   const [exerciseReps, setExerciseReps] = useState<Record<string, number>>({});
   const [exerciseWeights, setExerciseWeights] = useState<Record<string, string>>({});
 
+  const [sessionNotes, setSessionNotes] = useState("");
+
   const [swappingId, setSwappingId] = useState<string | null>(null);
   const [swapAlternatives, setSwapAlternatives] = useState<AlternativeExercise[]>([]);
   const [swapLoading, setSwapLoading] = useState(false);
@@ -263,10 +265,10 @@ export default function WorkoutArchitectScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setStep("generating");
     startGeneration(
-      { muscleGroups: selectedMuscles, equipment: selectedEquipment, availableMinutes },
+      { muscleGroups: selectedMuscles, equipment: selectedEquipment, availableMinutes, sessionNotes: sessionNotes.trim() || undefined },
       (workout) => {
         if (!workout) {
-          setStep("equipment");
+          setStep("notes");
           Alert.alert(
             "Generation Failed",
             "Could not build your workout. Check your connection and try again.",
@@ -503,6 +505,88 @@ export default function WorkoutArchitectScreen() {
             });
           }}
         />
+      </View>
+    );
+  }
+
+  if (step === "notes") {
+    const savedPrefs = profile?.workoutPreferences?.trim();
+    return (
+      <View style={[styles.container, { paddingTop: topPad }]}>
+        <View style={styles.topBar}>
+          <Pressable onPress={() => setStep("equipment")} style={styles.backBtn}>
+            <Feather name="arrow-left" size={18} color={Colors.textMuted} />
+          </Pressable>
+          <Text style={styles.topBarTitle}>FINAL DETAILS</Text>
+          <View style={{ width: 36 }} />
+        </View>
+
+        <View style={styles.stepIndicator}>
+          <View style={styles.stepDotDone} />
+          <View style={styles.stepLine} />
+          <View style={styles.stepDotDone} />
+          <View style={styles.stepLine} />
+          <View style={styles.stepDotActive} />
+        </View>
+
+        <ScrollView
+          style={styles.scrollArea}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: botPad + 140 }]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.stepHeader}>
+            <View style={[styles.stepIcon, { backgroundColor: Colors.orange + "20" }]}>
+              <Feather name="edit-3" size={24} color={Colors.orange} />
+            </View>
+            <Text style={styles.stepTitle}>ANYTHING ELSE{"\n"}TO CONSIDER?</Text>
+            <Text style={styles.stepSubtitle}>
+              Tell the AI anything specific about today's session — intensity, time constraints, how you're feeling, or a focus area we didn't ask about.
+            </Text>
+          </View>
+
+          {savedPrefs ? (
+            <View style={styles.savedPrefsCard}>
+              <View style={styles.savedPrefsHeader}>
+                <Feather name="bookmark" size={12} color={Colors.orange} />
+                <Text style={styles.savedPrefsLabel}>YOUR SAVED PREFERENCES · ALREADY INCLUDED</Text>
+              </View>
+              <Text style={styles.savedPrefsText} numberOfLines={4}>{savedPrefs}</Text>
+            </View>
+          ) : (
+            <View style={styles.savedPrefsCard}>
+              <View style={styles.savedPrefsHeader}>
+                <Feather name="info" size={12} color={Colors.textSubtle} />
+                <Text style={[styles.savedPrefsLabel, { color: Colors.textSubtle }]}>NO SAVED PREFERENCES</Text>
+              </View>
+              <Text style={[styles.savedPrefsText, { color: Colors.textSubtle }]}>
+                You can save long-term workout preferences in your Profile to automatically customize every AI workout.
+              </Text>
+            </View>
+          )}
+
+          <TextInput
+            style={styles.notesInput}
+            value={sessionNotes}
+            onChangeText={setSessionNotes}
+            placeholder={"e.g. Make it a deload week · only 45 min today · feeling tired, keep it moderate · focus on upper body pull..."}
+            placeholderTextColor={Colors.textSubtle}
+            multiline
+            textAlignVertical="top"
+            returnKeyType="default"
+            blurOnSubmit={false}
+          />
+        </ScrollView>
+
+        <View style={[styles.bottomBar, { paddingBottom: botPad + 12 }]}>
+          <Pressable
+            style={({ pressed }) => [styles.startBtn, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
+            onPress={handleGenerate}
+          >
+            <Feather name="cpu" size={18} color="#fff" />
+            <Text style={styles.startBtnText}>BUILD MY WORKOUT</Text>
+          </Pressable>
+        </View>
       </View>
     );
   }
@@ -954,12 +1038,10 @@ export default function WorkoutArchitectScreen() {
         <View style={[styles.bottomBar, { paddingBottom: botPad + 12 }]}>
           <Pressable
             style={({ pressed }) => [styles.startBtn, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
-            onPress={handleGenerate}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setStep("notes"); }}
           >
-            <Feather name="cpu" size={18} color="#fff" />
-            <Text style={styles.startBtnText}>
-              {selectedEquipment.length === 0 ? "BODYWEIGHT ONLY" : `GENERATE (${selectedEquipment.length} EQUIPMENT)`}
-            </Text>
+            <Feather name="arrow-right" size={18} color="#fff" />
+            <Text style={styles.startBtnText}>NEXT</Text>
           </Pressable>
         </View>
 
@@ -1643,6 +1725,44 @@ const styles = StyleSheet.create({
     color: Colors.textSubtle,
     marginTop: 8,
     textAlign: "center",
+  },
+  savedPrefsCard: {
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 14,
+  },
+  savedPrefsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 8,
+  },
+  savedPrefsLabel: {
+    fontSize: 10,
+    fontFamily: "Inter_900Black",
+    color: Colors.orange,
+    letterSpacing: 0.5,
+  },
+  savedPrefsText: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textMuted,
+    lineHeight: 18,
+  },
+  notesInput: {
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 12,
+    padding: 14,
+    color: Colors.text,
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    lineHeight: 20,
+    minHeight: 120,
   },
   newEnvOverlay: {
     flex: 1,

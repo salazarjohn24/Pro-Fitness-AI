@@ -384,6 +384,7 @@ router.post("/workout/generate", aiRateLimit, async (req: Request, res: Response
         equipment: userEquipment,
         checkInNotes: latestCheckin?.notes,
         preferredWorkoutDuration: profile?.preferredWorkoutDuration ?? 60,
+        workoutPreferences: profile?.workoutPreferences ?? null,
         exerciseHistory,
         substitutions: substitutionRecords,
         externalWorkoutFatigue,
@@ -851,6 +852,7 @@ router.post("/workout/architect-generate", aiRateLimit, async (req: Request, res
           substitutions: archSubRecords,
           externalWorkoutFatigue,
           workoutPreferences: profile?.workoutPreferences ?? null,
+          sessionNotes: (req.body as any).sessionNotes ?? null,
         },
         availableForAI,
         exerciseMap

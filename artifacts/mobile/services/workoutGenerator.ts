@@ -25,7 +25,7 @@ export function sendToBackground(): void {
 }
 
 export async function startGeneration(
-  params: { muscleGroups: string[]; equipment: string[]; availableMinutes: number },
+  params: { muscleGroups: string[]; equipment: string[]; availableMinutes: number; sessionNotes?: string },
   onResult: GenerationCallback
 ): Promise<void> {
   cancelGeneration();
@@ -40,7 +40,7 @@ export async function startGeneration(
 }
 
 async function doGenerate(
-  params: { muscleGroups: string[]; equipment: string[]; availableMinutes: number },
+  params: { muscleGroups: string[]; equipment: string[]; availableMinutes: number; sessionNotes?: string },
   headers: Record<string, string>,
   controller: AbortController
 ): Promise<void> {

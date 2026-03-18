@@ -60,6 +60,7 @@ export interface WorkoutContext {
   equipment: string[];
   checkInNotes?: string | null;
   preferredWorkoutDuration?: number;
+  workoutPreferences?: string | null;
   exerciseHistory?: Record<string, ExerciseHistoryEntry>;
   substitutions?: SubstitutionEntry[];
   externalWorkoutFatigue?: ExternalFatigueEntry[];
@@ -68,7 +69,7 @@ export interface WorkoutContext {
 export interface ArchitectContext extends WorkoutContext {
   requestedMuscleGroups: string[];
   availableMinutes?: number;
-  workoutPreferences?: string | null;
+  sessionNotes?: string | null;
 }
 
 export interface RecoveryTip {
@@ -197,6 +198,9 @@ ${historyLines}
 User exercise preferences (honor these substitutions):
 ${substitutionLines}
 
+User's custom workout preferences (IMPORTANT — always honor these when designing the session):
+${ctx.workoutPreferences?.trim() ? ctx.workoutPreferences.trim() : "None provided"}
+
 Generate the ideal workout. Apply progressive overload where previous performance data exists. Honor substitution preferences. CRITICALLY: respect the external training fatigue above to avoid muscle overload.`;
 
   const response = await openai.chat.completions.create({
@@ -296,8 +300,11 @@ ${historyLinesA}
 User exercise preferences (honor these substitutions):
 ${substitutionLinesA}
 
-User's custom workout preferences (IMPORTANT — honor these when designing the session):
+User's custom workout preferences (IMPORTANT — always honor these):
 ${ctx.workoutPreferences?.trim() ? ctx.workoutPreferences.trim() : "None provided"}
+
+Additional notes for today's session (IMPORTANT — honor these for this specific workout):
+${ctx.sessionNotes?.trim() ? ctx.sessionNotes.trim() : "None"}
 
 Generate the custom workout targeting the requested muscle groups. Adjust exercise count and sets to fit the time available. Apply progressive overload and honor substitution preferences. Mention any external fatigue overlap in the rationale.`;
 
