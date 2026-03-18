@@ -65,6 +65,33 @@ The PostgreSQL database schema includes tables for:
 - **Codegen**: `pnpm --filter @workspace/api-spec run codegen` for API client generation.
 - **DB Schema Push**: `pnpm --filter @workspace/db run push` for Drizzle ORM schema synchronization.
 
+## TestFlight Publishing — REQUIRED STEPS EVERY TIME
+
+**ALWAYS remind the user to do these steps before every new TestFlight build.**
+
+### Step 1: Bump the build number in `artifacts/mobile/app.json`
+- Find `"buildNumber"` under `"ios"` and increment it by 1 (e.g. 9 → 10, 10 → 11)
+- Apple rejects any build with a number it has already seen — this is the #1 cause of submission failures
+
+### Step 2: Build
+Run in the Replit shell from `artifacts/mobile`:
+```
+npx eas-cli@latest build --platform ios --profile production
+```
+
+### Step 3: Submit to TestFlight
+Once the build finishes:
+```
+npx eas-cli@latest submit --platform ios --latest
+```
+
+### Notes
+- HealthKit, push notification credentials, and provisioning profiles are permanently set up — never need to be touched again
+- Current build number as of March 18 2026: **9**
+- Bundle ID: `app.replit.profitnessai`
+- EAS Project: `@salazarjohn24/mobile`
+- ASC App ID: `6760667643`
+
 ## External Dependencies
 
 - **OpenAI**: Integrated via Replit AI Integrations for all AI-powered features (workout generation, parsing, insights, coach notes).
