@@ -153,8 +153,9 @@ export default function WorkoutArchitectScreen() {
     createEnv(
       { name: newEnvName.trim(), type: "Other", equipment: eqMap, isActive: true },
       {
-        onSuccess: () => {
+        onSuccess: (created) => {
           setSelectedEquipment(newEnvEquipment);
+          setSelectedEnvId(created.id);
           setAddEnvOpen(false);
           setNewEnvName("");
           setNewEnvEquipment([]);
