@@ -207,3 +207,8 @@ Known low-severity issues confirmed during QA passes across all screens. None ar
 | L11 | Profile | `app/(tabs)/profile.tsx` | "PRO MEMBER" badge hardcoded for all users — gate on a real membership field once subscriptions are added. |
 | L14 | Profile | `app/(tabs)/profile.tsx` | Quick-tap `updateProfile` calls (insight level, etc.) have no `onError` handler — silent failures. |
 | L15 | Profile | `app/(tabs)/profile.tsx` | `markTourSeen()` fires on tour open rather than on completion — should move to `onDone` callback. |
+| L16 | Builder | `app/workout-architect.tsx` | Env switcher icon (line 683) still uses hard-coded ternary — same as L13 fixed in profile.tsx. Use `GYM_TYPES.find(...)` lookup. |
+| L17 | Builder | `app/workout-architect.tsx` | Chest and Biceps both use the "💪" emoji in `MUSCLE_GROUPS` — duplicate icon, no functional impact. |
+| L18 | Builder | `app/workout-architect.tsx` | Swap fetch failure shows "No alternatives available" — indistinguishable from a genuinely empty result. |
+| L19 | Builder | `app/workout-architect.tsx` | Workout name `TextInput` has no `placeholder` prop — blank if AI returns an empty title. |
+| L20 | Builder | `app/workout-architect.tsx` | Deleting all exercises disables START with no explanation text — user may not know why the button is greyed out. |

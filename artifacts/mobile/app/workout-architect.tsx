@@ -1,9 +1,10 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   Platform,
   Pressable,
@@ -150,7 +151,7 @@ export default function WorkoutArchitectScreen() {
       eqMap[cat].push(id);
     });
     createEnv(
-      { name: newEnvName.trim(), type: "Custom", equipment: eqMap, isActive: true },
+      { name: newEnvName.trim(), type: "Other", equipment: eqMap, isActive: true },
       {
         onSuccess: () => {
           setSelectedEquipment(newEnvEquipment);
@@ -170,6 +171,8 @@ export default function WorkoutArchitectScreen() {
   const [swappingId, setSwappingId] = useState<string | null>(null);
   const [swapAlternatives, setSwapAlternatives] = useState<AlternativeExercise[]>([]);
   const [swapLoading, setSwapLoading] = useState(false);
+
+  const generationCancelledRef = useRef(false);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const botPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -219,12 +222,14 @@ export default function WorkoutArchitectScreen() {
 
   const handleGenerate = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    generationCancelledRef.current = false;
     setStep("generating");
 
     architectGenerate(
       { muscleGroups: selectedMuscles, equipment: selectedEquipment, availableMinutes },
       {
         onSuccess: (workout) => {
+          if (generationCancelledRef.current) return;
           setGeneratedWorkout(workout);
           setWorkoutName(workout.workoutTitle);
           setReviewExercises(workout.exercises);
@@ -242,7 +247,13 @@ export default function WorkoutArchitectScreen() {
           setStep("review");
         },
         onError: () => {
+          if (generationCancelledRef.current) return;
           setStep("equipment");
+          Alert.alert(
+            "Generation Failed",
+            "Could not build your workout. Check your connection and try again.",
+            [{ text: "OK" }]
+          );
         },
       }
     );
@@ -421,6 +432,13 @@ export default function WorkoutArchitectScreen() {
                 refetchCheckIn();
                 updateProfile({ checkInCompleted: true, dailySyncProgress: Math.min(100, (profile?.dailySyncProgress ?? 0) + 50) });
               },
+              onError: () => {
+                Alert.alert(
+                  "Check-In Failed",
+                  "Could not save your check-in. Please try again.",
+                  [{ text: "OK" }]
+                );
+              },
             });
           }}
         />
@@ -432,7 +450,15 @@ export default function WorkoutArchitectScreen() {
     return (
       <View style={[styles.container, { paddingTop: topPad }]}>
         <View style={styles.topBar}>
-          <View style={{ width: 36 }} />
+          <Pressable
+            onPress={() => {
+              generationCancelledRef.current = true;
+              setStep("equipment");
+            }}
+            style={styles.backBtn}
+          >
+            <Feather name="x" size={18} color={Colors.textMuted} />
+          </Pressable>
           <Text style={styles.topBarTitle}>GENERATING</Text>
           <View style={{ width: 36 }} />
         </View>
