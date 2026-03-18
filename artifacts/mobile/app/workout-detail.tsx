@@ -87,6 +87,14 @@ export default function WorkoutDetailScreen() {
 
   const external = type === "external" ? externalWorkouts?.find((w: ExternalWorkout) => w.id === id) : null;
 
+  const safeBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/(tabs)");
+    }
+  };
+
   if ((type === "internal" && sessionLoading) || (type === "external" && externalLoading)) {
     return (
       <View style={[styles.container, { paddingTop: topPad, justifyContent: "center", alignItems: "center" }]}>
@@ -99,7 +107,7 @@ export default function WorkoutDetailScreen() {
     return (
       <View style={[styles.container, { paddingTop: topPad }]}>
         <View style={styles.topBar}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
+          <Pressable onPress={safeBack} style={styles.backBtn}>
             <Feather name="arrow-left" size={20} color={Colors.textMuted} />
           </Pressable>
           <Text style={styles.topBarTitle}>WORKOUT DETAIL</Text>
@@ -113,7 +121,7 @@ export default function WorkoutDetailScreen() {
           <Text style={{ color: Colors.textSubtle, fontFamily: "Inter_400Regular", fontSize: 12, textAlign: "center", lineHeight: 18 }}>
             This workout may have been deleted, or it's older than your current history window.
           </Text>
-          <Pressable onPress={() => router.back()} style={{ marginTop: 8, paddingVertical: 10, paddingHorizontal: 20, borderRadius: 12, backgroundColor: Colors.bgCard, borderWidth: 1, borderColor: Colors.border }}>
+          <Pressable onPress={safeBack} style={{ marginTop: 8, paddingVertical: 10, paddingHorizontal: 20, borderRadius: 12, backgroundColor: Colors.bgCard, borderWidth: 1, borderColor: Colors.border }}>
             <Text style={{ color: Colors.textMuted, fontFamily: "Inter_700Bold", fontSize: 12 }}>Go Back</Text>
           </Pressable>
         </View>
@@ -163,7 +171,7 @@ export default function WorkoutDetailScreen() {
     if (!session) return;
     if (!isDirty) {
       setIsEditMode(false);
-      router.back();
+      safeBack();
       return;
     }
     updateSession({ id: session.id, exercises: editExercises as any }, {
@@ -172,7 +180,7 @@ export default function WorkoutDetailScreen() {
         setEditExercises(null);
         setIsEditMode(false);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        router.back();
+        safeBack();
       },
       onError: () => {
         Alert.alert("Save Failed", "Could not save your edits. Please check your connection and try again.");
@@ -215,7 +223,7 @@ export default function WorkoutDetailScreen() {
           setEditExercises(null);
           setIsDirty(false);
           setIsEditMode(false);
-          router.back();
+          safeBack();
         } else {
           Alert.alert("Unsaved Changes", "Leave without saving your edits?", [
             { text: "Keep Editing", style: "cancel" },
@@ -226,17 +234,17 @@ export default function WorkoutDetailScreen() {
                 setEditExercises(null);
                 setIsDirty(false);
                 setIsEditMode(false);
-                router.back();
+                safeBack();
               },
             },
           ]);
         }
       } else {
         setIsEditMode(false);
-        router.back();
+        safeBack();
       }
     } else {
-      router.back();
+      safeBack();
     }
   };
 
@@ -254,7 +262,7 @@ export default function WorkoutDetailScreen() {
             deleteSession(session.id, {
               onSuccess: () => {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                router.back();
+                safeBack();
               },
               onError: () => {
                 Alert.alert("Delete Failed", "Could not delete this session. Please try again.");

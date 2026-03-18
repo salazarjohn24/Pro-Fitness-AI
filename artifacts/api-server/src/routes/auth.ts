@@ -160,6 +160,7 @@ router.post("/auth/signup", async (req: Request, res: Response) => {
     };
 
     const sid = await createSession(sessionData);
+    res.cookie(SESSION_COOKIE, sid, { httpOnly: true, maxAge: SESSION_TTL, sameSite: "lax" });
     res.json({ token: sid });
   } catch (err: any) {
     console.error("Signup error:", err);
@@ -222,6 +223,7 @@ router.post("/auth/signin", async (req: Request, res: Response) => {
     };
 
     const sid = await createSession(sessionData);
+    res.cookie(SESSION_COOKIE, sid, { httpOnly: true, maxAge: SESSION_TTL, sameSite: "lax" });
     res.json({ token: sid });
   } catch (err) {
     console.error("Signin error:", err);
