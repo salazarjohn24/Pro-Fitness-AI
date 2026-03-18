@@ -30,6 +30,38 @@ export function useAuditAlerts() {
   });
 }
 
+export interface RebalancePlanDay {
+  day: string;
+  name: string;
+  exercises: string[];
+  tag: "Push" | "Pull" | "Compound" | "Recovery";
+  reason: string;
+}
+
+export interface RebalancePlanResponse {
+  insightBanner: string;
+  titleSubtext: string;
+  days: RebalancePlanDay[];
+}
+
+export function useRebalancePlan(enabled: boolean) {
+  return useQuery<RebalancePlanResponse>({
+    queryKey: ["rebalance-plan"],
+    queryFn: async () => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${getApiBase()}/api/audit/rebalance-plan`, getFetchOptions(headers));
+      if (!res.ok) throw new Error(`Failed to load rebalance plan: ${res.status}`);
+      return res.json();
+    },
+    enabled,
+    staleTime: 1000 * 60 * 10,
+    retry: (count, error) => {
+      if (error?.message?.includes("401")) return false;
+      return count < 1;
+    },
+  });
+}
+
 export function useAIAuditInsight() {
   return useQuery<AIInsightResponse>({
     queryKey: ["audit-ai-insight"],

@@ -1,7 +1,8 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import React, { useState } from "react";
+import React from "react";
 import {
+  ActivityIndicator,
   Modal,
   Pressable,
   ScrollView,
@@ -10,49 +11,14 @@ import {
   View,
 } from "react-native";
 import { Colors } from "@/constants/colors";
+import { useRebalancePlan } from "@/hooks/useAuditAlerts";
 
-const REBALANCE_PLAN = [
-  {
-    day: "MON",
-    name: "Chest Power Day",
-    exercises: ["Bench Press 5×5", "Incline DB Press 4×8", "Cable Fly 3×12"],
-    tag: "Push",
-    tagColor: Colors.orange,
-    reason: "Closes the 2-session gap vs. back volume",
-  },
-  {
-    day: "TUE",
-    name: "Back & Rear Delt",
-    exercises: ["Weighted Pull-Up 4×6", "Barbell Row 4×8", "Face Pull 3×15"],
-    tag: "Pull",
-    tagColor: Colors.recovery,
-    reason: "Maintain current back strength",
-  },
-  {
-    day: "THU",
-    name: "Chest & Shoulder Volume",
-    exercises: ["DB Shoulder Press 4×10", "Lateral Raise 4×15", "Push-Up Burnout 3×F"],
-    tag: "Push",
-    tagColor: Colors.orange,
-    reason: "Additional push session to rebalance",
-  },
-  {
-    day: "FRI",
-    name: "Legs & Core",
-    exercises: ["Squat 4×6", "Romanian Deadlift 3×10", "Plank 3×60s"],
-    tag: "Compound",
-    tagColor: Colors.highlight,
-    reason: "Maintain lower body stimulus",
-  },
-  {
-    day: "SAT",
-    name: "Active Recovery",
-    exercises: ["Hip Flexor Stretch 3×60s", "Thoracic Rotation 3×10", "Foam Roll 10 min"],
-    tag: "Recovery",
-    tagColor: "#779CAF",
-    reason: "Reduce soreness, improve mobility",
-  },
-];
+const TAG_COLORS: Record<string, string> = {
+  Push: Colors.orange,
+  Pull: Colors.recovery,
+  Compound: Colors.highlight,
+  Recovery: "#779CAF",
+};
 
 interface Props {
   visible: boolean;
@@ -60,17 +26,16 @@ interface Props {
 }
 
 export function RebalancePlanModal({ visible, onClose }: Props) {
-  const [adopted, setAdopted] = useState(false);
-
-  const handleAdopt = () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setAdopted(true);
-  };
+  const { data: plan, isLoading, isError } = useRebalancePlan(visible);
 
   const handleClose = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onClose();
-    setTimeout(() => setAdopted(false), 400);
   };
+
+  const titleParts = (plan?.titleSubtext ?? "").split("/");
+  const titleMain = titleParts[0]?.trim() ?? "Rebalance";
+  const titleAccent = titleParts.slice(1).join("/").trim();
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
@@ -85,72 +50,78 @@ export function RebalancePlanModal({ visible, onClose }: Props) {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.overline}>AI REBALANCE PLAN</Text>
-              <Text style={styles.title}>Push/Pull{"\n"}<Text style={styles.titleAccent}>Correction</Text></Text>
+              <Text style={styles.title}>
+                {titleMain}
+                {titleAccent ? (
+                  <Text style={styles.titleAccent}>{"\n"}{titleAccent}</Text>
+                ) : null}
+              </Text>
             </View>
           </View>
 
-          <View style={styles.insightBanner}>
-            <Feather name="alert-circle" size={13} color={Colors.highlight} />
-            <Text style={styles.insightBannerText}>
-              Your back volume leads chest by 2 sessions this month, risking postural imbalances.
-            </Text>
-          </View>
-
-          {!adopted ? (
+          {isLoading ? (
+            <View style={styles.loadingBlock}>
+              <ActivityIndicator size="large" color={Colors.highlight} />
+              <Text style={styles.loadingText}>Analyzing your muscle data...</Text>
+              <Text style={styles.loadingSubtext}>Generating a personalized plan</Text>
+            </View>
+          ) : isError ? (
+            <View style={styles.loadingBlock}>
+              <Feather name="alert-circle" size={32} color={Colors.orange} />
+              <Text style={styles.loadingText}>Couldn't generate plan</Text>
+              <Text style={styles.loadingSubtext}>Check your connection and try again.</Text>
+            </View>
+          ) : (
             <>
+              {plan?.insightBanner ? (
+                <View style={styles.insightBanner}>
+                  <Feather name="alert-circle" size={13} color={Colors.highlight} />
+                  <Text style={styles.insightBannerText}>{plan.insightBanner}</Text>
+                </View>
+              ) : null}
+
               <ScrollView style={styles.planScroll} showsVerticalScrollIndicator={false}>
                 <View style={styles.planList}>
-                  {REBALANCE_PLAN.map((day, i) => (
-                    <View key={i} style={styles.dayCard}>
-                      <View style={styles.dayLabel}>
-                        <Text style={styles.dayText}>{day.day}</Text>
-                      </View>
-                      <View style={styles.dayContent}>
-                        <View style={styles.dayTop}>
-                          <Text style={styles.dayName}>{day.name}</Text>
-                          <View style={[styles.tag, { borderColor: day.tagColor + "40", backgroundColor: day.tagColor + "15" }]}>
-                            <Text style={[styles.tagText, { color: day.tagColor }]}>{day.tag}</Text>
+                  {(plan?.days ?? []).map((day, i) => {
+                    const tagColor = TAG_COLORS[day.tag] ?? Colors.highlight;
+                    return (
+                      <View key={i} style={styles.dayCard}>
+                        <View style={styles.dayLabel}>
+                          <Text style={styles.dayText}>{day.day}</Text>
+                        </View>
+                        <View style={styles.dayContent}>
+                          <View style={styles.dayTop}>
+                            <Text style={styles.dayName}>{day.name}</Text>
+                            <View style={[styles.tag, { borderColor: tagColor + "40", backgroundColor: tagColor + "15" }]}>
+                              <Text style={[styles.tagText, { color: tagColor }]}>{day.tag}</Text>
+                            </View>
                           </View>
-                        </View>
-                        <View style={styles.exerciseList}>
-                          {day.exercises.map((ex, j) => (
-                            <Text key={j} style={styles.exercise}>· {ex}</Text>
-                          ))}
-                        </View>
-                        <View style={styles.reasonRow}>
-                          <Feather name="star" size={10} color={Colors.highlight} />
-                          <Text style={styles.reasonText}>{day.reason}</Text>
+                          <View style={styles.exerciseList}>
+                            {day.exercises.map((ex, j) => (
+                              <Text key={j} style={styles.exercise}>· {ex}</Text>
+                            ))}
+                          </View>
+                          {day.reason ? (
+                            <View style={styles.reasonRow}>
+                              <Feather name="star" size={10} color={Colors.highlight} />
+                              <Text style={styles.reasonText}>{day.reason}</Text>
+                            </View>
+                          ) : null}
                         </View>
                       </View>
-                    </View>
-                  ))}
+                    );
+                  })}
                 </View>
               </ScrollView>
 
               <Pressable
-                style={({ pressed }) => [styles.adoptBtn, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
-                onPress={handleAdopt}
-              >
-                <Feather name="check-circle" size={16} color="#fff" />
-                <Text style={styles.adoptBtnText}>ADOPT REBALANCE PLAN</Text>
-              </Pressable>
-            </>
-          ) : (
-            <View style={styles.adoptedBlock}>
-              <View style={styles.adoptedIcon}>
-                <Feather name="check" size={32} color={Colors.highlight} />
-              </View>
-              <Text style={styles.adoptedTitle}>PLAN ADOPTED</Text>
-              <Text style={styles.adoptedDesc}>
-                Your weekly schedule has been updated. The AI will monitor your volume balance going forward.
-              </Text>
-              <Pressable
-                style={({ pressed }) => [styles.adoptBtn, { opacity: pressed ? 0.9 : 1 }]}
+                style={({ pressed }) => [styles.doneBtn, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
                 onPress={handleClose}
               >
-                <Text style={styles.adoptBtnText}>DONE</Text>
+                <Feather name="check" size={16} color="#fff" />
+                <Text style={styles.doneBtnText}>GOT IT</Text>
               </Pressable>
-            </View>
+            </>
           )}
         </View>
       </View>
@@ -211,6 +182,21 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     lineHeight: 18,
   },
+  loadingBlock: {
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 40,
+  },
+  loadingText: {
+    fontSize: 15,
+    fontFamily: "Inter_700Bold",
+    color: Colors.text,
+  },
+  loadingSubtext: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
+  },
   planScroll: { maxHeight: 340 },
   planList: { gap: 10 },
   dayCard: {
@@ -248,7 +234,7 @@ const styles = StyleSheet.create({
   exercise: { fontSize: 11, fontFamily: "Inter_400Regular", color: Colors.textMuted },
   reasonRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2 },
   reasonText: { fontSize: 9, fontFamily: "Inter_400Regular", color: Colors.textSubtle, fontStyle: "italic" },
-  adoptBtn: {
+  doneBtn: {
     backgroundColor: Colors.orange,
     borderRadius: 16,
     paddingVertical: 16,
@@ -257,36 +243,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
   },
-  adoptBtnText: {
+  doneBtnText: {
     fontSize: 13,
     fontFamily: "Inter_900Black",
     color: "#fff",
     letterSpacing: 1,
     fontStyle: "italic",
-  },
-  adoptedBlock: { alignItems: "center", gap: 16, paddingVertical: 20 },
-  adoptedIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 24,
-    backgroundColor: "rgba(246,234,152,0.1)",
-    borderWidth: 1,
-    borderColor: "rgba(246,234,152,0.25)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  adoptedTitle: {
-    fontSize: 28,
-    fontFamily: "Inter_900Black",
-    color: Colors.text,
-    fontStyle: "italic",
-    textTransform: "uppercase",
-  },
-  adoptedDesc: {
-    fontSize: 13,
-    fontFamily: "Inter_400Regular",
-    color: Colors.textMuted,
-    textAlign: "center",
-    lineHeight: 20,
   },
 });

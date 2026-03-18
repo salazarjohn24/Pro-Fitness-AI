@@ -1,8 +1,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, workoutSessionsTable, workoutHistoryTable, exerciseLibraryTable, dailyCheckInsTable, externalWorkoutsTable } from "@workspace/db";
-import { eq, desc, and, gte } from "drizzle-orm";
+import { eq, desc, and, gte, ne } from "drizzle-orm";
 import { exerciseMap } from "../data/exercises";
-import { generateAuditInsight } from "../services/aiService";
+import { generateAuditInsight, generateRebalancePlan } from "../services/aiService";
 import { aiRateLimit } from "../middlewares/rateLimitMiddleware";
 
 const router: IRouter = Router();
@@ -306,7 +306,8 @@ router.get("/audit/volume-stats", async (req: Request, res: Response) => {
       .where(
         and(
           eq(externalWorkoutsTable.userId, userId),
-          gte(externalWorkoutsTable.createdAt, cutoff)
+          gte(externalWorkoutsTable.createdAt, cutoff),
+          ne(externalWorkoutsTable.source, "in-app")
         )
       )
       .orderBy(desc(externalWorkoutsTable.createdAt));
@@ -386,6 +387,112 @@ router.get("/audit/volume-stats", async (req: Request, res: Response) => {
   } catch (err) {
     console.error("Volume stats error:", err);
     res.status(500).json({ error: "Failed to compute volume stats" });
+  }
+});
+
+router.get("/audit/rebalance-plan", aiRateLimit, async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  try {
+    const userId = req.user.id;
+
+    const now = new Date();
+    const cutoff = new Date();
+    cutoff.setMonth(now.getMonth() - 1);
+    const cutoffStr = cutoff.toISOString().split("T")[0];
+
+    const sessions = await db
+      .select()
+      .from(workoutSessionsTable)
+      .where(and(eq(workoutSessionsTable.userId, userId), gte(workoutSessionsTable.sessionDate, cutoffStr)))
+      .orderBy(desc(workoutSessionsTable.createdAt));
+
+    const externalWkts = await db
+      .select()
+      .from(externalWorkoutsTable)
+      .where(and(
+        eq(externalWorkoutsTable.userId, userId),
+        gte(externalWorkoutsTable.createdAt, cutoff),
+        ne(externalWorkoutsTable.source, "in-app")
+      ))
+      .orderBy(desc(externalWorkoutsTable.createdAt));
+
+    const muscleSets: Record<string, number> = {};
+
+    for (const session of sessions) {
+      const exercises = (session.exercises as SessionExercise[] | null) ?? [];
+      for (const ex of exercises) {
+        const hasCompleted = (ex.sets ?? []).some((s: SessionSet) => s.completed);
+        if (!hasCompleted) continue;
+        let muscles = getMuscleGroupsForExerciseId(ex.exerciseId);
+        if (muscles.length === 0) muscles = getMuscleGroupsFromName(ex.name);
+        const completedSets = (ex.sets ?? []).filter((s: SessionSet) => s.completed).length;
+        for (const m of muscles) {
+          muscleSets[m] = (muscleSets[m] ?? 0) + completedSets;
+        }
+      }
+    }
+
+    for (const ew of externalWkts) {
+      if (ew.workoutType === "rest") continue;
+      const groups = (ew.muscleGroups as string[]) ?? [];
+      for (const mg of groups) {
+        const key = mg.toLowerCase();
+        muscleSets[key] = (muscleSets[key] ?? 0) + 1;
+      }
+    }
+
+    const totalMuscleSets = Object.values(muscleSets).reduce((a, b) => a + b, 0);
+    const muscleFocus = Object.entries(muscleSets)
+      .map(([muscle, sets]) => ({
+        muscle: muscle.charAt(0).toUpperCase() + muscle.slice(1),
+        sets,
+        percentage: totalMuscleSets > 0 ? Math.round((sets / totalMuscleSets) * 100) : 0,
+      }))
+      .sort((a, b) => b.sets - a.sets);
+
+    const historyRecords = await db
+      .select({ exerciseId: workoutHistoryTable.exerciseId, consistencyIndex: workoutHistoryTable.consistencyIndex, performedAt: workoutHistoryTable.performedAt })
+      .from(workoutHistoryTable)
+      .where(eq(workoutHistoryTable.userId, userId))
+      .orderBy(desc(workoutHistoryTable.performedAt));
+
+    const exerciseLibrary = await db
+      .select({ id: exerciseLibraryTable.id, muscleGroup: exerciseLibraryTable.muscleGroup })
+      .from(exerciseLibraryTable);
+
+    const exerciseMuscleMap: Record<number, string> = {};
+    for (const ex of exerciseLibrary) {
+      exerciseMuscleMap[ex.id] = normalizeMuscleName(ex.muscleGroup ?? "");
+    }
+
+    const muscleLastTrained: Record<string, { date: Date; consistencyIndex: number | null }> = {};
+    for (const record of historyRecords) {
+      const muscle = exerciseMuscleMap[record.exerciseId] ?? "";
+      if (!muscle) continue;
+      if (!muscleLastTrained[muscle] || record.performedAt > muscleLastTrained[muscle].date) {
+        muscleLastTrained[muscle] = { date: record.performedAt, consistencyIndex: record.consistencyIndex };
+      }
+    }
+
+    const alerts: { type: string; muscle: string; message: string }[] = [];
+    for (const muscle of CANONICAL_MUSCLES) {
+      const info = muscleLastTrained[muscle];
+      if (!info) continue;
+      const daysSince = Math.floor((now.getTime() - info.date.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysSince >= 10) {
+        alerts.push({ type: "neglect", muscle, message: `${muscle} hasn't been trained in ${daysSince} days` });
+      }
+    }
+
+    const plan = await generateRebalancePlan(muscleFocus, alerts);
+    res.json(plan);
+  } catch (err) {
+    console.error("Rebalance plan error:", err);
+    res.status(500).json({ error: "Failed to generate rebalance plan" });
   }
 });
 

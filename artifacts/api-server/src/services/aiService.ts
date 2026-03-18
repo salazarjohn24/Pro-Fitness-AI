@@ -319,6 +319,99 @@ Write a personalized coach's note for this athlete.`,
   return response.choices[0]?.message?.content ?? "Focus on form and controlled movement throughout each rep.";
 }
 
+export interface RebalancePlanDay {
+  day: string;
+  name: string;
+  exercises: string[];
+  tag: "Push" | "Pull" | "Compound" | "Recovery";
+  reason: string;
+}
+
+export interface RebalancePlanResult {
+  insightBanner: string;
+  titleSubtext: string;
+  days: RebalancePlanDay[];
+}
+
+export async function generateRebalancePlan(
+  muscleFocus: { muscle: string; sets: number; percentage: number }[],
+  alerts: { type: string; muscle: string; message: string }[]
+): Promise<RebalancePlanResult> {
+  const muscleData = muscleFocus.length > 0
+    ? muscleFocus.map(m => `${m.muscle}: ${m.percentage}% of volume`).join(", ")
+    : "No data yet";
+  const alertData = alerts.length > 0
+    ? alerts.map(a => a.message).join("; ")
+    : "No critical alerts";
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-5-mini",
+    max_completion_tokens: 900,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content: `You are an elite strength coach creating a personalized weekly rebalance plan based on real training data.
+Return ONLY valid JSON with this exact structure:
+{
+  "insightBanner": "1-2 sentences explaining the specific imbalance detected and why it matters for this athlete",
+  "titleSubtext": "2-4 word focus description (e.g. 'Push/Pull Correction', 'Lower Body Focus')",
+  "days": [
+    {
+      "day": "MON",
+      "name": "Workout name",
+      "exercises": ["Exercise 1 4×8", "Exercise 2 3×12"],
+      "tag": "Push",
+      "reason": "1 sentence referencing specific imbalance data"
+    }
+  ]
+}
+Rules:
+- Generate 4-5 days including exactly 1 Recovery day
+- tag must be one of: "Push", "Pull", "Compound", "Recovery"
+- Prioritize underworked muscles based on the provided data
+- 3-4 exercises per day with sets×reps notation
+- Reasons must reference the specific muscle percentages provided
+- Be direct and specific, not generic`,
+      },
+      {
+        role: "user",
+        content: `Current muscle volume distribution (last month):
+${muscleData}
+
+Active training alerts:
+${alertData}
+
+Create a 4-5 day rebalance plan that specifically addresses these imbalances.`,
+      },
+    ],
+  });
+
+  const raw = response.choices[0]?.message?.content ?? "{}";
+  try {
+    const parsed = JSON.parse(raw);
+    return {
+      insightBanner: typeof parsed.insightBanner === "string"
+        ? parsed.insightBanner
+        : "Your muscle volume distribution shows imbalances this plan will correct.",
+      titleSubtext: typeof parsed.titleSubtext === "string" ? parsed.titleSubtext : "Muscle Rebalance",
+      days: Array.isArray(parsed.days) ? parsed.days.map((d: any) => ({
+        day: String(d.day ?? ""),
+        name: String(d.name ?? ""),
+        exercises: Array.isArray(d.exercises) ? d.exercises.map(String) : [],
+        tag: (["Push", "Pull", "Compound", "Recovery"] as const).includes(d.tag) ? d.tag : "Compound",
+        reason: String(d.reason ?? ""),
+      })) : [],
+    };
+  } catch {
+    return {
+      insightBanner: "Your muscle volume distribution shows imbalances this plan will correct.",
+      titleSubtext: "Muscle Rebalance",
+      days: [],
+    };
+  }
+}
+
 export async function generateAuditInsight(
   alerts: { type: string; muscle: string; message: string; daysSince?: number; consistencyIndex?: number }[],
   volumeStats: {
