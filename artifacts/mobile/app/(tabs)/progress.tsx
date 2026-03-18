@@ -21,6 +21,7 @@ import { AccordionCard } from "@/components/AccordionCard";
 import { useAuditAlerts, useAIAuditInsight } from "@/hooks/useAuditAlerts";
 import { useRecoveryCorrelation } from "@/hooks/useRecoveryCorrelation";
 import { useVolumeStats, type VolumeTimelinePoint, type MuscleFocusItem } from "@/hooks/useVolumeStats";
+import { useWorkoutHistory } from "@/hooks/useWorkout";
 
 type FeatherIcon = ComponentProps<typeof Feather>["name"];
 
@@ -51,33 +52,6 @@ const KPI_ITEMS: { label: string; value: string; unit: string; icon: FeatherIcon
   { label: "Avg RPE", value: "—", unit: "intensity", icon: "zap", color: Colors.orange },
   { label: "Recovery", value: "78", unit: "score", icon: "activity", color: Colors.recovery },
   { label: "Volume", value: "0", unit: "kg", icon: "trending-up", color: Colors.highlight },
-];
-
-const AI_INSIGHTS = [
-  {
-    id: "balance",
-    title: "Volume Imbalance Detected",
-    text: "Your back volume is outpacing chest by 2 sessions this month. Consider adding a push day to maintain balance and prevent postural imbalances.",
-    hasRebalance: true,
-    info: {
-      title: "Volume Imbalance Detection",
-      what: "The AI tracks how many sessions you dedicate to each muscle group each month and flags when push/pull or upper/lower ratios fall out of balance.",
-      why: "Muscle imbalances increase injury risk, reduce performance, and can cause postural issues like forward shoulder rounding over time.",
-      how: "Tap 'Rebalance plan' to get an AI-generated schedule that corrects the imbalance while maintaining your training frequency.",
-    },
-  },
-  {
-    id: "recovery",
-    title: "Recovery Score Insight",
-    text: "Your recovery score of 78 indicates moderate readiness. Your best training days this week were Thursday and Tuesday.",
-    hasRebalance: false,
-    info: {
-      title: "Recovery Score",
-      what: "Your recovery score (0-100) is calculated from your check-in biometrics: energy level, sleep quality, muscle soreness, and stress.",
-      why: "Training when recovery is low increases injury risk and reduces the training stimulus. Training when recovery is high maximizes adaptation.",
-      how: "Complete your daily check-in every morning for the most accurate recovery tracking. The AI will schedule high-intensity sessions on your highest-recovery days.",
-    },
-  },
 ];
 
 function AlertChip({ alert }: { alert: { type: string; message: string } }) {
@@ -164,10 +138,12 @@ function VolumeBarChart({ data, range }: { data: VolumeTimelinePoint[]; range: s
 function groupDataForRange(data: VolumeTimelinePoint[], range: string): { label: string; volume: number }[] {
   if (data.length === 0) return [];
 
+  const parseLocalDate = (dateStr: string) => new Date(dateStr + "T00:00:00");
+
   if (range === "1M") {
     const weekMap: Record<string, number> = {};
     for (const d of data) {
-      const date = new Date(d.date);
+      const date = parseLocalDate(d.date);
       const weekStart = new Date(date);
       weekStart.setDate(date.getDate() - date.getDay());
       const key = `${weekStart.getMonth() + 1}/${weekStart.getDate()}`;
@@ -177,18 +153,26 @@ function groupDataForRange(data: VolumeTimelinePoint[], range: string): { label:
   }
 
   if (range === "3M" || range === "6M") {
-    const monthMap: Record<string, number> = {};
+    const monthMap: Record<string, { volume: number; yearMonth: string }> = {};
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     for (const d of data) {
-      const date = new Date(d.date);
-      const key = monthNames[date.getMonth()];
-      monthMap[key] = (monthMap[key] ?? 0) + d.volume;
+      const date = parseLocalDate(d.date);
+      const yearMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+      const label = `${monthNames[date.getMonth()]} ${date.getFullYear().toString().slice(2)}`;
+      if (!monthMap[yearMonth]) monthMap[yearMonth] = { volume: 0, yearMonth };
+      monthMap[yearMonth].volume += d.volume;
     }
-    return Object.entries(monthMap).map(([label, volume]) => ({ label, volume }));
+    return Object.entries(monthMap)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([yearMonth, { volume }]) => {
+        const [year, month] = yearMonth.split("-");
+        const label = `${monthNames[parseInt(month, 10) - 1]} ${year.slice(2)}`;
+        return { label, volume };
+      });
   }
 
   return data.map(d => {
-    const date = new Date(d.date);
+    const date = parseLocalDate(d.date);
     return { label: `${date.getMonth() + 1}/${date.getDate()}`, volume: d.volume };
   });
 }
@@ -338,7 +322,6 @@ const bannerStyles = StyleSheet.create({
 export default function ProgressScreen() {
   const insets = useSafeAreaInsets();
   const [activeRange, setActiveRange] = useState("1M");
-  const [infoInsight, setInfoInsight] = useState<(typeof AI_INSIGHTS)[0]["info"] | null>(null);
   const [rebalanceOpen, setRebalanceOpen] = useState(false);
   const [freqInfoOpen, setFreqInfoOpen] = useState(false);
   const { data: profile } = useProfile();
@@ -347,6 +330,7 @@ export default function ProgressScreen() {
   const { data: recoveryCorrelation } = useRecoveryCorrelation();
   const { data: volumeStats, isLoading: volumeLoading } = useVolumeStats(activeRange);
   const { data: recentExternalWorkouts } = useRecentExternalWorkouts();
+  const { data: workoutHistory } = useWorkoutHistory(60);
   const { data: todayCheckIn } = useTodayCheckIn();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -364,13 +348,16 @@ export default function ProgressScreen() {
     const d = new Date();
     const dow = d.getDay();
     d.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
-    return d.toISOString().slice(0, 10);
+    return d.toLocaleDateString("en-CA");
   })();
-  const thisWeekWorkouts = (recentExternalWorkouts ?? []).filter((w: any) => {
+  const thisWeekExternal = (recentExternalWorkouts ?? []).filter((w: any) => {
     const d = (w.workoutDate ?? w.createdAt?.slice(0, 10) ?? "");
     return d >= weekMonday;
   });
-  const weeklySessionCount = thisWeekWorkouts.length;
+  const thisWeekInternal = (workoutHistory ?? []).filter(
+    (w) => w.type === "internal" && (w.date ?? "").slice(0, 10) >= weekMonday
+  );
+  const weeklySessionCount = thisWeekExternal.length + thisWeekInternal.length;
   const weeklyAlignmentPct = Math.min(100, Math.round((weeklySessionCount / weeklyGoal) * 100));
 
   const rpeWorkoutsAll = (recentExternalWorkouts ?? []).filter((w: any) => w.intensity);
@@ -638,12 +625,6 @@ export default function ProgressScreen() {
           )}
         </View>
       </ScrollView>
-
-      <InsightInfoModal
-        visible={!!infoInsight}
-        onClose={() => setInfoInsight(null)}
-        insight={infoInsight}
-      />
 
       <InsightInfoModal
         visible={freqInfoOpen}
