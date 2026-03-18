@@ -521,26 +521,80 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
                 </View>
               </View>
 
-              {imageAnalysis?.movements && imageAnalysis.movements.length > 0 && (
-                <View style={styles.formGroup}>
-                  <Text style={styles.fieldLabel}>MOVEMENTS & FATIGUE LOAD</Text>
-                  {imageAnalysis.movements.map((mv, i) => (
-                    <View key={i} style={styles.imgMvRow}>
-                      <View style={styles.imgMvInfo}>
-                        <Text style={styles.imgMvName}>{mv.name}</Text>
-                        <Text style={styles.imgMvVolume}>{mv.volume}</Text>
-                        <Text style={styles.imgMvMuscles}>{mv.muscleGroups.join(", ")}</Text>
-                      </View>
-                      <View style={styles.imgMvFatigue}>
-                        <Text style={styles.imgMvFatiguePct}>{mv.fatiguePercent}%</Text>
-                        <View style={styles.imgMvFatigueBar}>
-                          <View style={[styles.imgMvFatigueFill, { width: `${mv.fatiguePercent}%` as any }]} />
+              {imageAnalysis?.movements && imageAnalysis.movements.length > 0 && (() => {
+                const muscleFatigueMap: Record<string, number> = {};
+                for (const mv of imageAnalysis.movements) {
+                  if (mv.muscleGroups.length === 0) continue;
+                  const perMuscle = mv.fatiguePercent / mv.muscleGroups.length;
+                  for (const mg of mv.muscleGroups) {
+                    const key = mg.toLowerCase();
+                    muscleFatigueMap[key] = (muscleFatigueMap[key] ?? 0) + perMuscle;
+                  }
+                }
+                const sortedMuscles = Object.entries(muscleFatigueMap)
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([muscle, pct]) => ({ muscle, pct: Math.min(100, Math.round(pct)) }));
+                const intensity = imageAnalysis?.intensity ?? 5;
+                const impactedMuscles = sortedMuscles.filter(m => m.pct >= 15);
+                const flagLabel = intensity >= 9
+                  ? { text: "AVOID — high overload risk", color: "#ef4444" }
+                  : intensity >= 7
+                  ? { text: "REDUCE VOLUME — moderately fatigued", color: Colors.orange }
+                  : { text: "MONITOR — light fatigue", color: Colors.recovery };
+
+                return (
+                  <>
+                    <View style={styles.formGroup}>
+                      <Text style={styles.fieldLabel}>MOVEMENTS & FATIGUE LOAD</Text>
+                      {imageAnalysis.movements.map((mv, i) => (
+                        <View key={i} style={styles.imgMvRow}>
+                          <View style={styles.imgMvInfo}>
+                            <Text style={styles.imgMvName}>{mv.name}</Text>
+                            <Text style={styles.imgMvVolume}>{mv.volume}</Text>
+                            <Text style={styles.imgMvMuscles}>{mv.muscleGroups.join(", ")}</Text>
+                          </View>
+                          <View style={styles.imgMvFatigue}>
+                            <Text style={styles.imgMvFatiguePct}>{mv.fatiguePercent}%</Text>
+                            <View style={styles.imgMvFatigueBar}>
+                              <View style={[styles.imgMvFatigueFill, { width: `${mv.fatiguePercent}%` as any }]} />
+                            </View>
+                          </View>
                         </View>
-                      </View>
+                      ))}
                     </View>
-                  ))}
-                </View>
-              )}
+
+                    {impactedMuscles.length > 0 && (
+                      <View style={styles.fatigueImpactPanel}>
+                        <View style={styles.fatigueImpactHeader}>
+                          <Feather name="alert-triangle" size={13} color={flagLabel.color} />
+                          <Text style={[styles.fatigueImpactTitle, { color: flagLabel.color }]}>NEXT WORKOUT IMPACT</Text>
+                        </View>
+                        <Text style={styles.fatigueImpactDesc}>
+                          These muscles will be flagged in your next AI workout — the builder will adjust volume automatically.
+                        </Text>
+                        <View style={styles.fatigueImpactBadge}>
+                          <View style={[styles.fatigueImpactDot, { backgroundColor: flagLabel.color }]} />
+                          <Text style={[styles.fatigueImpactBadgeText, { color: flagLabel.color }]}>{flagLabel.text}</Text>
+                        </View>
+                        {impactedMuscles.map(({ muscle, pct }) => {
+                          const barColor = pct >= 60 ? "#ef4444" : pct >= 35 ? Colors.orange : Colors.recovery;
+                          return (
+                            <View key={muscle} style={styles.muscleFatigueRow}>
+                              <Text style={styles.muscleFatigueName}>
+                                {muscle.charAt(0).toUpperCase() + muscle.slice(1)}
+                              </Text>
+                              <View style={styles.muscleFatigueTrack}>
+                                <View style={[styles.muscleFatigueFill, { width: `${pct}%` as any, backgroundColor: barColor }]} />
+                              </View>
+                              <Text style={[styles.muscleFatiguePct, { color: barColor }]}>{pct}%</Text>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </>
+                );
+              })()}
 
               <View style={styles.formGroup}>
                 <Text style={styles.fieldLabel}>LOG FOR DATE</Text>
@@ -649,6 +703,60 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
                       <Text style={styles.extractedVal}>{aiParsed.suggestedIntensity} / 10</Text>
                     </View>
                   </View>
+
+                  {(() => {
+                    const muscleFatigueMapAI: Record<string, number> = {};
+                    for (const mv of aiParsed.movements) {
+                      if (mv.muscleGroups.length === 0) continue;
+                      const perMuscle = mv.fatiguePercent / mv.muscleGroups.length;
+                      for (const mg of mv.muscleGroups) {
+                        const key = mg.toLowerCase();
+                        muscleFatigueMapAI[key] = (muscleFatigueMapAI[key] ?? 0) + perMuscle;
+                      }
+                    }
+                    const sortedAI = Object.entries(muscleFatigueMapAI)
+                      .sort(([, a], [, b]) => b - a)
+                      .map(([muscle, pct]) => ({ muscle, pct: Math.min(100, Math.round(pct)) }));
+                    const intensityAI = aiParsed.suggestedIntensity ?? 5;
+                    const impactedAI = sortedAI.filter(m => m.pct >= 15);
+                    const flagLabelAI = intensityAI >= 9
+                      ? { text: "AVOID — high overload risk", color: "#ef4444" }
+                      : intensityAI >= 7
+                      ? { text: "REDUCE VOLUME — moderately fatigued", color: Colors.orange }
+                      : { text: "MONITOR — light fatigue", color: Colors.recovery };
+
+                    if (impactedAI.length === 0) return null;
+
+                    return (
+                      <View style={[styles.fatigueImpactPanel, { marginTop: 12 }]}>
+                        <View style={styles.fatigueImpactHeader}>
+                          <Feather name="alert-triangle" size={13} color={flagLabelAI.color} />
+                          <Text style={[styles.fatigueImpactTitle, { color: flagLabelAI.color }]}>NEXT WORKOUT IMPACT</Text>
+                        </View>
+                        <Text style={styles.fatigueImpactDesc}>
+                          These muscles will be flagged in your next AI workout — the builder will adjust volume automatically.
+                        </Text>
+                        <View style={styles.fatigueImpactBadge}>
+                          <View style={[styles.fatigueImpactDot, { backgroundColor: flagLabelAI.color }]} />
+                          <Text style={[styles.fatigueImpactBadgeText, { color: flagLabelAI.color }]}>{flagLabelAI.text}</Text>
+                        </View>
+                        {impactedAI.map(({ muscle, pct }) => {
+                          const barColor = pct >= 60 ? "#ef4444" : pct >= 35 ? Colors.orange : Colors.recovery;
+                          return (
+                            <View key={muscle} style={styles.muscleFatigueRow}>
+                              <Text style={styles.muscleFatigueName}>
+                                {muscle.charAt(0).toUpperCase() + muscle.slice(1)}
+                              </Text>
+                              <View style={styles.muscleFatigueTrack}>
+                                <View style={[styles.muscleFatigueFill, { width: `${pct}%` as any, backgroundColor: barColor }]} />
+                              </View>
+                              <Text style={[styles.muscleFatiguePct, { color: barColor }]}>{pct}%</Text>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    );
+                  })()}
 
                   <View style={styles.formGroup}>
                     <Text style={styles.fieldLabel}>WORKOUT NAME</Text>
@@ -1329,5 +1437,76 @@ const styles = StyleSheet.create({
     height: "100%" as any,
     backgroundColor: Colors.orange,
     borderRadius: 2,
+  },
+  fatigueImpactPanel: {
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    padding: 14,
+    marginBottom: 16,
+  },
+  fatigueImpactHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 6,
+  },
+  fatigueImpactTitle: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 1.2,
+  },
+  fatigueImpactDesc: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
+    lineHeight: 17,
+    marginBottom: 10,
+  },
+  fatigueImpactBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 12,
+  },
+  fatigueImpactDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  fatigueImpactBadgeText: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    letterSpacing: 0.5,
+  },
+  muscleFatigueRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 7,
+  },
+  muscleFatigueName: {
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
+    color: Colors.text,
+    width: 80,
+  },
+  muscleFatigueTrack: {
+    flex: 1,
+    height: 6,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderRadius: 3,
+    overflow: "hidden",
+  },
+  muscleFatigueFill: {
+    height: "100%" as any,
+    borderRadius: 3,
+  },
+  muscleFatiguePct: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    width: 34,
+    textAlign: "right",
   },
 });

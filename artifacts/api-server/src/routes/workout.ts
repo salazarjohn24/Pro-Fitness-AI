@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, userProfilesTable, dailyCheckInsTable, workoutSessionsTable, workoutHistoryTable, exerciseLibraryTable, exercisePerformanceTable, exerciseSubstitutionsTable, externalWorkoutsTable } from "@workspace/db";
-import { eq, and, desc, inArray, sql } from "drizzle-orm";
+import { eq, and, desc, inArray, sql, gte } from "drizzle-orm";
 import { EXERCISE_LIBRARY, exerciseMap, type ExerciseData } from "../data/exercises";
 import { generateAIWorkout, generateAIArchitectWorkout, parseWorkoutDescriptionAI, analyzeWorkoutImageAI } from "../services/aiService";
 import { aiRateLimit } from "../middlewares/rateLimitMiddleware";
@@ -234,6 +234,40 @@ router.post("/workout/generate", aiRateLimit, async (req: Request, res: Response
 
   const excludedMuscles = new Set([...highSorenessGroups, ...userInjuries]);
 
+  // Fetch external workouts from last 48h to factor their muscle fatigue into the builder
+  const cutoff48h = new Date(Date.now() - 48 * 60 * 60 * 1000);
+  const recentExternal = await db.select()
+    .from(externalWorkoutsTable)
+    .where(and(
+      eq(externalWorkoutsTable.userId, userId),
+      gte(externalWorkoutsTable.createdAt, cutoff48h),
+    ))
+    .orderBy(desc(externalWorkoutsTable.createdAt))
+    .limit(15);
+
+  const externalWorkoutFatigue = recentExternal
+    .filter(e => e.workoutType !== "rest" && e.source !== "in-app" && ((e.muscleGroups as string[]) ?? []).length > 0)
+    .map(e => ({
+      label: e.label,
+      muscleGroups: (e.muscleGroups as string[]) ?? [],
+      intensity: e.intensity ?? 5,
+      hoursAgo: (Date.now() - e.createdAt.getTime()) / (1000 * 60 * 60),
+    }));
+
+  // Very high intensity externals (RPE ≥ 9, within 24h) → treat muscles as fully excluded
+  externalWorkoutFatigue
+    .filter(e => e.intensity >= 9 && e.hoursAgo < 24)
+    .flatMap(e => e.muscleGroups.map(m => normalizeMuscle(m.toLowerCase())))
+    .forEach(m => excludedMuscles.add(m));
+
+  // High intensity externals (RPE ≥ 7) → treat muscles as moderately sore (reduce volume)
+  const externalModerateGroups = [...new Set(
+    externalWorkoutFatigue
+      .filter(e => e.intensity >= 7)
+      .flatMap(e => e.muscleGroups.map(m => normalizeMuscle(m.toLowerCase())))
+  )].filter(m => !excludedMuscles.has(m) && !moderateSorenessGroups.includes(m));
+  moderateSorenessGroups.push(...externalModerateGroups);
+
   function isExerciseAllowed(ex: ExerciseData): boolean {
     if (excludedMuscles.has(ex.primaryMuscle.toLowerCase())) return false;
     const hasEquipment = ex.equipment.every(eq =>
@@ -350,6 +384,7 @@ router.post("/workout/generate", aiRateLimit, async (req: Request, res: Response
         preferredWorkoutDuration: profile?.preferredWorkoutDuration ?? 60,
         exerciseHistory,
         substitutions: substitutionRecords,
+        externalWorkoutFatigue,
       },
       availableForAI,
       exerciseMap
@@ -655,6 +690,40 @@ router.post("/workout/architect-generate", aiRateLimit, async (req: Request, res
     const requestedGroups = muscleGroups.map(m => normalizeMuscle(m));
     const userEquipment = normalizeEquipment(selectedEquipment ?? []);
 
+    // Fetch external workouts from last 48h to factor their muscle fatigue into the builder
+    const archCutoff48h = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    const archRecentExternal = await db.select()
+      .from(externalWorkoutsTable)
+      .where(and(
+        eq(externalWorkoutsTable.userId, userId),
+        gte(externalWorkoutsTable.createdAt, archCutoff48h),
+      ))
+      .orderBy(desc(externalWorkoutsTable.createdAt))
+      .limit(15);
+
+    const externalWorkoutFatigue = archRecentExternal
+      .filter(e => e.workoutType !== "rest" && e.source !== "in-app" && ((e.muscleGroups as string[]) ?? []).length > 0)
+      .map(e => ({
+        label: e.label,
+        muscleGroups: (e.muscleGroups as string[]) ?? [],
+        intensity: e.intensity ?? 5,
+        hoursAgo: (Date.now() - e.createdAt.getTime()) / (1000 * 60 * 60),
+      }));
+
+    // Very high intensity externals (RPE ≥ 9, within 24h) → treat muscles as fully excluded
+    externalWorkoutFatigue
+      .filter(e => e.intensity >= 9 && e.hoursAgo < 24)
+      .flatMap(e => e.muscleGroups.map(m => normalizeMuscle(m.toLowerCase())))
+      .forEach(m => excludedMuscles.add(m));
+
+    // High intensity externals (RPE ≥ 7) → treat muscles as moderately sore (reduce volume)
+    const archExternalModerateGroups = [...new Set(
+      externalWorkoutFatigue
+        .filter(e => e.intensity >= 7)
+        .flatMap(e => e.muscleGroups.map(m => normalizeMuscle(m.toLowerCase())))
+    )].filter(m => !excludedMuscles.has(m) && !moderateSorenessGroups.includes(m));
+    moderateSorenessGroups.push(...archExternalModerateGroups);
+
     function isExerciseAllowed(ex: ExerciseData): boolean {
       if (excludedMuscles.has(ex.primaryMuscle.toLowerCase())) return false;
       const hasEquipment = ex.equipment.every(eq =>
@@ -775,6 +844,7 @@ router.post("/workout/architect-generate", aiRateLimit, async (req: Request, res
           availableMinutes: (req.body as any).availableMinutes ?? undefined,
           exerciseHistory: archExerciseHistory,
           substitutions: archSubRecords,
+          externalWorkoutFatigue,
         },
         availableForAI,
         exerciseMap

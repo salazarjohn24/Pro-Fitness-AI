@@ -41,6 +41,13 @@ export interface SubstitutionEntry {
   count: number;
 }
 
+export interface ExternalFatigueEntry {
+  label: string;
+  muscleGroups: string[];
+  intensity: number;
+  hoursAgo: number;
+}
+
 export interface WorkoutContext {
   skillLevel: string;
   fitnessGoal: string;
@@ -55,6 +62,7 @@ export interface WorkoutContext {
   preferredWorkoutDuration?: number;
   exerciseHistory?: Record<string, ExerciseHistoryEntry>;
   substitutions?: SubstitutionEntry[];
+  externalWorkoutFatigue?: ExternalFatigueEntry[];
 }
 
 export interface ArchitectContext extends WorkoutContext {
@@ -131,6 +139,12 @@ RULES:
     ? ctx.substitutions.map(s => `  - Always swap "${s.originalName}" → "${s.preferredName}" (${s.count}x)`).join("\n")
     : "  None";
 
+  const externalFatigueLines = ctx.externalWorkoutFatigue && ctx.externalWorkoutFatigue.length > 0
+    ? ctx.externalWorkoutFatigue
+        .map(e => `  - "${e.label}" (${Math.round(e.hoursAgo)}h ago, RPE ${e.intensity}/10): ${e.muscleGroups.join(", ")}`)
+        .join("\n")
+    : "  None";
+
   const userPrompt = `User context:
 - Fitness goal: ${ctx.fitnessGoal}
 - Skill level: ${ctx.skillLevel}
@@ -144,13 +158,17 @@ RULES:
 - Target workout duration: ${ctx.preferredWorkoutDuration ?? 60} minutes (adjust exercise count/sets/reps accordingly)
 ${ctx.checkInNotes ? `- User notes: ${sanitizeUserInput(ctx.checkInNotes)}` : ""}
 
+Recent external training logged outside this app (account for cumulative muscle fatigue):
+${externalFatigueLines}
+⚠ Muscles hit at RPE ≥ 7 in an external session within 48h: reduce volume significantly or avoid entirely. RPE 5-6 within 24h: note the overlap and reduce sets by 20%.
+
 Recent exercise performance (for progressive overload — suggest slightly more weight/reps than last time if appropriate):
 ${historyLines}
 
 User exercise preferences (honor these substitutions):
 ${substitutionLines}
 
-Generate the ideal workout. Apply progressive overload where previous performance data exists. Honor substitution preferences.`;
+Generate the ideal workout. Apply progressive overload where previous performance data exists. Honor substitution preferences. CRITICALLY: respect the external training fatigue above to avoid muscle overload.`;
 
   const response = await openai.chat.completions.create({
     model: "gpt-5-mini",
@@ -221,6 +239,12 @@ RULES:
     ? ctx.substitutions.map(s => `  - Always swap "${s.originalName}" → "${s.preferredName}" (${s.count}x)`).join("\n")
     : "  None";
 
+  const externalFatigueLinesA = ctx.externalWorkoutFatigue && ctx.externalWorkoutFatigue.length > 0
+    ? ctx.externalWorkoutFatigue
+        .map(e => `  - "${e.label}" (${Math.round(e.hoursAgo)}h ago, RPE ${e.intensity}/10): ${e.muscleGroups.join(", ")}`)
+        .join("\n")
+    : "  None";
+
   const userPrompt = `User context:
 - Target muscle groups: ${ctx.requestedMuscleGroups.join(", ")}
 - Fitness goal: ${ctx.fitnessGoal}
@@ -233,13 +257,17 @@ RULES:
 - Available equipment: ${ctx.equipment.join(", ") || "bodyweight only"}
 - Available time: ${targetMinutes} minutes (fit all exercises within this duration)
 
+Recent external training logged outside this app (account for cumulative muscle fatigue):
+${externalFatigueLinesA}
+⚠ Even if a requested muscle group was hit externally at RPE ≥ 7 within 48h, reduce volume significantly and flag it in the rationale so the user knows.
+
 Recent exercise performance (apply progressive overload where possible):
 ${historyLinesA}
 
 User exercise preferences (honor these substitutions):
 ${substitutionLinesA}
 
-Generate the custom workout targeting the requested muscle groups. Adjust exercise count and sets to fit the time available. Apply progressive overload and honor substitution preferences.`;
+Generate the custom workout targeting the requested muscle groups. Adjust exercise count and sets to fit the time available. Apply progressive overload and honor substitution preferences. Mention any external fatigue overlap in the rationale.`;
 
   const response = await openai.chat.completions.create({
     model: "gpt-5-mini",

@@ -180,6 +180,7 @@ Pro Fitness AI — dark-themed fitness tracker with AI recommendations.
   - `useExerciseCoachNote(id)` — fetches AI coach note for exercise detail screen
   - `useAIAuditInsight()` — fetches AI performance analysis for the progress/audit screen
 - **Fallbacks**: All AI endpoints fall back to rule-based logic if the API call fails
+- **External Fatigue Integration** (completed): Both `/workout/generate` and `/workout/architect-generate` query `externalWorkoutsTable` for the last 48h, build an `ExternalFatigueEntry[]` list, mutate `excludedMuscles` (RPE ≥ 9, within 24h → fully exclude) and `moderateSorenessGroups` (RPE ≥ 7 → reduce volume), and pass `externalWorkoutFatigue` to both AI prompts. `WorkoutContext` interface has `externalWorkoutFatigue?: ExternalFatigueEntry[]`. `ActivityImportModal` screenshot_done and ai_interpreter result steps now show a "NEXT WORKOUT IMPACT" panel with per-muscle fatigue bars (green/amber/red) and a flag level badge.
 
 ## TypeScript & Composite Projects
 
