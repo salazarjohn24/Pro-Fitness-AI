@@ -71,6 +71,7 @@ Pro Fitness AI — dark-themed fitness tracker with AI recommendations.
 - `lib/auth.tsx` — Auth context (Replit OIDC mobile flow)
 - `hooks/useProfile.ts` — React Query hooks for profile, check-ins, external workouts (submit, recent, update, delete), readiness score computation, and fitness profile CRUD
 - `hooks/useWorkout.ts` — Hooks for workout generation, architect generation, saving, alternatives; `useWorkoutHistory(days)` unified history feed, `useSessionDetail(id)`, `useUpdateSessionExercises(id)` for detail/editing
+- `lib/notifications.ts` — Full notification system: `initNotifications()` (auto-schedules on app start), `loadNotifPrefs/saveNotifPrefs/applyNotifPrefs` (AsyncStorage `notif_prefs_v1`), `scheduleDaily` with CALENDAR repeating trigger, `sendTestNotification`, workout-ready notifications. Types: `NotifPrefs`, `DEFAULT_NOTIF_PREFS`
 - `constants/recoveryTips.ts` — Rotating muscle-specific recovery tip cards and nutrition tip cards (used on Congratulations screen)
 - `hooks/useExercises.ts` — React Query hooks for exercise library (list, detail, history, log set)
 - `hooks/useAuditAlerts.ts` — React Query hook for fetching audit alerts (neglect + consistency)

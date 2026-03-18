@@ -2,8 +2,16 @@ import { Feather } from "@expo/vector-icons";
 import type { ComponentProps } from "react";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { AppTourOverlay, markTourSeen } from "@/components/AppTourOverlay";
+import {
+  loadNotifPrefs,
+  saveNotifPrefs,
+  applyNotifPrefs,
+  sendTestNotification,
+  type NotifPrefs,
+  DEFAULT_NOTIF_PREFS,
+} from "@/lib/notifications";
 
 type FeatherIcon = ComponentProps<typeof Feather>["name"];
 import {
@@ -76,6 +84,13 @@ export default function ProfileScreen() {
   const [showInsightInfo, setShowInsightInfo] = useState(false);
   const [healthSyncing, setHealthSyncing] = useState(false);
   const [showTour, setShowTour] = useState(false);
+  const [notifPrefs, setNotifPrefs] = useState<NotifPrefs>({ ...DEFAULT_NOTIF_PREFS });
+  const [notifSaving, setNotifSaving] = useState(false);
+  const [notifDirty, setNotifDirty] = useState(false);
+
+  useEffect(() => {
+    loadNotifPrefs().then(setNotifPrefs);
+  }, []);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const botPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -676,6 +691,145 @@ export default function ProfileScreen() {
         </Pressable>
       )}
 
+      <View style={styles.sectionCard}>
+        <View style={styles.auditHeaderRow}>
+          <View style={styles.auditHeader}>
+            <Text style={styles.auditTitle}>NOTIFICATIONS</Text>
+          </View>
+          <View style={[styles.notifStatusBadge, { backgroundColor: (notifPrefs.checkInEnabled || notifPrefs.workoutEnabled) ? "rgba(74,222,128,0.1)" : "rgba(255,255,255,0.05)" }]}>
+            <View style={[styles.notifStatusDot, { backgroundColor: (notifPrefs.checkInEnabled || notifPrefs.workoutEnabled) ? "#4ADE80" : Colors.textSubtle }]} />
+            <Text style={[styles.notifStatusText, { color: (notifPrefs.checkInEnabled || notifPrefs.workoutEnabled) ? "#4ADE80" : Colors.textSubtle }]}>
+              {(notifPrefs.checkInEnabled || notifPrefs.workoutEnabled) ? "ACTIVE" : "OFF"}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.notifRow}>
+          <View style={styles.notifRowInfo}>
+            <Feather name="sun" size={14} color={Colors.highlight} />
+            <View style={styles.notifRowText}>
+              <Text style={styles.notifRowTitle}>Check-in Reminder</Text>
+              <Text style={styles.notifRowSub}>Daily morning prompt to log your energy & soreness</Text>
+            </View>
+          </View>
+          <Pressable
+            onPress={() => {
+              Haptics.selectionAsync();
+              setNotifPrefs((p) => ({ ...p, checkInEnabled: !p.checkInEnabled }));
+              setNotifDirty(true);
+            }}
+            style={[styles.notifToggle, notifPrefs.checkInEnabled && styles.notifToggleOn]}
+          >
+            <View style={[styles.notifToggleThumb, notifPrefs.checkInEnabled && styles.notifToggleThumbOn]} />
+          </Pressable>
+        </View>
+
+        {notifPrefs.checkInEnabled && (
+          <View style={styles.notifTimeRow}>
+            <Text style={styles.notifTimeLabel}>TIME</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={styles.notifChips}>
+                {[6, 7, 8, 9, 10, 11].map((h) => (
+                  <Pressable
+                    key={h}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setNotifPrefs((p) => ({ ...p, checkInHour: h }));
+                      setNotifDirty(true);
+                    }}
+                    style={[styles.notifChip, notifPrefs.checkInHour === h && styles.notifChipActive]}
+                  >
+                    <Text style={[styles.notifChipText, notifPrefs.checkInHour === h && styles.notifChipTextActive]}>
+                      {h <= 12 ? `${h} AM` : `${h - 12} PM`}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+        )}
+
+        <View style={[styles.notifRow, { marginTop: 8 }]}>
+          <View style={styles.notifRowInfo}>
+            <Feather name="zap" size={14} color={Colors.orange} />
+            <View style={styles.notifRowText}>
+              <Text style={styles.notifRowTitle}>Workout Reminder</Text>
+              <Text style={styles.notifRowSub}>Evening nudge to log your session & protect your streak</Text>
+            </View>
+          </View>
+          <Pressable
+            onPress={() => {
+              Haptics.selectionAsync();
+              setNotifPrefs((p) => ({ ...p, workoutEnabled: !p.workoutEnabled }));
+              setNotifDirty(true);
+            }}
+            style={[styles.notifToggle, notifPrefs.workoutEnabled && styles.notifToggleOn]}
+          >
+            <View style={[styles.notifToggleThumb, notifPrefs.workoutEnabled && styles.notifToggleThumbOn]} />
+          </Pressable>
+        </View>
+
+        {notifPrefs.workoutEnabled && (
+          <View style={styles.notifTimeRow}>
+            <Text style={styles.notifTimeLabel}>TIME</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={styles.notifChips}>
+                {[15, 16, 17, 18, 19, 20, 21].map((h) => (
+                  <Pressable
+                    key={h}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setNotifPrefs((p) => ({ ...p, workoutHour: h }));
+                      setNotifDirty(true);
+                    }}
+                    style={[styles.notifChip, notifPrefs.workoutHour === h && styles.notifChipActive]}
+                  >
+                    <Text style={[styles.notifChipText, notifPrefs.workoutHour === h && styles.notifChipTextActive]}>
+                      {h === 12 ? "12 PM" : h < 12 ? `${h} AM` : `${h - 12} PM`}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+        )}
+
+        <View style={styles.notifActions}>
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              sendTestNotification(notifPrefs.checkInEnabled ? "checkin" : "workout");
+            }}
+            style={({ pressed }) => [styles.notifTestBtn, { opacity: pressed ? 0.75 : 1 }]}
+          >
+            <Feather name="bell" size={12} color={Colors.textSubtle} />
+            <Text style={styles.notifTestText}>Send test</Text>
+          </Pressable>
+          {notifDirty && (
+            <Pressable
+              onPress={async () => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setNotifSaving(true);
+                await saveNotifPrefs(notifPrefs);
+                await applyNotifPrefs(notifPrefs);
+                setNotifDirty(false);
+                setNotifSaving(false);
+              }}
+              style={({ pressed }) => [styles.notifSaveBtn, { opacity: pressed ? 0.85 : 1 }]}
+            >
+              {notifSaving ? (
+                <ActivityIndicator size="small" color={Colors.bgPrimary} />
+              ) : (
+                <>
+                  <Feather name="check" size={13} color={Colors.bgPrimary} />
+                  <Text style={styles.notifSaveText}>Save & Apply</Text>
+                </>
+              )}
+            </Pressable>
+          )}
+        </View>
+      </View>
+
       <Pressable
         style={({ pressed }) => [styles.replayTourBtn, { opacity: pressed ? 0.8 : 1 }]}
         onPress={() => {
@@ -1159,6 +1313,116 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     fontStyle: "italic",
   },
+  notifStatusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 100,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+  },
+  notifStatusDot: { width: 6, height: 6, borderRadius: 3 },
+  notifStatusText: { fontSize: 8, fontFamily: "Inter_900Black", letterSpacing: 1 },
+  notifRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  notifRowInfo: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+  notifRowText: { flex: 1, gap: 2 },
+  notifRowTitle: { fontSize: 13, fontFamily: "Inter_700Bold", color: Colors.text },
+  notifRowSub: { fontSize: 11, fontFamily: "Inter_400Regular", color: Colors.textMuted, lineHeight: 16 },
+  notifToggle: {
+    width: 44,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: Colors.border,
+    justifyContent: "center",
+    paddingHorizontal: 3,
+  },
+  notifToggleOn: {
+    backgroundColor: Colors.orange,
+    borderColor: Colors.orange,
+  },
+  notifToggleThumb: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: Colors.textSubtle,
+    alignSelf: "flex-start",
+  },
+  notifToggleThumbOn: {
+    backgroundColor: "#fff",
+    alignSelf: "flex-end",
+  },
+  notifTimeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingLeft: 24,
+  },
+  notifTimeLabel: {
+    fontSize: 8,
+    fontFamily: "Inter_700Bold",
+    color: Colors.textSubtle,
+    letterSpacing: 1,
+    width: 30,
+  },
+  notifChips: { flexDirection: "row", gap: 6 },
+  notifChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 100,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  notifChipActive: {
+    backgroundColor: Colors.orange,
+    borderColor: Colors.orange,
+  },
+  notifChipText: { fontSize: 10, fontFamily: "Inter_700Bold", color: Colors.textMuted },
+  notifChipTextActive: { color: "#fff" },
+  notifActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    marginTop: 4,
+  },
+  notifTestBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  notifTestText: { fontSize: 11, fontFamily: "Inter_700Bold", color: Colors.textSubtle },
+  notifSaveBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: Colors.orange,
+  },
+  notifSaveText: { fontSize: 12, fontFamily: "Inter_900Black", color: Colors.bgPrimary, letterSpacing: 0.5 },
   replayTourBtn: {
     flexDirection: "row",
     alignItems: "center",
