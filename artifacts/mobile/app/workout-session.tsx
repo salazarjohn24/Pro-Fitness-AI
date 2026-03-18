@@ -4,6 +4,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Linking,
   Modal,
   Platform,
@@ -104,20 +105,23 @@ export default function WorkoutSessionScreen() {
   }, []);
 
   useEffect(() => {
-    if (restTimerVisible && restRemaining > 0) {
-      restTimerRef.current = setInterval(() => {
-        setRestRemaining((r) => {
-          if (r <= 1) {
-            clearInterval(restTimerRef.current!);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            return 0;
-          }
-          return r - 1;
-        });
-      }, 1000);
-      return () => { if (restTimerRef.current) clearInterval(restTimerRef.current); };
+    if (!restTimerVisible) {
+      if (restTimerRef.current) clearInterval(restTimerRef.current);
+      return;
     }
-  }, [restTimerVisible, restRemaining]);
+    restTimerRef.current = setInterval(() => {
+      setRestRemaining((r) => {
+        if (r <= 1) {
+          clearInterval(restTimerRef.current!);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          setRestTimerVisible(false);
+          return 0;
+        }
+        return r - 1;
+      });
+    }, 1000);
+    return () => { if (restTimerRef.current) clearInterval(restTimerRef.current); };
+  }, [restTimerVisible]);
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60).toString().padStart(2, "0");
@@ -172,12 +176,13 @@ export default function WorkoutSessionScreen() {
     setSwapLoading(true);
     try {
       const alts = await fetchExerciseAlternatives(exerciseId);
-      setSwapAlternatives(alts);
+      const currentIds = new Set((workoutData?.exercises ?? []).map(e => e.exerciseId));
+      setSwapAlternatives(alts.filter(a => !currentIds.has(a.id)));
     } catch {
       setSwapAlternatives([]);
     }
     setSwapLoading(false);
-  }, []);
+  }, [workoutData]);
 
   const confirmSwap = (alt: AlternativeExercise) => {
     if (!swappingId || !workoutData) return;
@@ -234,6 +239,25 @@ export default function WorkoutSessionScreen() {
   };
 
   const handleFinish = () => {
+    if (completedSets === 0) {
+      Alert.alert(
+        "End Workout?",
+        "You haven't logged any sets yet. Are you sure you want to finish?",
+        [
+          { text: "Keep Going", style: "cancel" },
+          {
+            text: "Finish Anyway",
+            style: "destructive",
+            onPress: () => {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              if (timerRef.current) clearInterval(timerRef.current);
+              setShowReview(true);
+            },
+          },
+        ]
+      );
+      return;
+    }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     if (timerRef.current) clearInterval(timerRef.current);
     setShowReview(true);
@@ -313,6 +337,7 @@ export default function WorkoutSessionScreen() {
       intensity,
       muscleGroups,
       stimulusPoints,
+      workoutDate: new Date().toLocaleDateString("en-CA"),
     });
   };
 

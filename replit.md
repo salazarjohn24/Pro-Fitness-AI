@@ -221,3 +221,6 @@ Known low-severity issues confirmed during QA passes across all screens. None ar
 | L27 | Check-In | `components/CheckInModal.tsx` | All sore muscles receive the same severity derived from the single global soreness score — no per-muscle severity granularity. |
 | L28 | Check-In | `api-server/src/routes/checkins.ts` | Backend falsy validation `!energyLevel` would silently reject score `0` — not an issue since min value is 1, but fragile. |
 | L29 | Check-In | `components/CheckInModal.tsx` | `handleAnswer` auto-advances in 180ms with no debounce — a fast accidental double-tap could skip a question. |
+| L30 | Session | `app/workout-session.tsx` | `submitExternalWorkout` in `handleSubmitFeedback` has no `onError` — silent failure means the workout won't appear in activity history if the second write fails. |
+| L31 | Session | `app/workout-session.tsx` | `pct` is computed from original planned sets only; finish-screen "Sets Done" stat adds extra exercises — the two figures are inconsistent (e.g. 100% complete but 12/10 sets). |
+| L32 | Session | `app/workout-session.tsx` | Extra exercise name input in the review screen has no `maxLength` constraint — an extremely long name could break the review layout. |
