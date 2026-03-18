@@ -33,5 +33,6 @@ export function useVolumeStats(range: string) {
       if (!res.ok) throw new Error("Failed to fetch volume stats");
       return res.json();
     },
+    staleTime: 120_000,
   });
 }

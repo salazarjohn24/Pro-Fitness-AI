@@ -20,6 +20,7 @@ export function useEnvironments() {
       if (!res.ok) throw new Error("Failed to load environments");
       return res.json();
     },
+    staleTime: 60_000,
   });
 }
 

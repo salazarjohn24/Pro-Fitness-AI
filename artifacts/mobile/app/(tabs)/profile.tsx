@@ -657,7 +657,7 @@ export default function ProfileScreen() {
                 >
                   <View style={styles.envIconWrap}>
                     <Feather
-                      name={env.type === "Home Gym" ? "home" : env.type === "CrossFit Box" ? "target" : "map-pin"}
+                      name={(GYM_TYPES.find(t => t.label === env.type)?.icon ?? "map-pin") as FeatherIcon}
                       size={16}
                       color={env.isActive ? Colors.orange : Colors.textMuted}
                     />

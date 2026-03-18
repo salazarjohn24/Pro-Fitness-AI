@@ -55,6 +55,7 @@ export function useExercises(params?: {
       if (!res.ok) throw new Error(`Failed to load exercises: ${res.status}`);
       return res.json();
     },
+    staleTime: 300_000,
   });
 }
 
@@ -112,6 +113,7 @@ export function useExerciseFavorites() {
       if (!res.ok) throw new Error("Failed to load favorites");
       return res.json();
     },
+    staleTime: 60_000,
   });
 }
 

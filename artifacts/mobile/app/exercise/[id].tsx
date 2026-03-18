@@ -288,7 +288,26 @@ export default function ExerciseDetailScreen() {
   );
 }
 
+const MUSCLE_GROUP_ICONS: Record<string, string> = {
+  "Chest": "crosshair",
+  "Back": "layers",
+  "Legs": "trending-up",
+  "Shoulders": "triangle",
+  "Arms": "zap",
+  "Biceps": "zap",
+  "Triceps": "zap",
+  "Core": "rotate-cw",
+  "Glutes": "trending-up",
+  "Hamstrings": "trending-up",
+  "Quadriceps": "trending-up",
+  "Calves": "trending-up",
+  "Full Body": "grid",
+  "Warmup": "wind",
+  "Cooldown": "wind",
+};
+
 function AlternativeCard({ exercise }: { exercise: Exercise }) {
+  const iconName = (MUSCLE_GROUP_ICONS[exercise.muscleGroup] ?? "activity") as any;
   return (
     <Pressable
       style={({ pressed }) => [styles.altCard, { opacity: pressed ? 0.85 : 1 }]}
@@ -298,7 +317,7 @@ function AlternativeCard({ exercise }: { exercise: Exercise }) {
       }}
     >
       <View style={styles.altIconContainer}>
-        <Feather name="activity" size={20} color={Colors.orange} />
+        <Feather name={iconName} size={20} color={Colors.orange} />
       </View>
       <Text style={styles.altName} numberOfLines={2}>{exercise.name}</Text>
       <Text style={styles.altMeta}>{exercise.equipment} · {exercise.difficulty}</Text>

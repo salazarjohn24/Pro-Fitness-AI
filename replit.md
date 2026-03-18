@@ -194,32 +194,31 @@ Push DB schema: `pnpm --filter @workspace/db run push`
 
 Known low-severity issues confirmed during QA passes across all screens. None are blocking. Grouped by originating screen.
 
-### Audit / Progress screen (from audit QA pass)
+### Audit / Progress screen
 
 | # | File | Issue | Detail |
 |---|------|-------|--------|
-| L1 | `hooks/useVolumeStats.ts` | Missing `staleTime` | Refetches on every tab focus. Add `staleTime: 120_000`. |
 | L2 | `app/(tabs)/progress.tsx` | `AlertChip` key uses `alert.muscle` | Key `${alert.type}-${alert.muscle}-${i}` — `alert.muscle` can be undefined for consistency alerts. Safer: `${alert.type}-${i}`. |
 | L3 | `app/(tabs)/progress.tsx` | Recovery correlation accordion shown with zero data | Accordion always renders when `recoveryCorrelation` object exists. Should gate on `recoveryCorrelation.hasEnoughData`. |
 | L4 | `app/(tabs)/progress.tsx` | Tied-peak bars both highlighted orange | `isBest = d.volume === maxVal` marks all bars tied at the max orange. Should highlight only the most-recent peak. |
 | L5 | `api-server/src/routes/audit.ts` | External workouts contribute 1 set/muscle regardless of volume | `externalWkts` loop adds exactly 1 set per muscle group. In-app sessions count every completed set. Muscle focus % is not apples-to-apples. |
 
-### Exercise Vault (from vault QA pass)
+### Exercise Vault
 
 | # | File | Issue | Detail |
 |---|------|-------|--------|
-| L6 | `hooks/useExercises.ts` | Missing `staleTime` on `useExercises` | Refetches on every screen focus. Exercise library data is effectively static — add `staleTime: 300_000`. |
-| L7 | `hooks/useExercises.ts` | Missing `staleTime` on `useExerciseFavorites` | Same issue as L6. Favorites change infrequently — add `staleTime: 60_000`. |
-| L8 | `app/exercise/[id].tsx` | AlternativeCard hardcodes `grid` icon | All alternative exercises display the same `grid` icon regardless of muscle group or type. |
-| L9 | `api-server/src/routes/exercises.ts` | `consistencyIndex` not written when logging a set | `POST /exercises/:id/history` saves weight/reps/sets to `workout_history` but always writes `null` for `consistencyIndex`. |
 | L10 | `api-server/src/routes/exercises.ts` | Docs comment references non-existent `/alternatives` endpoint | Internal comment references `/alternatives` — the actual endpoint is `/api/exercises/:id/alternatives`. |
 
-### Profile screen (from profile QA pass)
+### Profile screen
 
 | # | File | Issue | Detail |
 |---|------|-------|--------|
-| L11 | `app/(tabs)/profile.tsx` | "PRO MEMBER" badge is hardcoded for all users | No membership check — every user sees the PRO MEMBER badge unconditionally. |
-| L12 | `hooks/useEnvironments.ts` | Missing `staleTime` on `useEnvironments` | Refetches on every tab focus. Environments change infrequently — add `staleTime: 60_000`. |
-| L13 | `app/(tabs)/profile.tsx` | "Other" gym type shows `map-pin` icon instead of `grid` | Environment display uses a two-branch ternary; "Other" falls through to `map-pin`. Should match `GYM_TYPES` which defines `Other → grid`. |
 | L14 | `app/(tabs)/profile.tsx` | Quick-tap `updateProfile` calls have no `onError` handler | Insight level toggle, view-mode preference changes — silent failures if the server returns an error. |
 | L15 | `app/(tabs)/profile.tsx` | `markTourSeen()` fires when tour opens, not when it finishes | "Replay App Tour" immediately marks the tour as seen before the user has viewed it. Should fire inside the `onDone` callback. |
+
+### Tabled — future release
+
+| # | File | Issue | Detail |
+|---|------|-------|--------|
+| L9 | `api-server/src/routes/exercises.ts` | `consistencyIndex` not written when logging a set | `POST /exercises/:id/history` always writes `null` for `consistencyIndex`. Fix when a feature consumes this field. |
+| L11 | `app/(tabs)/profile.tsx` | "PRO MEMBER" badge is hardcoded for all users | Gate on a real membership field once subscriptions are added. |
