@@ -4,10 +4,11 @@ import { Tabs } from "expo-router";
 import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import { SymbolView } from "expo-symbols";
 import { Feather } from "@expo/vector-icons";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 
 import { Colors } from "@/constants/colors";
+import { AppTourOverlay, hasTourBeenSeen, markTourSeen } from "@/components/AppTourOverlay";
 
 function NativeTabLayout() {
   return (
@@ -117,8 +118,29 @@ function ClassicTabLayout() {
 }
 
 export default function TabLayout() {
-  if (isLiquidGlassAvailable()) {
-    return <NativeTabLayout />;
+  const [tourVisible, setTourVisible] = useState(false);
+  const [tourChecked, setTourChecked] = useState(false);
+
+  useEffect(() => {
+    hasTourBeenSeen().then((seen) => {
+      if (!seen) setTourVisible(true);
+      setTourChecked(true);
+    });
+  }, []);
+
+  function handleTourDone() {
+    markTourSeen();
+    setTourVisible(false);
   }
-  return <ClassicTabLayout />;
+
+  const inner = isLiquidGlassAvailable() ? <NativeTabLayout /> : <ClassicTabLayout />;
+
+  if (!tourChecked) return inner;
+
+  return (
+    <>
+      {inner}
+      <AppTourOverlay visible={tourVisible} onDone={handleTourDone} />
+    </>
+  );
 }

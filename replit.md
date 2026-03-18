@@ -63,6 +63,7 @@ Pro Fitness AI — dark-themed fitness tracker with AI recommendations.
 - `components/BodyMap.tsx` — Interactive front/back SVG body diagram for tapping sore muscle groups
 - `components/ActivityImportModal.tsx` — External workout logger modal with screenshot import, manual entry (label, duration, type, RPE intensity, muscle groups), and AI interpreter (paste workout description → auto-parsed muscle groups & intensity)
 - `app/external-workouts.tsx` — Dedicated screen for viewing, editing, and deleting external workouts with add button
+- `components/AppTourOverlay.tsx` — First-launch guided tour overlay (4 steps: Home, Vault, Progress, Profile); persisted via AsyncStorage key `app_tour_v1_completed`; exported helpers `hasTourBeenSeen()` + `markTourSeen()`; replay via Profile → "Replay App Tour" button
 - `components/InsightInfoModal.tsx` — Info popup for AI insights and readiness score explanation
 - `components/AccordionCard.tsx` — Collapsible card for deep-dive metrics (alert details, recovery correlation breakdown)
 

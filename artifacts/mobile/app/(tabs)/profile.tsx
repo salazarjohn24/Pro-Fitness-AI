@@ -3,6 +3,7 @@ import type { ComponentProps } from "react";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import React, { useState } from "react";
+import { AppTourOverlay, markTourSeen } from "@/components/AppTourOverlay";
 
 type FeatherIcon = ComponentProps<typeof Feather>["name"];
 import {
@@ -74,6 +75,7 @@ export default function ProfileScreen() {
 
   const [showInsightInfo, setShowInsightInfo] = useState(false);
   const [healthSyncing, setHealthSyncing] = useState(false);
+  const [showTour, setShowTour] = useState(false);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const botPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -675,12 +677,26 @@ export default function ProfileScreen() {
       )}
 
       <Pressable
+        style={({ pressed }) => [styles.replayTourBtn, { opacity: pressed ? 0.8 : 1 }]}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          markTourSeen().then(() => {});
+          setShowTour(true);
+        }}
+      >
+        <Feather name="compass" size={15} color={Colors.textSubtle} />
+        <Text style={styles.replayTourText}>REPLAY APP TOUR</Text>
+      </Pressable>
+
+      <Pressable
         style={({ pressed }) => [styles.logoutBtn, { opacity: pressed ? 0.8 : 1 }]}
         onPress={handleLogout}
       >
         <Feather name="log-out" size={16} color="#F87171" />
         <Text style={styles.logoutText}>SIGN OUT</Text>
       </Pressable>
+
+      <AppTourOverlay visible={showTour} onDone={() => setShowTour(false)} />
 
       <Pressable
         style={({ pressed }) => [styles.deleteAccountBtn, { opacity: pressed ? 0.8 : 1 }]}
@@ -1142,6 +1158,24 @@ const styles = StyleSheet.create({
     color: "#fff",
     letterSpacing: 1,
     fontStyle: "italic",
+  },
+  replayTourBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 16,
+    paddingVertical: 14,
+    marginBottom: 8,
+  },
+  replayTourText: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    color: Colors.textSubtle,
+    letterSpacing: 1,
   },
   logoutBtn: {
     flexDirection: "row",
