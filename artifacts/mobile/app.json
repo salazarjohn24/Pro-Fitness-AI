@@ -17,7 +17,7 @@
       "supportsTablet": false,
       "bundleIdentifier": "app.replit.profitnessai",
       "usesAppleSignIn": true,
-      "buildNumber": "12",
+      "buildNumber": "13",
       "infoPlist": {
         "NSHealthShareUsageDescription": "Your fitness data is used to track your workout progress and provide personalized insights within the app.",
         "NSHealthUpdateUsageDescription": "Pro Fitness AI may write completed workout data to Apple Health to keep your fitness records synchronized across apps.",
