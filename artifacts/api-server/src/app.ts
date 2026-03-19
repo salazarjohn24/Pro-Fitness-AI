@@ -18,6 +18,11 @@ if (process.env.PRODUCTION_ORIGIN) {
   ALLOWED_ORIGIN_PATTERNS.push(new RegExp(`^${escaped}$`));
 }
 
+app.use((req, _res, next) => {
+  console.log(`[api-req] ${req.method} ${req.originalUrl} | host=${req.headers.host} | x-forwarded-host=${req.headers["x-forwarded-host"] ?? "-"}`);
+  next();
+});
+
 app.use(cors({
   credentials: true,
   origin: (origin, callback) => {
