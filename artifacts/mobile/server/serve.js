@@ -105,41 +105,85 @@ function serveStaticFile(urlPath, res) {
   res.end(content);
 }
 
-const API_PORT = 8080;
+const API_PORT = parseInt(process.env.API_PORT || "8080", 10);
 
-function proxyToApi(req, res, pathname) {
+function sendProxyRequest(method, headers, fullPath, query, bodyBuffer, res, attempt) {
   const options = {
     hostname: "127.0.0.1",
     port: API_PORT,
-    path: pathname + (req.url.includes("?") ? "?" + req.url.split("?")[1] : ""),
-    method: req.method,
-    headers: { ...req.headers, host: `127.0.0.1:${API_PORT}` },
+    path: fullPath + query,
+    method: method,
+    headers: { ...headers, host: `127.0.0.1:${API_PORT}` },
   };
 
+  console.log(`[proxy] attempt=${attempt} ${method} → 127.0.0.1:${API_PORT}${fullPath}${query}`);
+
   const proxyReq = http.request(options, (proxyRes) => {
-    res.writeHead(proxyRes.statusCode, proxyRes.headers);
-    proxyRes.pipe(res, { end: true });
+    console.log(`[proxy] status=${proxyRes.statusCode} for ${fullPath}`);
+    const outHeaders = { ...proxyRes.headers };
+    delete outHeaders["transfer-encoding"];
+    if (!res.headersSent) {
+      res.writeHead(proxyRes.statusCode, outHeaders);
+      proxyRes.pipe(res, { end: true });
+    }
   });
 
   proxyReq.on("error", (err) => {
-    console.error("API proxy error:", err.message);
-    res.writeHead(502);
-    res.end("Bad Gateway");
+    console.error(`[proxy] error attempt=${attempt} ${fullPath}: ${err.code} ${err.message}`);
+    if (attempt < 4 && (err.code === "ECONNREFUSED" || err.code === "ECONNRESET" || err.code === "ETIMEDOUT")) {
+      const delay = attempt * 1000;
+      setTimeout(() => sendProxyRequest(method, headers, fullPath, query, bodyBuffer, res, attempt + 1), delay);
+      return;
+    }
+    if (!res.headersSent) {
+      res.writeHead(502, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "API server temporarily unavailable", code: err.code }));
+    }
   });
 
-  req.pipe(proxyReq, { end: true });
+  if (bodyBuffer && bodyBuffer.length > 0) {
+    proxyReq.write(bodyBuffer);
+  }
+  proxyReq.end();
+}
+
+function proxyToApi(req, res, fullPath) {
+  const query = req.url && req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+  const chunks = [];
+  req.on("data", (chunk) => chunks.push(chunk));
+  req.on("end", () => {
+    const bodyBuffer = Buffer.concat(chunks);
+    sendProxyRequest(req.method, req.headers, fullPath, query, bodyBuffer, res, 1);
+  });
+  req.on("error", (err) => {
+    console.error(`[proxy] request read error: ${err.message}`);
+    if (!res.headersSent) {
+      res.writeHead(400);
+      res.end("Bad Request");
+    }
+  });
 }
 
 const landingPageTemplate = fs.readFileSync(TEMPLATE_PATH, "utf-8");
 const appName = getAppName();
 
+console.log(`[serve] Starting: basePath="${basePath}", API_PORT=${API_PORT}`);
+
 const server = http.createServer((req, res) => {
-  const url = new URL(req.url || "/", `http://${req.headers.host}`);
-  let pathname = url.pathname;
+  const rawUrl = req.url || "/";
+  let pathname;
+  try {
+    const url = new URL(rawUrl, `http://${req.headers.host || "localhost"}`);
+    pathname = url.pathname;
+  } catch {
+    pathname = rawUrl.split("?")[0];
+  }
 
   if (basePath && pathname.startsWith(basePath)) {
     pathname = pathname.slice(basePath.length) || "/";
   }
+
+  console.log(`[serve] ${req.method} ${pathname}`);
 
   if (pathname.startsWith("/api/") || pathname === "/api") {
     return proxyToApi(req, res, pathname);
@@ -161,5 +205,6 @@ const server = http.createServer((req, res) => {
 
 const port = parseInt(process.env.PORT || "3000", 10);
 server.listen(port, "0.0.0.0", () => {
-  console.log(`Serving static Expo build on port ${port}`);
+  console.log(`[serve] Listening on port ${port}`);
+  console.log(`[serve] API proxy → 127.0.0.1:${API_PORT}`);
 });
