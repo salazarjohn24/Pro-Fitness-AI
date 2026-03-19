@@ -24,9 +24,26 @@ setInterval(() => {
   }
 }, 60_000);
 
+const PRODUCTION_ORIGIN_FALLBACK = process.env.PRODUCTION_ORIGIN;
+
+function isInternalHost(host: string): boolean {
+  const h = host.split(":")[0];
+  if (h === "localhost" || h === "127.0.0.1") return true;
+  if (/^10\./.test(h)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return true;
+  if (/^192\.168\./.test(h)) return true;
+  return false;
+}
+
 function getOrigin(req: Request): string {
-  const proto = req.headers["x-forwarded-proto"] || "https";
-  const host = req.headers["x-forwarded-host"] || req.headers["host"] || "localhost";
+  const proto = (req.headers["x-forwarded-proto"] as string | undefined) || "https";
+  const forwardedHost = req.headers["x-forwarded-host"] as string | undefined;
+
+  if (!forwardedHost || isInternalHost(forwardedHost)) {
+    if (PRODUCTION_ORIGIN_FALLBACK) return PRODUCTION_ORIGIN_FALLBACK;
+  }
+
+  const host = forwardedHost || (req.headers["host"] as string | undefined) || "localhost";
   return `${proto}://${host}`;
 }
 
