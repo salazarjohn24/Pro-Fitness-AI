@@ -4,6 +4,7 @@
  * Serves the output of build.js (static-build/) with two special routes:
  * - GET / or /manifest with expo-platform header → platform manifest JSON
  * - GET / without expo-platform → landing page HTML
+ * /api/* requests are proxied to the API server on port 8080.
  * Everything else falls through to static file serving from ./static-build/.
  *
  * Zero external dependencies — uses only Node.js built-ins (http, fs, path).
@@ -104,6 +105,31 @@ function serveStaticFile(urlPath, res) {
   res.end(content);
 }
 
+const API_PORT = 8080;
+
+function proxyToApi(req, res, pathname) {
+  const options = {
+    hostname: "127.0.0.1",
+    port: API_PORT,
+    path: pathname + (req.url.includes("?") ? "?" + req.url.split("?")[1] : ""),
+    method: req.method,
+    headers: { ...req.headers, host: `127.0.0.1:${API_PORT}` },
+  };
+
+  const proxyReq = http.request(options, (proxyRes) => {
+    res.writeHead(proxyRes.statusCode, proxyRes.headers);
+    proxyRes.pipe(res, { end: true });
+  });
+
+  proxyReq.on("error", (err) => {
+    console.error("API proxy error:", err.message);
+    res.writeHead(502);
+    res.end("Bad Gateway");
+  });
+
+  req.pipe(proxyReq, { end: true });
+}
+
 const landingPageTemplate = fs.readFileSync(TEMPLATE_PATH, "utf-8");
 const appName = getAppName();
 
@@ -113,6 +139,10 @@ const server = http.createServer((req, res) => {
 
   if (basePath && pathname.startsWith(basePath)) {
     pathname = pathname.slice(basePath.length) || "/";
+  }
+
+  if (pathname.startsWith("/api/") || pathname === "/api") {
+    return proxyToApi(req, res, pathname);
   }
 
   if (pathname === "/" || pathname === "/manifest") {
