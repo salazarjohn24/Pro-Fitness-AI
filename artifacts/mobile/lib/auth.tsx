@@ -13,6 +13,10 @@ const HAS_SIGNED_IN_KEY = "has_signed_in_before";
 const IS_WEB = Platform.OS === "web";
 const IS_IOS = Platform.OS === "ios";
 
+function authLog(msg: string): void {
+  console.log(`[auth-diag] ${msg}`);
+}
+
 interface User {
   id: string;
   email: string | null;
@@ -65,6 +69,8 @@ function getApiBaseUrl(): string {
   }
   return "";
 }
+
+authLog(`module_init EXPO_PUBLIC_DOMAIN=${process.env.EXPO_PUBLIC_DOMAIN ?? "(not set)"} apiBase=${getApiBaseUrl() || "(empty)"}`);
 
 async function getStoredToken(): Promise<string | null> {
   if (IS_WEB) return null;
@@ -177,6 +183,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginWithSocial = useCallback(async (provider: "google" | "github" | "twitter"): Promise<{ error?: string }> => {
     const apiBase = getApiBaseUrl();
+    authLog(`provider=${provider} EXPO_PUBLIC_DOMAIN=${process.env.EXPO_PUBLIC_DOMAIN ?? "(not set)"} apiBase=${apiBase || "(empty)"}`);
+
     if (!apiBase) return { error: "API not configured" };
 
     if (IS_WEB) {
@@ -207,29 +215,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     }
 
+    const authUrl = `${apiBase}/api/auth/social/${provider}`;
+    const redirectScheme = "mobile://auth-callback";
+    authLog(`provider=${provider} auth_start_url=${authUrl} redirect_scheme=${redirectScheme}`);
+
     try {
       const result = await WebBrowser.openAuthSessionAsync(
-        `${apiBase}/api/auth/social/${provider}`,
-        "mobile://auth-callback",
+        authUrl,
+        redirectScheme,
         { showInRecents: true },
       );
 
+      authLog(`provider=${provider} result.type=${result.type}`);
+
       if (result.type === "success") {
-        const parsed = Linking.parse(result.url);
+        const callbackUrl = (result as { type: "success"; url: string }).url;
+        const parsed = Linking.parse(callbackUrl);
+        const queryKeys = Object.keys(parsed.queryParams ?? {});
+        authLog(`provider=${provider} callback_scheme=${parsed.scheme} callback_path=${parsed.path} query_keys=[${queryKeys.join(",")}]`);
+
         const token = parsed.queryParams?.token as string | undefined;
         const error = parsed.queryParams?.error as string | undefined;
+        authLog(`provider=${provider} token_present=${!!token} error_present=${!!error}${error ? ` error_decoded=${decodeURIComponent(error)}` : ""}`);
+
         if (error) return { error: decodeURIComponent(error) };
         if (token) {
           await Promise.all([setStoredToken(token), markHasSignedIn()]);
           setHasSignedInBefore(true);
           setIsLoading(true);
           await fetchUser();
+          authLog(`provider=${provider} fetchUser_complete user_loaded=${true}`);
+        } else {
+          authLog(`provider=${provider} no_token_in_callback`);
         }
       } else if (result.type === "cancel") {
+        authLog(`provider=${provider} user_canceled`);
         return {};
+      } else {
+        authLog(`provider=${provider} unexpected_result_type=${result.type}`);
       }
       return {};
     } catch (err) {
+      authLog(`provider=${provider} exception=${String(err)}`);
       console.error(`${provider} login error:`, err);
       return { error: "Authentication failed. Please try again." };
     }
@@ -240,6 +267,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loginWithTwitter = useCallback(() => loginWithSocial("twitter"), [loginWithSocial]);
 
   const loginWithApple = useCallback(async (): Promise<{ error?: string }> => {
+    authLog(`provider=apple start IS_IOS=${IS_IOS}`);
     if (!IS_IOS) return { error: "Apple Sign In is only available on iOS" };
     try {
       const credential = await AppleAuthentication.signInAsync({
@@ -249,10 +277,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ],
       });
 
+      authLog(`provider=apple credential_received identity_token_present=${!!credential.identityToken} authCode_present=${!!credential.authorizationCode}`);
+
       if (!credential.identityToken) return { error: "Apple did not return a valid token" };
 
       const apiBase = getApiBaseUrl();
-      const res = await fetch(`${apiBase}/api/auth/social/apple`, {
+      const appleEndpoint = `${apiBase}/api/auth/social/apple`;
+      authLog(`provider=apple posting_to=${appleEndpoint}`);
+
+      const res = await fetch(appleEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -261,17 +294,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           fullName: credential.fullName,
         }),
       });
+
+      authLog(`provider=apple api_status=${res.status} ok=${res.ok}`);
+
       const data = await res.json();
-      if (!res.ok) return { error: data.error || "Apple sign in failed" };
+      if (!res.ok) {
+        authLog(`provider=apple api_error_body=${JSON.stringify(data)}`);
+        return { error: data.error || "Apple sign in failed" };
+      }
+
+      authLog(`provider=apple token_received=${!!data.token}`);
       if (data.token) {
         await Promise.all([setStoredToken(data.token), markHasSignedIn()]);
         setHasSignedInBefore(true);
         setIsLoading(true);
         await fetchUser();
+        authLog(`provider=apple fetchUser_complete`);
       }
       return {};
     } catch (err: any) {
-      if (err?.code === "ERR_CANCELED") return {};
+      if (err?.code === "ERR_CANCELED") {
+        authLog(`provider=apple user_canceled`);
+        return {};
+      }
+      authLog(`provider=apple exception_code=${err?.code ?? "none"} exception=${String(err)}`);
       console.error("Apple login error:", err);
       return { error: "Apple sign in failed. Please try again." };
     }
