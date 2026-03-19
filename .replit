@@ -32,4 +32,4 @@ packages = ["eas-cli"]
 [userenv]
 
 [userenv.shared]
-PRODUCTION_ORIGIN = "https://salazarjohn24-workspace.replit.app"
+PRODUCTION_ORIGIN = "https://pro-fitness-ai.replit.app"

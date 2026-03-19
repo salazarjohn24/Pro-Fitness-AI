@@ -14,7 +14,7 @@
     "production": {
       "autoIncrement": false,
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "salazarjohn24-workspace.replit.app"
+        "EXPO_PUBLIC_DOMAIN": "pro-fitness-ai.replit.app"
       }
     }
   },
