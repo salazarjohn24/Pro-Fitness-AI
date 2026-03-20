@@ -221,7 +221,7 @@ function FormatOverridePanel() {
 // Panel 3 — Save Result (wasUserEdited + editedFields)
 // ─────────────────────────────────────────────
 function SaveResultPanel() {
-  const [saved, setSaved] = useState(true);
+  const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const handleSave = () => {

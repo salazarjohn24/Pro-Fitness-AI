@@ -88,12 +88,58 @@ export interface WorkoutFormatOverriddenProps {
   confidence: number;         // parser confidence at the time of the override
 }
 
+/**
+ * Fired once per card mount when the "Today's Training Adjustment" card is
+ * actually shown (i.e. no persisted choice exists for today yet).
+ *
+ * Firing location:
+ *   - TrainingAdjustmentCard: useEffect after AsyncStorage check, when outcome is null
+ */
+export interface RecommendationShownProps {
+  avg_fatigue: number;             // avgFatigue from deload-check response
+  session_count: number;           // total sessions counted in the 7-day window
+  internal_session_count: number;  // in-app sessions
+  external_session_count: number;  // externally logged sessions
+  weekly_volume: number;           // stimulus-point-based weekly volume score
+  volume_reduction_pct: number;    // DELOAD_VOLUME_REDUCTION_PCT constant value
+  intensity_reduction_pct: number; // DELOAD_INTENSITY_REDUCTION_PCT constant value
+}
+
+/**
+ * Fired when the user taps "Use Recommended Plan".
+ *
+ * Firing location:
+ *   - TrainingAdjustmentCard: handleAccept
+ */
+export interface RecommendationAcceptedProps {
+  avg_fatigue: number;
+  session_count: number;
+  volume_reduction_pct: number;
+  intensity_reduction_pct: number;
+}
+
+/**
+ * Fired when the user taps "Train as Planned (Override)".
+ *
+ * Firing location:
+ *   - TrainingAdjustmentCard: handleOverride
+ */
+export interface RecommendationOverriddenProps {
+  avg_fatigue: number;
+  session_count: number;
+  volume_reduction_pct: number;
+  intensity_reduction_pct: number;
+}
+
 export type TelemetryEvent =
   | { name: "parser_confidence_recorded"; props: ParserConfidenceRecordedProps }
   | { name: "parser_warning_shown"; props: ParserWarningShownProps }
   | { name: "import_user_edited_fields"; props: ImportUserEditedFieldsProps }
   | { name: "workout_format_detected"; props: WorkoutFormatDetectedProps }
-  | { name: "workout_format_overridden"; props: WorkoutFormatOverriddenProps };
+  | { name: "workout_format_overridden"; props: WorkoutFormatOverriddenProps }
+  | { name: "recommendation_shown"; props: RecommendationShownProps }
+  | { name: "recommendation_accepted"; props: RecommendationAcceptedProps }
+  | { name: "recommendation_overridden"; props: RecommendationOverriddenProps };
 
 // ---------------------------------------------------------------------------
 // Dispatch

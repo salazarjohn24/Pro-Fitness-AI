@@ -15,8 +15,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CheckInModal, type CheckInData } from "@/components/CheckInModal";
-
 import { InsightInfoModal } from "@/components/InsightInfoModal";
+import { TrainingAdjustmentCard } from "@/components/TrainingAdjustmentCard";
 import WorkoutReviewModal from "@/components/WorkoutReviewModal";
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
@@ -318,15 +318,11 @@ export default function StatusScreen() {
         </View>
 
         {deloadCheck?.recommended && deloadCheck.reason && (
-          <View style={styles.deloadBanner}>
-            <View style={styles.deloadIconWrap}>
-              <Feather name="alert-triangle" size={16} color="#f59e0b" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.deloadTitle}>Recovery Day Recommended</Text>
-              <Text style={styles.deloadBody}>{deloadCheck.reason}</Text>
-            </View>
-          </View>
+          <TrainingAdjustmentCard
+            deloadCheck={deloadCheck}
+            onAccept={() => {}}
+            onOverride={() => {}}
+          />
         )}
 
         <BentoCard>
@@ -864,32 +860,6 @@ const styles = StyleSheet.create({
   headerRight: { flexDirection: "row", alignItems: "center", gap: 12 },
   streakBadge: { flexDirection: "row", alignItems: "center", gap: 4 },
   streakText: { fontSize: 14, fontFamily: "Inter_900Black", color: Colors.text, fontStyle: "italic" },
-  deloadBanner: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
-    backgroundColor: "#f59e0b18",
-    borderWidth: 1,
-    borderColor: "#f59e0b40",
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
-  },
-  deloadIconWrap: {
-    marginTop: 1,
-  },
-  deloadTitle: {
-    fontSize: 13,
-    fontFamily: "Inter_700Bold",
-    color: "#f59e0b",
-    marginBottom: 3,
-  },
-  deloadBody: {
-    fontSize: 12,
-    fontFamily: "Inter_400Regular",
-    color: Colors.textMuted,
-    lineHeight: 17,
-  },
   card: {
     backgroundColor: Colors.bgCard,
     borderWidth: 1,

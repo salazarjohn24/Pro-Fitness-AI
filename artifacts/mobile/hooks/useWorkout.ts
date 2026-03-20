@@ -213,6 +213,8 @@ export interface DeloadCheckResult {
   avgFatigue: number;
   weeklyVolume: number;
   sessionCount: number;
+  internalSessionCount: number;
+  externalSessionCount: number;
 }
 
 export function useDeloadCheck() {
