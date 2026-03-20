@@ -119,7 +119,7 @@ export interface RecommendationAcceptedProps {
 }
 
 /**
- * Fired when the user taps "Train as Planned (Override)".
+ * Fired when the user taps "Train as Planned".
  *
  * Firing location:
  *   - TrainingAdjustmentCard: handleOverride
@@ -131,15 +131,66 @@ export interface RecommendationOverriddenProps {
   intensity_reduction_pct: number;
 }
 
+/**
+ * Fired when a low-confidence import review sheet is opened before saving.
+ *
+ * Firing location:
+ *   - ParsedWorkoutForm: handleSubmit, when showBanner (confidence < threshold)
+ */
+export interface ImportLowConfidenceReviewOpenedProps {
+  confidence: number;       // raw 0.0 – 1.0
+  confidence_pct: number;   // integer 0 – 100
+  source: "text" | "screenshot" | "manual";
+  movement_count: number;   // how many movements were in the parsed result
+}
+
+/**
+ * Fired when the user adds a movement inside the low-confidence review or movement editor.
+ *
+ * Firing location:
+ *   - ParsedWorkoutForm: addMovement handler
+ */
+export interface ImportMovementAddedProps {
+  movement_name: string;         // name of the added movement (no PII — user-provided workout name)
+  source: "text" | "screenshot" | "manual";
+  confidence: number | null;     // parser confidence at the time of the add
+}
+
+/**
+ * Fired when the user deletes a movement inside the low-confidence review or movement editor.
+ *
+ * Firing location:
+ *   - ParsedWorkoutForm: deleteMovement handler
+ */
+export interface ImportMovementDeletedProps {
+  movement_name: string;         // name of the deleted movement
+  source: "text" | "screenshot" | "manual";
+  confidence: number | null;
+}
+
+/**
+ * Fired when the user successfully submits feedback.
+ *
+ * Firing location:
+ *   - profile.tsx: handleFeedbackSubmit on success
+ */
+export interface FeedbackSubmittedProps {
+  message_length: number;  // character count — no PII
+}
+
 export type TelemetryEvent =
   | { name: "parser_confidence_recorded"; props: ParserConfidenceRecordedProps }
   | { name: "parser_warning_shown"; props: ParserWarningShownProps }
   | { name: "import_user_edited_fields"; props: ImportUserEditedFieldsProps }
   | { name: "workout_format_detected"; props: WorkoutFormatDetectedProps }
   | { name: "workout_format_overridden"; props: WorkoutFormatOverriddenProps }
-  | { name: "recommendation_shown"; props: RecommendationShownProps }
-  | { name: "recommendation_accepted"; props: RecommendationAcceptedProps }
-  | { name: "recommendation_overridden"; props: RecommendationOverriddenProps };
+  | { name: "readiness_recommendation_shown"; props: RecommendationShownProps }
+  | { name: "readiness_recommendation_accepted"; props: RecommendationAcceptedProps }
+  | { name: "readiness_recommendation_overridden"; props: RecommendationOverriddenProps }
+  | { name: "import_low_confidence_review_opened"; props: ImportLowConfidenceReviewOpenedProps }
+  | { name: "import_movement_added"; props: ImportMovementAddedProps }
+  | { name: "import_movement_deleted"; props: ImportMovementDeletedProps }
+  | { name: "feedback_submitted"; props: FeedbackSubmittedProps };
 
 // ---------------------------------------------------------------------------
 // Dispatch

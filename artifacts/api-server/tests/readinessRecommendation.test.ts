@@ -214,10 +214,10 @@ describe("buildAdjustmentCard", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Telemetry prop builders — recommendation_shown
+// Telemetry prop builders — readiness_recommendation_shown
 // ---------------------------------------------------------------------------
 
-describe("buildRecommendationShownProps (recommendation_shown)", () => {
+describe("buildRecommendationShownProps (readiness_recommendation_shown)", () => {
   it("maps avgFatigue to avg_fatigue", () => {
     const data = makeDeloadCheck({ avgFatigue: 72.5 });
     const props = buildRecommendationShownProps(data);
@@ -277,10 +277,10 @@ describe("buildRecommendationShownProps (recommendation_shown)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Telemetry prop builders — recommendation_accepted (accept flow)
+// Telemetry prop builders — readiness_recommendation_accepted (accept flow)
 // ---------------------------------------------------------------------------
 
-describe("buildRecommendationAcceptedProps (recommendation_accepted / accept flow)", () => {
+describe("buildRecommendationAcceptedProps (readiness_recommendation_accepted / accept flow)", () => {
   it("maps avgFatigue to avg_fatigue", () => {
     const data = makeDeloadCheck({ avgFatigue: 80 });
     const props = buildRecommendationAcceptedProps(data);
@@ -310,10 +310,10 @@ describe("buildRecommendationAcceptedProps (recommendation_accepted / accept flo
 });
 
 // ---------------------------------------------------------------------------
-// Telemetry prop builders — recommendation_overridden (override flow)
+// Telemetry prop builders — readiness_recommendation_overridden (override flow)
 // ---------------------------------------------------------------------------
 
-describe("buildRecommendationOverriddenProps (recommendation_overridden / override flow)", () => {
+describe("buildRecommendationOverriddenProps (readiness_recommendation_overridden / override flow)", () => {
   it("maps avgFatigue to avg_fatigue", () => {
     const data = makeDeloadCheck({ avgFatigue: 68 });
     const props = buildRecommendationOverriddenProps(data);
@@ -409,9 +409,9 @@ describe("configurable constants", () => {
 
 describe("telemetry event name contract", () => {
   const VALID_NAMES = [
-    "recommendation_shown",
-    "recommendation_accepted",
-    "recommendation_overridden",
+    "readiness_recommendation_shown",
+    "readiness_recommendation_accepted",
+    "readiness_recommendation_overridden",
   ] as const;
 
   it.each(VALID_NAMES)("'%s' is a lowercase snake_case string", (name) => {

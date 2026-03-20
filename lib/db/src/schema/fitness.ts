@@ -207,6 +207,16 @@ export const userFavoriteExercisesTable = pgTable("user_favorite_exercises", {
 export type UserFavoriteExercise = typeof userFavoriteExercisesTable.$inferSelect;
 export type InsertUserFavoriteExercise = typeof userFavoriteExercisesTable.$inferInsert;
 
+export const userFeedbackTable = pgTable("user_feedback", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  message: text("message").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type UserFeedback = typeof userFeedbackTable.$inferSelect;
+export type InsertUserFeedback = typeof userFeedbackTable.$inferInsert;
+
 export const insertWorkoutSessionSchema = createInsertSchema(workoutSessionsTable).omit({ id: true });
 export const insertExerciseLibrarySchema = createInsertSchema(exerciseLibraryTable).omit({ id: true });
 export const insertWorkoutHistorySchema = createInsertSchema(workoutHistoryTable).omit({ id: true });

@@ -47,6 +47,7 @@ The PostgreSQL database schema includes tables for:
 - `workout_sessions`: Details of completed workout sessions.
 - `exercise_library`: Comprehensive exercise data.
 - `workout_history`: Individual set logs for exercises.
+- `user_feedback`: User-submitted feedback (message + userId + timestamp).
 
 ### AI Integration
 - **Provider**: OpenAI via Replit AI Integrations.

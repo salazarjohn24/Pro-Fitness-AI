@@ -12,6 +12,8 @@ import {
   type NotifPrefs,
   DEFAULT_NOTIF_PREFS,
 } from "@/lib/notifications";
+import { getApiBase, getAuthHeaders, getFetchOptions } from "@/hooks/apiHelpers";
+import { track } from "@/lib/telemetry";
 
 type FeatherIcon = ComponentProps<typeof Feather>["name"];
 import {
@@ -93,9 +95,36 @@ export default function ProfileScreen() {
   const [notifSaving, setNotifSaving] = useState(false);
   const [notifDirty, setNotifDirty] = useState(false);
 
+  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
+  const [feedbackText, setFeedbackText] = useState("");
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [feedbackSent, setFeedbackSent] = useState(false);
+
   useEffect(() => {
     loadNotifPrefs().then(setNotifPrefs);
   }, []);
+
+  const handleFeedbackSubmit = async () => {
+    const msg = feedbackText.trim();
+    if (!msg || feedbackSubmitting) return;
+    setFeedbackSubmitting(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${getApiBase()}/api/feedback`, {
+        method: "POST",
+        ...getFetchOptions(headers),
+        body: JSON.stringify({ message: msg }),
+      });
+      if (res.ok) {
+        setFeedbackSent(true);
+        setFeedbackText("");
+        track({ name: "feedback_submitted", props: { message_length: msg.length } });
+      }
+    } catch {
+    } finally {
+      setFeedbackSubmitting(false);
+    }
+  };
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const botPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -847,10 +876,10 @@ export default function ProfileScreen() {
           <View style={styles.auditHeader}>
             <Text style={styles.auditTitle}>NOTIFICATIONS</Text>
           </View>
-          <View style={[styles.notifStatusBadge, { backgroundColor: (notifPrefs.checkInEnabled || notifPrefs.workoutEnabled) ? "rgba(74,222,128,0.1)" : "rgba(255,255,255,0.05)" }]}>
-            <View style={[styles.notifStatusDot, { backgroundColor: (notifPrefs.checkInEnabled || notifPrefs.workoutEnabled) ? "#4ADE80" : Colors.textSubtle }]} />
-            <Text style={[styles.notifStatusText, { color: (notifPrefs.checkInEnabled || notifPrefs.workoutEnabled) ? "#4ADE80" : Colors.textSubtle }]}>
-              {(notifPrefs.checkInEnabled || notifPrefs.workoutEnabled) ? "ACTIVE" : "OFF"}
+          <View style={[styles.notifStatusBadge, { backgroundColor: (notifPrefs.checkInEnabled || notifPrefs.workoutEnabled || notifPrefs.insightFrequency !== "off") ? "rgba(74,222,128,0.1)" : "rgba(255,255,255,0.05)" }]}>
+            <View style={[styles.notifStatusDot, { backgroundColor: (notifPrefs.checkInEnabled || notifPrefs.workoutEnabled || notifPrefs.insightFrequency !== "off") ? "#4ADE80" : Colors.textSubtle }]} />
+            <Text style={[styles.notifStatusText, { color: (notifPrefs.checkInEnabled || notifPrefs.workoutEnabled || notifPrefs.insightFrequency !== "off") ? "#4ADE80" : Colors.textSubtle }]}>
+              {(notifPrefs.checkInEnabled || notifPrefs.workoutEnabled || notifPrefs.insightFrequency !== "off") ? "ACTIVE" : "OFF"}
             </Text>
           </View>
         </View>
@@ -945,11 +974,70 @@ export default function ProfileScreen() {
           </View>
         )}
 
+        <View style={[styles.notifRow, { marginTop: 8 }]}>
+          <View style={styles.notifRowInfo}>
+            <Feather name="bar-chart-2" size={14} color="#818CF8" />
+            <View style={styles.notifRowText}>
+              <Text style={styles.notifRowTitle}>Insight Digest</Text>
+              <Text style={styles.notifRowSub}>Periodic AI analysis of your training trends</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={[styles.notifTimeRow, { marginTop: 4 }]}>
+          <Text style={styles.notifTimeLabel}>FREQUENCY</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.notifChips}>
+              {(["daily", "weekly", "off"] as const).map((freq) => (
+                <Pressable
+                  key={freq}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setNotifPrefs((p) => ({ ...p, insightFrequency: freq }));
+                    setNotifDirty(true);
+                  }}
+                  style={[styles.notifChip, notifPrefs.insightFrequency === freq && styles.notifChipActive]}
+                >
+                  <Text style={[styles.notifChipText, notifPrefs.insightFrequency === freq && styles.notifChipTextActive]}>
+                    {freq.charAt(0).toUpperCase() + freq.slice(1)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+
+        {notifPrefs.insightFrequency !== "off" && (
+          <View style={styles.notifTimeRow}>
+            <Text style={styles.notifTimeLabel}>TIME</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={styles.notifChips}>
+                {[6, 7, 8, 9, 10, 11, 12].map((h) => (
+                  <Pressable
+                    key={h}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setNotifPrefs((p) => ({ ...p, insightHour: h }));
+                      setNotifDirty(true);
+                    }}
+                    style={[styles.notifChip, notifPrefs.insightHour === h && styles.notifChipActive]}
+                  >
+                    <Text style={[styles.notifChipText, notifPrefs.insightHour === h && styles.notifChipTextActive]}>
+                      {h === 12 ? "12 PM" : `${h} AM`}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+        )}
+
         <View style={styles.notifActions}>
           <Pressable
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              sendTestNotification(notifPrefs.checkInEnabled ? "checkin" : "workout");
+              const type = notifPrefs.insightFrequency !== "off" ? "insight" : notifPrefs.checkInEnabled ? "checkin" : "workout";
+              sendTestNotification(type);
             }}
             style={({ pressed }) => [styles.notifTestBtn, { opacity: pressed ? 0.75 : 1 }]}
           >
@@ -994,6 +1082,19 @@ export default function ProfileScreen() {
       </Pressable>
 
       <Pressable
+        style={({ pressed }) => [styles.replayTourBtn, { opacity: pressed ? 0.8 : 1 }]}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          setFeedbackSent(false);
+          setFeedbackText("");
+          setFeedbackModalOpen(true);
+        }}
+      >
+        <Feather name="message-square" size={15} color={Colors.textSubtle} />
+        <Text style={styles.replayTourText}>SEND FEEDBACK</Text>
+      </Pressable>
+
+      <Pressable
         style={({ pressed }) => [styles.logoutBtn, { opacity: pressed ? 0.8 : 1 }]}
         onPress={handleLogout}
       >
@@ -1002,6 +1103,77 @@ export default function ProfileScreen() {
       </Pressable>
 
       <AppTourOverlay visible={showTour} onDone={() => setShowTour(false)} />
+
+      <Modal
+        visible={feedbackModalOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setFeedbackModalOpen(false)}
+      >
+        <View style={styles.feedbackBackdrop}>
+          <Pressable style={styles.feedbackBackdropTouch} onPress={() => setFeedbackModalOpen(false)} />
+          <View style={styles.feedbackSheet}>
+            <View style={styles.feedbackHandle} />
+            <View style={styles.feedbackHeader}>
+              <Feather name="message-square" size={16} color={Colors.orange} />
+              <Text style={styles.feedbackTitle}>SEND FEEDBACK</Text>
+              <Pressable onPress={() => setFeedbackModalOpen(false)}>
+                <Feather name="x" size={20} color={Colors.textMuted} />
+              </Pressable>
+            </View>
+
+            {feedbackSent ? (
+              <View style={styles.feedbackSentWrap}>
+                <Feather name="check-circle" size={32} color={Colors.recovery} />
+                <Text style={styles.feedbackSentText}>
+                  Thanks — your feedback was received and reviewed for future improvements.
+                </Text>
+                <Pressable
+                  style={({ pressed }) => [styles.feedbackCloseBtn, { opacity: pressed ? 0.8 : 1 }]}
+                  onPress={() => setFeedbackModalOpen(false)}
+                >
+                  <Text style={styles.feedbackCloseBtnText}>Done</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.feedbackDesc}>
+                  Tell us what's working, what's broken, or what you'd like to see next. All feedback goes directly to the team.
+                </Text>
+                <TextInput
+                  style={styles.feedbackInput}
+                  placeholder="Share your thoughts…"
+                  placeholderTextColor={Colors.textSubtle}
+                  value={feedbackText}
+                  onChangeText={setFeedbackText}
+                  multiline
+                  maxLength={5000}
+                  textAlignVertical="top"
+                />
+                <Text style={styles.feedbackCharCount}>{feedbackText.length}/5000</Text>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.feedbackSubmitBtn,
+                    (!feedbackText.trim() || feedbackSubmitting) && styles.feedbackSubmitBtnDisabled,
+                    { opacity: pressed ? 0.9 : 1 },
+                  ]}
+                  onPress={handleFeedbackSubmit}
+                  disabled={!feedbackText.trim() || feedbackSubmitting}
+                >
+                  {feedbackSubmitting ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Feather name="send" size={14} color="#fff" />
+                      <Text style={styles.feedbackSubmitText}>SEND FEEDBACK</Text>
+                    </>
+                  )}
+                </Pressable>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       <Pressable
         style={({ pressed }) => [styles.deleteAccountBtn, { opacity: pressed ? 0.8 : 1 }]}
@@ -1751,5 +1923,112 @@ const styles = StyleSheet.create({
     color: "#fff",
     letterSpacing: 1,
     fontStyle: "italic",
+  },
+  feedbackBackdrop: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.6)",
+  },
+  feedbackBackdropTouch: { flex: 1 },
+  feedbackSheet: {
+    backgroundColor: "#111110",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  feedbackHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  feedbackHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  feedbackTitle: {
+    fontSize: 11,
+    fontFamily: "Inter_900Black",
+    color: Colors.orange,
+    letterSpacing: 2,
+    flex: 1,
+    marginLeft: 10,
+  },
+  feedbackDesc: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
+    lineHeight: 19,
+    marginBottom: 16,
+  },
+  feedbackInput: {
+    backgroundColor: "#1A1A18",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    color: Colors.text,
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    minHeight: 120,
+    maxHeight: 200,
+  },
+  feedbackCharCount: {
+    fontSize: 10,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
+    textAlign: "right",
+    marginTop: 4,
+    marginBottom: 16,
+  },
+  feedbackSubmitBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: Colors.orange,
+    borderRadius: 14,
+    paddingVertical: 16,
+  },
+  feedbackSubmitBtnDisabled: { opacity: 0.4 },
+  feedbackSubmitText: {
+    fontSize: 13,
+    fontFamily: "Inter_900Black",
+    color: "#fff",
+    letterSpacing: 1,
+  },
+  feedbackSentWrap: {
+    alignItems: "center",
+    paddingVertical: 32,
+    gap: 16,
+  },
+  feedbackSentText: {
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+    color: Colors.text,
+    textAlign: "center",
+    lineHeight: 21,
+    paddingHorizontal: 12,
+  },
+  feedbackCloseBtn: {
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  feedbackCloseBtnText: {
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+    color: Colors.text,
   },
 });

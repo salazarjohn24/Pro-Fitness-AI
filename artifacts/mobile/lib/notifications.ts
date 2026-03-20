@@ -15,6 +15,7 @@ Notifications.setNotificationHandler({
 const NOTIF_PREFS_KEY = "notif_prefs_v1";
 const ID_CHECKIN = "daily-checkin-reminder";
 const ID_WORKOUT = "daily-workout-reminder";
+const ID_INSIGHT = "insight-notification";
 
 export interface NotifPrefs {
   checkInEnabled: boolean;
@@ -23,6 +24,9 @@ export interface NotifPrefs {
   workoutEnabled: boolean;
   workoutHour: number;
   workoutMinute: number;
+  insightFrequency: "daily" | "weekly" | "off";
+  insightHour: number;
+  insightMinute: number;
 }
 
 export const DEFAULT_NOTIF_PREFS: NotifPrefs = {
@@ -32,6 +36,9 @@ export const DEFAULT_NOTIF_PREFS: NotifPrefs = {
   workoutEnabled: true,
   workoutHour: 18,
   workoutMinute: 0,
+  insightFrequency: "weekly",
+  insightHour: 9,
+  insightMinute: 0,
 };
 
 const CHECKIN_MESSAGES = [
@@ -45,6 +52,12 @@ const WORKOUT_MESSAGES = [
   { title: "Don't break the chain", body: "Even a short session beats zero. Your body will thank you tomorrow." },
   { title: "Your muscles are waiting", body: "Progressive overload doesn't happen by itself. Let's get it done." },
   { title: "Streak alert 🔥", body: "You're building something great. Keep the momentum going today." },
+];
+
+const INSIGHT_MESSAGES = [
+  { title: "Your weekly insight is ready", body: "See how your training is adapting and what the AI recommends next." },
+  { title: "Training insight available", body: "Review your progress trends and unlock your next optimization." },
+  { title: "Insight ready 📊", body: "Your AI coach has analyzed this week's data. Tap to review." },
 ];
 
 function pickRandom<T>(arr: T[]): T {
@@ -129,6 +142,13 @@ export async function applyNotifPrefs(prefs: NotifPrefs): Promise<void> {
   } else {
     await cancelById(ID_WORKOUT);
   }
+
+  if (prefs.insightFrequency !== "off") {
+    const msg = pickRandom(INSIGHT_MESSAGES);
+    await scheduleDaily(ID_INSIGHT, msg.title, msg.body, prefs.insightHour, prefs.insightMinute);
+  } else {
+    await cancelById(ID_INSIGHT);
+  }
 }
 
 export async function initNotifications(): Promise<void> {
@@ -139,12 +159,17 @@ export async function initNotifications(): Promise<void> {
   await applyNotifPrefs(prefs);
 }
 
-export async function sendTestNotification(type: "checkin" | "workout"): Promise<void> {
+export async function sendTestNotification(type: "checkin" | "workout" | "insight"): Promise<void> {
   if (Platform.OS === "web") return;
   try {
     const { status } = await Notifications.getPermissionsAsync();
     if (status !== "granted") return;
-    const msg = type === "checkin" ? pickRandom(CHECKIN_MESSAGES) : pickRandom(WORKOUT_MESSAGES);
+    const msg =
+      type === "checkin"
+        ? pickRandom(CHECKIN_MESSAGES)
+        : type === "insight"
+        ? pickRandom(INSIGHT_MESSAGES)
+        : pickRandom(WORKOUT_MESSAGES);
     await Notifications.scheduleNotificationAsync({
       content: { title: msg.title, body: msg.body, sound: true },
       trigger: {

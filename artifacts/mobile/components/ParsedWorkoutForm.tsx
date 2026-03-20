@@ -1,7 +1,8 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -88,11 +89,16 @@ export function ParsedWorkoutForm({
     initial.workoutFormat ?? "UNKNOWN",
   );
 
+  type Movement = { name: string; volume: string; muscleGroups: string[]; fatiguePercent: number };
+  const [movements, setMovements] = useState<Movement[]>(initial.movements ?? []);
+  const [newMovementName, setNewMovementName] = useState("");
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const addInputRef = useRef<TextInput>(null);
+
   const showBanner =
     initial.parserConfidence !== null &&
     initial.parserConfidence < LOW_CONFIDENCE_THRESHOLD;
 
-  // telemetry: fire once per form mount when the low-confidence banner is shown
   useEffect(() => {
     if (showBanner && initial.parserConfidence !== null) {
       track({
@@ -114,7 +120,38 @@ export function ParsedWorkoutForm({
     );
   };
 
-  const handleSubmit = () => {
+  const addMovement = () => {
+    const name = newMovementName.trim();
+    if (!name) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const newMov: Movement = { name, volume: "", muscleGroups: [], fatiguePercent: 20 };
+    setMovements((prev) => [...prev, newMov]);
+    setNewMovementName("");
+    track({
+      name: "import_movement_added",
+      props: {
+        movement_name: name,
+        source: importSource,
+        confidence: initial.parserConfidence,
+      },
+    });
+  };
+
+  const deleteMovement = (index: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const deleted = movements[index];
+    setMovements((prev) => prev.filter((_, i) => i !== index));
+    track({
+      name: "import_movement_deleted",
+      props: {
+        movement_name: deleted?.name ?? "",
+        source: importSource,
+        confidence: initial.parserConfidence,
+      },
+    });
+  };
+
+  const doSubmit = () => {
     if (!label.trim() || submitDisabled) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
@@ -138,7 +175,6 @@ export function ParsedWorkoutForm({
       { label, workoutType, duration, intensity, muscleGroups, workoutFormat },
     );
 
-    // telemetry: capture which fields the user corrected before saving
     if (editedFields.length > 0) {
       track({
         name: "import_user_edited_fields",
@@ -158,7 +194,7 @@ export function ParsedWorkoutForm({
       duration,
       intensity,
       muscleGroups: resolvedGroups,
-      movements: initial.movements,
+      movements,
       workoutDate,
       parserConfidence: initial.parserConfidence,
       parserWarnings: initial.parserWarnings,
@@ -167,6 +203,24 @@ export function ParsedWorkoutForm({
       wasUserEdited: editedFields.length > 0,
       editedFields,
     });
+  };
+
+  const handleSubmit = () => {
+    if (!label.trim() || submitDisabled) return;
+    if (showBanner) {
+      track({
+        name: "import_low_confidence_review_opened",
+        props: {
+          confidence: initial.parserConfidence ?? 0,
+          confidence_pct: Math.round((initial.parserConfidence ?? 0) * 100),
+          source: importSource,
+          movement_count: movements.length,
+        },
+      });
+      setReviewOpen(true);
+      return;
+    }
+    doSubmit();
   };
 
   return (
@@ -181,7 +235,7 @@ export function ParsedWorkoutForm({
           <View style={styles.bannerTextWrap}>
             <Text style={styles.bannerTitle}>LOW CONFIDENCE PARSE</Text>
             <Text style={styles.bannerDesc}>
-              Please review the details below before saving.
+              Review movements below, then tap to confirm before saving.
             </Text>
           </View>
           <View style={styles.bannerBadge}>
@@ -266,7 +320,6 @@ export function ParsedWorkoutForm({
                   key={value}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    // telemetry: only fire when the user actively changes away from the detected format
                     const originalFormat = initial.workoutFormat ?? "UNKNOWN";
                     if (value !== workoutFormat && value !== originalFormat) {
                       track({
@@ -399,6 +452,52 @@ export function ParsedWorkoutForm({
         </View>
       </View>
 
+      {(movements.length > 0 || showBanner) && (
+        <View style={styles.formGroup}>
+          <Text style={styles.fieldLabel}>MOVEMENTS</Text>
+          {movements.map((mv, idx) => (
+            <View key={idx} style={styles.movementEditRow}>
+              <View style={styles.movementEditInfo}>
+                <Text style={styles.movementEditName}>{mv.name}</Text>
+                {mv.volume ? (
+                  <Text style={styles.movementEditVolume}>{mv.volume}</Text>
+                ) : null}
+              </View>
+              <Pressable
+                onPress={() => deleteMovement(idx)}
+                style={styles.movementDeleteBtn}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${mv.name}`}
+              >
+                <Feather name="x" size={14} color="#F87171" />
+              </Pressable>
+            </View>
+          ))}
+          <View style={styles.addMovementRow}>
+            <TextInput
+              ref={addInputRef}
+              style={styles.addMovementInput}
+              placeholder="Add movement…"
+              placeholderTextColor={Colors.textSubtle}
+              value={newMovementName}
+              onChangeText={setNewMovementName}
+              onSubmitEditing={addMovement}
+              returnKeyType="done"
+              accessibilityLabel="New movement name"
+            />
+            <Pressable
+              onPress={addMovement}
+              style={[styles.addMovementBtn, !newMovementName.trim() && styles.addMovementBtnDisabled]}
+              disabled={!newMovementName.trim()}
+              accessibilityRole="button"
+              accessibilityLabel="Add movement"
+            >
+              <Feather name="plus" size={14} color={newMovementName.trim() ? Colors.orange : Colors.textSubtle} />
+            </Pressable>
+          </View>
+        </View>
+      )}
+
       <View style={styles.formGroup}>
         <Text style={styles.fieldLabel}>LOG FOR DATE</Text>
         <Pressable
@@ -425,11 +524,11 @@ export function ParsedWorkoutForm({
         onPress={handleSubmit}
         disabled={!label.trim() || submitDisabled}
         accessibilityRole="button"
-        accessibilityLabel={submitLabel}
+        accessibilityLabel={showBanner ? "Review & Confirm" : submitLabel}
         accessibilityState={{ disabled: !label.trim() || submitDisabled }}
       >
-        <Feather name="check-circle" size={16} color="#fff" />
-        <Text style={styles.saveBtnText}>{submitLabel}</Text>
+        <Feather name={showBanner ? "eye" : "check-circle"} size={16} color="#fff" />
+        <Text style={styles.saveBtnText}>{showBanner ? "REVIEW & CONFIRM" : submitLabel}</Text>
       </Pressable>
 
       <DatePickerSheet
@@ -438,6 +537,138 @@ export function ParsedWorkoutForm({
         onClose={() => setDatePickerOpen(false)}
         onSelect={(date) => setWorkoutDate(date)}
       />
+
+      <Modal
+        visible={reviewOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setReviewOpen(false)}
+      >
+        <View style={styles.reviewBackdrop}>
+          <Pressable style={styles.reviewBackdropTouch} onPress={() => setReviewOpen(false)} />
+          <View style={styles.reviewSheet}>
+            <View style={styles.reviewHandle} />
+            <View style={styles.reviewHeader}>
+              <View style={styles.reviewHeaderLeft}>
+                <Feather name="alert-triangle" size={15} color="#F59E0B" />
+                <Text style={styles.reviewTitle}>REVIEW BEFORE SAVING</Text>
+              </View>
+              <View style={styles.reviewBadge}>
+                <Text style={styles.reviewBadgeText}>
+                  {Math.round((initial.parserConfidence ?? 0) * 100)}% confidence
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.reviewSubtitle}>
+              The parser wasn't fully confident. Confirm your format, duration, and movements before saving.
+            </Text>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }} contentContainerStyle={{ paddingBottom: 16 }}>
+              <Text style={[styles.fieldLabel, { marginBottom: 8 }]}>FORMAT</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                <View style={styles.chipRow}>
+                  {FORMAT_CHIPS.map(({ value, label: chipLabel }) => {
+                    const selected = (workoutFormat ?? "UNKNOWN") === value;
+                    return (
+                      <Pressable
+                        key={value}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setWorkoutFormat(value);
+                        }}
+                        style={[
+                          styles.formatChip,
+                          selected && (value === "UNKNOWN" ? styles.formatChipUnknownSelected : styles.formatChipSelected),
+                        ]}
+                      >
+                        <Text style={[
+                          styles.formatChipText,
+                          selected && (value === "UNKNOWN" ? styles.formatChipTextUnknown : styles.formatChipTextSelected),
+                        ]}>
+                          {chipLabel}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+
+              <Text style={[styles.fieldLabel, { marginBottom: 8 }]}>DURATION (MINUTES)</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                <View style={styles.chipRow}>
+                  {DURATION_OPTIONS.map((d) => {
+                    const selected = duration === d;
+                    return (
+                      <Pressable
+                        key={d}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setDuration(d);
+                        }}
+                        style={[styles.durationChip, selected && styles.durationChipSelected]}
+                      >
+                        <Text style={[styles.durationChipText, selected && styles.durationChipTextSelected]}>
+                          {d}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+
+              <Text style={[styles.fieldLabel, { marginBottom: 8 }]}>MOVEMENTS</Text>
+              {movements.length === 0 && (
+                <Text style={styles.reviewEmptyMovements}>No movements detected — add them below.</Text>
+              )}
+              {movements.map((mv, idx) => (
+                <View key={idx} style={styles.movementEditRow}>
+                  <View style={styles.movementEditInfo}>
+                    <Text style={styles.movementEditName}>{mv.name}</Text>
+                    {mv.volume ? <Text style={styles.movementEditVolume}>{mv.volume}</Text> : null}
+                  </View>
+                  <Pressable
+                    onPress={() => deleteMovement(idx)}
+                    style={styles.movementDeleteBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${mv.name}`}
+                  >
+                    <Feather name="x" size={14} color="#F87171" />
+                  </Pressable>
+                </View>
+              ))}
+              <View style={[styles.addMovementRow, { marginTop: 8 }]}>
+                <TextInput
+                  style={styles.addMovementInput}
+                  placeholder="Add movement…"
+                  placeholderTextColor={Colors.textSubtle}
+                  value={newMovementName}
+                  onChangeText={setNewMovementName}
+                  onSubmitEditing={addMovement}
+                  returnKeyType="done"
+                />
+                <Pressable
+                  onPress={addMovement}
+                  style={[styles.addMovementBtn, !newMovementName.trim() && styles.addMovementBtnDisabled]}
+                  disabled={!newMovementName.trim()}
+                >
+                  <Feather name="plus" size={14} color={newMovementName.trim() ? Colors.orange : Colors.textSubtle} />
+                </Pressable>
+              </View>
+            </ScrollView>
+
+            <Pressable
+              style={({ pressed }) => [styles.reviewConfirmBtn, { opacity: pressed ? 0.9 : 1 }]}
+              onPress={() => {
+                setReviewOpen(false);
+                doSubmit();
+              }}
+            >
+              <Feather name="check-circle" size={16} color="#fff" />
+              <Text style={styles.reviewConfirmText}>CONFIRM & SAVE</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
@@ -633,6 +864,72 @@ const styles = StyleSheet.create({
     color: Colors.textSubtle,
   },
   muscleChipTextSelected: { color: Colors.highlight },
+  movementEditRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    marginBottom: 6,
+    gap: 8,
+  },
+  movementEditInfo: { flex: 1 },
+  movementEditName: {
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+    color: Colors.text,
+  },
+  movementEditVolume: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
+    marginTop: 2,
+  },
+  movementDeleteBtn: {
+    padding: 4,
+  },
+  addMovementRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 4,
+  },
+  addMovementInput: {
+    flex: 1,
+    backgroundColor: "#1A1A18",
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    color: Colors.text,
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+  },
+  addMovementBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.orange,
+    backgroundColor: "rgba(252,82,0,0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  addMovementBtnDisabled: {
+    borderColor: Colors.border,
+    backgroundColor: "transparent",
+  },
+  reviewEmptyMovements: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
+    marginBottom: 10,
+    fontStyle: "italic",
+  },
   dateTrigger: {
     flexDirection: "row",
     alignItems: "center",
@@ -662,6 +959,81 @@ const styles = StyleSheet.create({
   },
   saveBtnDisabled: { opacity: 0.4 },
   saveBtnText: {
+    fontSize: 13,
+    fontFamily: "Inter_900Black",
+    color: "#fff",
+    letterSpacing: 1,
+  },
+  reviewBackdrop: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.6)",
+  },
+  reviewBackdropTouch: { flex: 1 },
+  reviewSheet: {
+    backgroundColor: "#111110",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 32,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderColor: Colors.border,
+  },
+  reviewHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: Colors.border,
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  reviewHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  reviewHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  reviewTitle: {
+    fontSize: 11,
+    fontFamily: "Inter_900Black",
+    color: "#F59E0B",
+    letterSpacing: 1.5,
+  },
+  reviewBadge: {
+    backgroundColor: "rgba(245,158,11,0.12)",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  reviewBadgeText: {
+    fontSize: 10,
+    fontFamily: "Inter_700Bold",
+    color: "#F59E0B",
+  },
+  reviewSubtitle: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
+    lineHeight: 17,
+    marginBottom: 16,
+  },
+  reviewConfirmBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: Colors.orange,
+    borderRadius: 14,
+    paddingVertical: 16,
+    marginTop: 12,
+  },
+  reviewConfirmText: {
     fontSize: 13,
     fontFamily: "Inter_900Black",
     color: "#fff",

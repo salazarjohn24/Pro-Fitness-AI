@@ -9,6 +9,7 @@ import environmentsRouter from "./environments";
 import workoutRouter from "./workout";
 import exercisesRouter from "./exercises";
 import auditRouter from "./audit";
+import feedbackRouter from "./feedback";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use(environmentsRouter);
 router.use(workoutRouter);
 router.use(exercisesRouter);
 router.use(auditRouter);
+router.use(feedbackRouter);
 
 export default router;

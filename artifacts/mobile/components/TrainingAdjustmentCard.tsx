@@ -55,7 +55,7 @@ export function TrainingAdjustmentCard({ deloadCheck, onAccept, onOverride }: Pr
       } else {
         setOutcome(null);
         track({
-          name: "recommendation_shown",
+          name: "readiness_recommendation_shown",
           props: buildRecommendationShownProps(deloadCheck),
         });
       }
@@ -73,7 +73,7 @@ export function TrainingAdjustmentCard({ deloadCheck, onAccept, onOverride }: Pr
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     persistAndSet("accepted");
     track({
-      name: "recommendation_accepted",
+      name: "readiness_recommendation_accepted",
       props: buildRecommendationAcceptedProps(deloadCheck),
     });
     onAccept();
@@ -84,7 +84,7 @@ export function TrainingAdjustmentCard({ deloadCheck, onAccept, onOverride }: Pr
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     persistAndSet("overridden");
     track({
-      name: "recommendation_overridden",
+      name: "readiness_recommendation_overridden",
       props: buildRecommendationOverriddenProps(deloadCheck),
     });
     onOverride();
