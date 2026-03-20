@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "Hqugx0wwVbVltfpjsItYh"
+uri = "file://MVP_VERIFICATION_REPORT.md"
+type = "text"
+title = "MVP Evidence Verification Report"
