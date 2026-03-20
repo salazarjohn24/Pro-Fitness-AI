@@ -195,6 +195,11 @@ export interface ExternalWorkout {
   isMetcon: boolean | null;
   metconFormat: string | null;
   createdAt: string;
+  parserConfidence?: number | null;
+  parserWarnings?: string[] | null;
+  workoutFormat?: string | null;
+  wasUserEdited?: boolean | null;
+  editedFields?: string[] | null;
 }
 
 export function useSubmitExternalWorkout() {
@@ -212,6 +217,11 @@ export function useSubmitExternalWorkout() {
       movements?: Array<{ name: string; volume: string; muscleGroups: string[]; fatiguePercent: number }>;
       isMetcon?: boolean;
       metconFormat?: string | null;
+      parserConfidence?: number | null;
+      parserWarnings?: string[];
+      workoutFormat?: string | null;
+      wasUserEdited?: boolean;
+      editedFields?: string[];
     }) => {
       const headers = await getAuthHeaders();
       const res = await fetch(`${getApiBase()}/api/workouts/external`, {
@@ -257,6 +267,8 @@ export function useUpdateExternalWorkout() {
       muscleGroups?: string[] | null;
       stimulusPoints?: number | null;
       workoutDate?: string | null;
+      wasUserEdited?: boolean;
+      editedFields?: string[];
     }) => {
       const headers = await getAuthHeaders();
       const res = await fetch(`${getApiBase()}/api/workouts/external/${id}`, {

@@ -31,7 +31,7 @@ The project is structured as a pnpm workspace monorepo.
 ### Mobile App (Pro Fitness AI)
 A dark-themed fitness tracker with AI recommendations.
 - **Key Features**: Authentication flows (welcome, login, signup), 5-step onboarding (biometrics, experience, injuries, goals), daily protocol sync hub, exercise vault with detailed exercise views, performance audit (progress tracking), profile management, active workout sessions, and a custom workout architect.
-- **Key Components**: OnboardingModal, CheckInModal (with BodyMap for soreness tracking), ActivityImportModal (for external workout logging with AI interpretation), AppTourOverlay, InsightInfoModal, AccordionCard.
+- **Key Components**: OnboardingModal, CheckInModal (with BodyMap for soreness tracking), ActivityImportModal (for external workout logging with AI interpretation + always-editable ParsedWorkoutForm with low-confidence warning banner), ParsedWorkoutForm (reusable confidence-aware edit form with edit tracking), AppTourOverlay, InsightInfoModal, AccordionCard.
 - **State Management**: React Query hooks are extensively used for data fetching and mutation (e.g., `useProfile`, `useWorkout`, `useExercises`).
 - **Notifications**: Full notification system with scheduling and preference management (`lib/notifications.ts`).
 - **Design System**: Predominantly dark theme (`#1D1D1B` background) with accent colors like Strava orange (`#FC5200`), warm gold (`#F6EA98`), and steel blue (`#779CAF`). Glass-effect cards use `rgba(255,255,255,0.05)`.
@@ -42,7 +42,7 @@ The PostgreSQL database schema includes tables for:
 - `sessions`: User session management.
 - `user_profiles`: Fitness-specific user data, onboarding information, and preferences.
 - `daily_check_ins`: Daily user check-in data including energy, sleep, stress, and soreness.
-- `external_workouts`: Records of workouts logged from external sources.
+- `external_workouts`: Records of workouts logged from external sources. Includes Phase 1 parser columns: `parserConfidence` (real), `parserWarnings` (jsonb), `workoutFormat` (varchar), `wasUserEdited` (boolean), `editedFields` (jsonb).
 - `gym_environments`: User-defined gym setups with equipment.
 - `workout_sessions`: Details of completed workout sessions.
 - `exercise_library`: Comprehensive exercise data.

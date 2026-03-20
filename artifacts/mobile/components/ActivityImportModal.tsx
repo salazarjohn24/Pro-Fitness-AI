@@ -24,6 +24,8 @@ import {
 } from "@/utils/stimulus";
 import { getApiBase, getAuthHeaders, getFetchOptions } from "@/hooks/apiHelpers";
 import { DatePickerSheet, getLocalToday, formatDisplayDate } from "@/components/DatePickerSheet";
+import { ParsedWorkoutForm, type ParsedFormResult } from "@/components/ParsedWorkoutForm";
+import { computeParserConfidence } from "@/utils/parserMeta";
 
 export interface ImportedWorkoutData {
   label: string;
@@ -37,6 +39,11 @@ export interface ImportedWorkoutData {
   movements?: Array<{ name: string; volume: string; muscleGroups: string[]; fatiguePercent: number }>;
   isMetcon?: boolean;
   metconFormat?: string | null;
+  parserConfidence?: number | null;
+  parserWarnings?: string[];
+  workoutFormat?: string | null;
+  wasUserEdited?: boolean;
+  editedFields?: string[];
 }
 
 interface Props {
@@ -91,8 +98,9 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
     workoutType: string;
     movements: Array<{ name: string; volume: string; muscleGroups: string[]; fatiguePercent: number }>;
   } | null>(null);
-  const [aiLabel, setAiLabel] = useState("");
-  const [aiDuration, setAiDuration] = useState(30);
+  const [aiParserConfidence, setAiParserConfidence] = useState<number | null>(null);
+  const [aiParserLabel, setAiParserLabel] = useState("");
+  const [aiParserDuration, setAiParserDuration] = useState(30);
 
   const [screenshotData, setScreenshotData] = useState<{
     duration: number;
@@ -258,80 +266,82 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
       });
       if (res.ok) {
         const data = await res.json();
-        setAiParsed({
+        const parsedResult = {
           muscleGroups: data.muscleGroups ?? [],
           suggestedIntensity: data.intensity ?? 5,
           workoutType: data.workoutType ?? "Other",
           movements: data.movements ?? [],
-        });
-        if (data.label && !aiLabel) setAiLabel(data.label);
-        if (data.estimatedDuration) setAiDuration(data.estimatedDuration);
+        };
+        setAiParsed(parsedResult);
+        setAiParserLabel(data.label ?? "");
+        setAiParserDuration(data.estimatedDuration ?? 30);
+        setAiParserConfidence(
+          computeParserConfidence({
+            muscleGroups: parsedResult.muscleGroups,
+            movements: parsedResult.movements,
+            workoutType: parsedResult.workoutType,
+          }),
+        );
       } else {
         const parsed = parseWorkoutDescription(aiText);
-        setAiParsed({ ...parsed, workoutType: "Other", movements: [] });
+        const fallback = { ...parsed, workoutType: "Other", movements: [] };
+        setAiParsed(fallback);
+        setAiParserLabel("");
+        setAiParserDuration(30);
+        setAiParserConfidence(computeParserConfidence(fallback));
       }
     } catch {
       const parsed = parseWorkoutDescription(aiText);
-      setAiParsed({ ...parsed, workoutType: "Other", movements: [] });
+      const fallback = { ...parsed, workoutType: "Other", movements: [] };
+      setAiParsed(fallback);
+      setAiParserLabel("");
+      setAiParserDuration(30);
+      setAiParserConfidence(computeParserConfidence(fallback));
     } finally {
       setAiParseLoading(false);
     }
   };
 
-  const handleAiSubmit = () => {
-    if (!aiParsed || !aiLabel.trim()) return;
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const stimulusPoints = computeStimulusPoints({
-      duration: aiDuration,
-      intensity: aiParsed.suggestedIntensity,
-      muscleGroups: aiParsed.muscleGroups,
-      skillLevel: userSkillLevel,
-    });
+  const handleAiFormSubmit = (formData: ParsedFormResult) => {
     if (onManualSubmit) {
       onManualSubmit({
-        label: aiLabel.trim(),
-        duration: aiDuration,
-        workoutType: aiParsed.workoutType || "Other",
-        intensity: aiParsed.suggestedIntensity,
-        muscleGroups: aiParsed.muscleGroups,
-        stimulusPoints,
-        workoutDate,
-        movements: aiParsed.movements,
+        label: formData.label,
+        duration: formData.duration,
+        workoutType: formData.workoutType,
+        intensity: formData.intensity,
+        muscleGroups: formData.muscleGroups,
+        stimulusPoints: formData.stimulusPoints,
+        workoutDate: formData.workoutDate,
+        movements: formData.movements,
+        parserConfidence: formData.parserConfidence,
+        parserWarnings: formData.parserWarnings,
+        workoutFormat: formData.workoutFormat,
+        wasUserEdited: formData.wasUserEdited,
+        editedFields: formData.editedFields,
       });
     }
     resetState();
   };
 
-  const handleFinish = () => {
-    if (screenshotData) {
-      onComplete({
-        label: screenshotLabel || "Screenshot Import",
-        duration: screenshotData.duration,
-        workoutType: imageAnalysis?.workoutType ?? "Imported",
-        source: "screenshot",
-        intensity: screenshotData.intensity,
-        muscleGroups: screenshotData.muscleGroups,
-        stimulusPoints: screenshotData.stimulusPoints,
-        workoutDate,
-        movements: imageAnalysis?.movements ?? [],
-        isMetcon: imageAnalysis?.isMetcon ?? false,
-        metconFormat: imageAnalysis?.metconFormat ?? null,
-      });
-    } else {
-      onComplete({
-        label: "Screenshot Import",
-        duration: 47,
-        workoutType: "Imported",
-        source: "screenshot",
-        intensity: 6,
-        muscleGroups: ["Full Body"],
-        stimulusPoints: computeStimulusPoints({ duration: 47, intensity: 6, muscleGroups: ["Full Body"], skillLevel: userSkillLevel }),
-        workoutDate,
-        movements: [],
-        isMetcon: false,
-        metconFormat: null,
-      });
-    }
+  const handleScreenshotFormSubmit = (formData: ParsedFormResult) => {
+    onComplete({
+      label: formData.label,
+      duration: formData.duration,
+      workoutType: formData.workoutType,
+      source: "screenshot",
+      intensity: formData.intensity,
+      muscleGroups: formData.muscleGroups,
+      stimulusPoints: formData.stimulusPoints,
+      workoutDate: formData.workoutDate,
+      movements: formData.movements,
+      isMetcon: imageAnalysis?.isMetcon ?? false,
+      metconFormat: imageAnalysis?.metconFormat ?? null,
+      parserConfidence: formData.parserConfidence,
+      parserWarnings: formData.parserWarnings,
+      workoutFormat: formData.workoutFormat,
+      wasUserEdited: formData.wasUserEdited,
+      editedFields: formData.editedFields,
+    });
     resetState();
   };
 
@@ -351,8 +361,9 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
       setManualMuscleGroups([]);
       setAiText("");
       setAiParsed(null);
-      setAiLabel("");
-      setAiDuration(30);
+      setAiParserConfidence(null);
+      setAiParserLabel("");
+      setAiParserDuration(30);
       setScreenshotData(null);
       setImageAnalysis(null);
       setScreenshotLabel("");
@@ -485,41 +496,12 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
               </View>
               <Text style={styles.doneTitle}>ACTIVITY{"\n"}ANALYZED</Text>
 
-              <View style={styles.formGroup}>
-                <Text style={styles.fieldLabel}>WORKOUT NAME</Text>
-                <TextInput
-                  style={styles.textInput}
-                  value={screenshotLabel}
-                  onChangeText={setScreenshotLabel}
-                  placeholderTextColor={Colors.textSubtle}
-                  placeholder="Workout name"
-                />
-              </View>
-
               {imageAnalysis?.isMetcon && imageAnalysis.metconFormat && (
                 <View style={styles.metconBadge}>
                   <Feather name="zap" size={12} color={Colors.orange} />
                   <Text style={styles.metconBadgeText}>{imageAnalysis.metconFormat}</Text>
                 </View>
               )}
-
-              <View style={styles.extractedCard}>
-                <View style={styles.extractedRow}>
-                  <Feather name="clock" size={14} color={Colors.recovery} />
-                  <Text style={styles.extractedLabel}>Duration</Text>
-                  <Text style={styles.extractedVal}>{screenshotData?.duration ?? 47} min</Text>
-                </View>
-                <View style={styles.extractedRow}>
-                  <Feather name="zap" size={14} color={Colors.orange} />
-                  <Text style={styles.extractedLabel}>Intensity</Text>
-                  <Text style={styles.extractedVal}>RPE {screenshotData?.intensity ?? 6}/10</Text>
-                </View>
-                <View style={styles.extractedRow}>
-                  <Feather name="trending-up" size={14} color={Colors.highlight} />
-                  <Text style={styles.extractedLabel}>Stimulus Points</Text>
-                  <Text style={styles.extractedVal}>{screenshotData?.stimulusPoints ?? 0} pts</Text>
-                </View>
-              </View>
 
               {imageAnalysis?.movements && imageAnalysis.movements.length > 0 && (() => {
                 const muscleFatigueMap: Record<string, number> = {};
@@ -596,25 +578,30 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
                 );
               })()}
 
-              <View style={styles.formGroup}>
-                <Text style={styles.fieldLabel}>LOG FOR DATE</Text>
-                <Pressable
-                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDatePickerOpen(true); }}
-                  style={styles.dateTrigger}
-                >
-                  <Feather name="calendar" size={16} color={Colors.highlight} />
-                  <Text style={styles.dateTriggerText}>{formatDisplayDate(workoutDate)}</Text>
-                  <Feather name="chevron-down" size={14} color={Colors.textSubtle} />
-                </Pressable>
-              </View>
-
-              <Pressable
-                style={({ pressed }) => [styles.primaryBtn, { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}
-                onPress={handleFinish}
-              >
-                <Feather name="check-circle" size={16} color="#fff" />
-                <Text style={styles.primaryBtnText}>SYNC TO PROTOCOL</Text>
-              </Pressable>
+              <ParsedWorkoutForm
+                key="screenshot-form"
+                initial={{
+                  label: screenshotLabel || imageAnalysis?.label || "Screenshot Import",
+                  workoutType: imageAnalysis?.workoutType ?? "Imported",
+                  duration: screenshotData?.duration ?? 47,
+                  intensity: screenshotData?.intensity ?? 6,
+                  muscleGroups: screenshotData?.muscleGroups ?? imageAnalysis?.muscleGroups ?? ["Full Body"],
+                  movements: imageAnalysis?.movements ?? [],
+                  workoutDate: getLocalToday(),
+                  parserConfidence: imageAnalysis
+                    ? computeParserConfidence({
+                        muscleGroups: imageAnalysis.muscleGroups,
+                        movements: imageAnalysis.movements,
+                        workoutType: imageAnalysis.workoutType,
+                      })
+                    : 0.4,
+                  parserWarnings: [],
+                  workoutFormat: imageAnalysis?.metconFormat ?? null,
+                }}
+                onSubmit={handleScreenshotFormSubmit}
+                skillLevel={rawSkillLevel}
+                submitLabel="SYNC TO PROTOCOL"
+              />
             </ScrollView>
           )}
 
@@ -758,59 +745,24 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
                     );
                   })()}
 
-                  <View style={styles.formGroup}>
-                    <Text style={styles.fieldLabel}>WORKOUT NAME</Text>
-                    <TextInput
-                      style={styles.textInput}
-                      placeholder='e.g. "CrossFit WOD"'
-                      placeholderTextColor={Colors.textSubtle}
-                      value={aiLabel}
-                      onChangeText={setAiLabel}
-                    />
-                  </View>
-
-                  <View style={styles.formGroup}>
-                    <Text style={styles.fieldLabel}>DURATION (MINUTES)</Text>
-                    <View style={styles.durationRow}>
-                      {DURATION_OPTIONS.map((d) => {
-                        const selected = aiDuration === d;
-                        return (
-                          <Pressable
-                            key={d}
-                            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setAiDuration(d); }}
-                            style={[styles.durationChip, selected && styles.durationChipSelected]}
-                          >
-                            <Text style={[styles.durationChipText, selected && styles.durationChipTextSelected]}>{d}</Text>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  </View>
-
-                  <View style={styles.formGroup}>
-                    <Text style={styles.fieldLabel}>LOG FOR DATE</Text>
-                    <Pressable
-                      onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDatePickerOpen(true); }}
-                      style={styles.dateTrigger}
-                    >
-                      <Feather name="calendar" size={16} color={Colors.highlight} />
-                      <Text style={styles.dateTriggerText}>{formatDisplayDate(workoutDate)}</Text>
-                      <Feather name="chevron-down" size={14} color={Colors.textSubtle} />
-                    </Pressable>
-                  </View>
-
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.primaryBtn,
-                      !aiLabel.trim() && styles.primaryBtnDisabled,
-                      { opacity: pressed ? 0.9 : 1, marginTop: 8 },
-                    ]}
-                    onPress={handleAiSubmit}
-                    disabled={!aiLabel.trim()}
-                  >
-                    <Feather name="check-circle" size={16} color="#fff" />
-                    <Text style={styles.primaryBtnText}>LOG WORKOUT</Text>
-                  </Pressable>
+                  <ParsedWorkoutForm
+                    key={JSON.stringify(aiParsed)}
+                    initial={{
+                      label: aiParserLabel,
+                      workoutType: aiParsed.workoutType || "Other",
+                      duration: aiParserDuration,
+                      intensity: aiParsed.suggestedIntensity,
+                      muscleGroups: aiParsed.muscleGroups,
+                      movements: aiParsed.movements,
+                      workoutDate: getLocalToday(),
+                      parserConfidence: aiParserConfidence,
+                      parserWarnings: [],
+                      workoutFormat: null,
+                    }}
+                    onSubmit={handleAiFormSubmit}
+                    skillLevel={rawSkillLevel}
+                    submitLabel="LOG WORKOUT"
+                  />
                 </>
               )}
 
