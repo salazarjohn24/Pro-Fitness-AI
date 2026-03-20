@@ -4,6 +4,7 @@ import { eq, and, desc, inArray, sql, gte } from "drizzle-orm";
 import { EXERCISE_LIBRARY, exerciseMap, type ExerciseData } from "../data/exercises";
 import { generateAIWorkout, generateAIArchitectWorkout, parseWorkoutDescriptionAI, analyzeWorkoutImageAI, generateRecoveryInsights } from "../services/aiService";
 import { aiRateLimit } from "../middlewares/rateLimitMiddleware";
+import { internalSessionLoad, externalSessionLoad, sessionLoadToVolumeEquiv } from "../lib/sessionLoad";
 
 const router: IRouter = Router();
 
@@ -1071,18 +1072,34 @@ router.get("/workout/deload-check", async (req: Request, res: Response) => {
       .limit(7);
 
     const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
-    const recentSessions = await db
-      .select({
-        sessionDate: workoutSessionsTable.sessionDate,
-        totalVolume: workoutSessionsTable.totalVolume,
-        totalSetsCompleted: workoutSessionsTable.totalSetsCompleted,
-      })
-      .from(workoutSessionsTable)
-      .where(and(
-        eq(workoutSessionsTable.userId, userId),
-        sql`${workoutSessionsTable.createdAt} > ${sevenDaysAgo}`
-      ))
-      .orderBy(desc(workoutSessionsTable.sessionDate));
+
+    // Query both internal sessions and external workouts — equal weighting
+    const [recentSessions, recentExternal] = await Promise.all([
+      db
+        .select({
+          sessionDate: workoutSessionsTable.sessionDate,
+          totalVolume: workoutSessionsTable.totalVolume,
+          totalSetsCompleted: workoutSessionsTable.totalSetsCompleted,
+        })
+        .from(workoutSessionsTable)
+        .where(and(
+          eq(workoutSessionsTable.userId, userId),
+          sql`${workoutSessionsTable.createdAt} > ${sevenDaysAgo}`
+        ))
+        .orderBy(desc(workoutSessionsTable.sessionDate)),
+      db
+        .select({
+          workoutDate: externalWorkoutsTable.workoutDate,
+          stimulusPoints: externalWorkoutsTable.stimulusPoints,
+          label: externalWorkoutsTable.label,
+        })
+        .from(externalWorkoutsTable)
+        .where(and(
+          eq(externalWorkoutsTable.userId, userId),
+          sql`${externalWorkoutsTable.createdAt} > ${sevenDaysAgo}`
+        ))
+        .orderBy(desc(externalWorkoutsTable.workoutDate)),
+    ]);
 
     if (recentCheckins.length < 3) {
       res.json({ recommended: false, reason: null });
@@ -1100,8 +1117,18 @@ router.get("/workout/deload-check", async (req: Request, res: Response) => {
     const avgFatigue = fatigueScores.reduce((a, b) => a + b, 0) / fatigueScores.length;
     const allHighFatigue = fatigueScores.every(f => f >= 65);
 
-    const weeklyVolume = recentSessions.reduce((sum, s) => sum + (s.totalVolume ?? 0), 0);
-    const sessionCount = recentSessions.length;
+    // Unified session count: internal + external contribute equally (1 session each)
+    const internalCount = recentSessions.length;
+    const externalCount = recentExternal.length;
+    const sessionCount = internalCount + externalCount;
+
+    // Weekly load: internal volume + external load equivalent (normalized via sessionLoad)
+    const internalVolume = recentSessions.reduce((sum, s) => sum + (s.totalVolume ?? 0), 0);
+    const externalVolumeEquiv = recentExternal.reduce((sum, e) => {
+      const load = externalSessionLoad(e.stimulusPoints);
+      return sum + sessionLoadToVolumeEquiv(load);
+    }, 0);
+    const weeklyVolume = Math.round(internalVolume + externalVolumeEquiv);
 
     const recommended = allHighFatigue || (avgFatigue >= 75 && sessionCount >= 4);
 
@@ -1110,7 +1137,7 @@ router.get("/workout/deload-check", async (req: Request, res: Response) => {
       if (allHighFatigue) {
         reason = `Your fatigue has been elevated for ${recentThree.length}+ consecutive days. A lighter session or full rest day will help your body recover and come back stronger.`;
       } else {
-        reason = `You've logged ${sessionCount} sessions this week with high cumulative fatigue. Consider a deload day to maximize recovery.`;
+        reason = `You've logged ${sessionCount} sessions this week (${internalCount} internal, ${externalCount} external) with high cumulative fatigue. Consider a deload day to maximize recovery.`;
       }
     }
 
@@ -1118,8 +1145,10 @@ router.get("/workout/deload-check", async (req: Request, res: Response) => {
       recommended,
       reason,
       avgFatigue: Math.round(avgFatigue),
-      weeklyVolume: Math.round(weeklyVolume),
+      weeklyVolume,
       sessionCount,
+      internalSessionCount: internalCount,
+      externalSessionCount: externalCount,
     });
   } catch (err) {
     console.error("Deload check error:", err);
@@ -1160,23 +1189,49 @@ router.post("/workout/recovery-insights", aiRateLimit, async (req: Request, res:
       .orderBy(desc(workoutSessionsTable.createdAt))
       .limit(1);
 
-    const todayWorkout = sessionToday
-      ? {
-          label: sessionToday.workoutTitle ?? "Training Session",
-          intensity: sessionToday.avgRpe ?? 7,
-          durationMinutes: sessionToday.durationMinutes ?? 45,
-          muscleGroups: [],
-          isMetcon: false,
-        }
-      : externalToday
-      ? {
-          label: externalToday.label ?? "Workout",
-          intensity: externalToday.intensity ?? 7,
-          durationMinutes: externalToday.duration ?? 45,
-          muscleGroups: (externalToday.muscleGroups as string[]) ?? [],
-          isMetcon: externalToday.isMetcon ?? false,
-        }
-      : null;
+    // Combine internal + external workouts for today — equal weighting.
+    // Internal sessions may lack muscle group detail; external workouts provide it.
+    // If both exist, merge into a combined context (union muscle groups, max intensity).
+    let todayWorkout: {
+      label: string;
+      intensity: number;
+      durationMinutes: number;
+      muscleGroups: string[];
+      isMetcon: boolean;
+    } | null = null;
+
+    if (sessionToday && externalToday) {
+      const internalIntensity = sessionToday.avgRpe ?? 7;
+      const externalIntensity = externalToday.intensity ?? 7;
+      const combinedMuscleGroups = [
+        ...new Set([
+          ...(externalToday.muscleGroups as string[] ?? []),
+        ]),
+      ];
+      todayWorkout = {
+        label: `${sessionToday.workoutTitle ?? "Training Session"} + ${externalToday.label ?? "External Workout"}`,
+        intensity: Math.max(internalIntensity, externalIntensity),
+        durationMinutes: (sessionToday.durationMinutes ?? 45) + (externalToday.duration ?? 30),
+        muscleGroups: combinedMuscleGroups,
+        isMetcon: externalToday.isMetcon ?? false,
+      };
+    } else if (sessionToday) {
+      todayWorkout = {
+        label: sessionToday.workoutTitle ?? "Training Session",
+        intensity: sessionToday.avgRpe ?? 7,
+        durationMinutes: sessionToday.durationMinutes ?? 45,
+        muscleGroups: [],
+        isMetcon: false,
+      };
+    } else if (externalToday) {
+      todayWorkout = {
+        label: externalToday.label ?? "Workout",
+        intensity: externalToday.intensity ?? 7,
+        durationMinutes: externalToday.duration ?? 45,
+        muscleGroups: (externalToday.muscleGroups as string[]) ?? [],
+        isMetcon: externalToday.isMetcon ?? false,
+      };
+    }
 
     const insights = await generateRecoveryInsights({
       energyLevel: latestCheckin?.energyLevel ?? 3,
