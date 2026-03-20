@@ -2,6 +2,7 @@ import { openai } from "@workspace/integrations-openai-ai-server";
 import type { ExerciseData } from "../data/exercises";
 import { detectWorkoutFormat, normalizeMetconFormatString } from "../lib/formatParser";
 import type { WorkoutFormat } from "../lib/parserValidator";
+import { incrementAiCall, incrementAiFallback } from "../lib/metrics";
 
 function sanitizeUserInput(input: string | null | undefined): string {
   if (!input) return "";
@@ -207,6 +208,7 @@ ${ctx.workoutPreferences?.trim() ? sanitizeUserInput(ctx.workoutPreferences) : "
 
 Generate the ideal workout. Apply progressive overload where previous performance data exists. Honor substitution preferences. CRITICALLY: respect the external training fatigue above to avoid muscle overload. In the rationale, explicitly mention how the user's custom preferences (if any) shaped this session — do not write a generic rationale.`;
 
+  incrementAiCall();
   const response = await openai.chat.completions.create({
     model: "gpt-5-mini",
     max_completion_tokens: 8192,
@@ -314,6 +316,7 @@ ${ctx.sessionNotes?.trim() ? sanitizeUserInput(ctx.sessionNotes) : "None"}
 
 Generate the custom workout targeting the requested muscle groups. Adjust exercise count and sets to fit the time available. Apply progressive overload and honor substitution preferences. In the rationale, specifically reference how session notes (if any) and workout preferences (if any) shaped this session — never write a generic rationale.`;
 
+  incrementAiCall();
   const response = await openai.chat.completions.create({
     model: "gpt-5-mini",
     max_completion_tokens: 8192,
@@ -370,6 +373,7 @@ export async function generateCoachNote(
     ? history.map((h, i) => `Session ${i + 1}: ${h.sets}x${h.reps} @ ${h.weight}lbs (${new Date(h.performedAt).toLocaleDateString()})`).join(", ")
     : "No previous sessions logged";
 
+  incrementAiCall();
   const response = await openai.chat.completions.create({
     model: "gpt-5-mini",
     max_completion_tokens: 300,
@@ -417,6 +421,7 @@ export async function generateRebalancePlan(
     ? alerts.map(a => a.message).join("; ")
     : "No critical alerts";
 
+  incrementAiCall();
   const response = await openai.chat.completions.create({
     model: "gpt-5-mini",
     max_completion_tokens: 900,
@@ -463,6 +468,7 @@ Create a 4-5 day rebalance plan that specifically addresses these imbalances.`,
   const raw = response.choices[0]?.message?.content ?? "{}";
   try {
     const parsed = JSON.parse(raw);
+
     return {
       insightBanner: typeof parsed.insightBanner === "string"
         ? parsed.insightBanner
@@ -477,6 +483,7 @@ Create a 4-5 day rebalance plan that specifically addresses these imbalances.`,
       })) : [],
     };
   } catch {
+    incrementAiFallback("generateRebalancePlan");
     return {
       insightBanner: "Your muscle volume distribution shows imbalances this plan will correct.",
       titleSubtext: "Muscle Rebalance",
@@ -509,6 +516,7 @@ export async function generateAuditInsight(
 
   const topMuscles = volumeStats.muscleFocus.slice(0, 5).map(m => `${m.muscle} (${m.percentage}%)`).join(", ");
 
+  incrementAiCall();
   const response = await openai.chat.completions.create({
     model: "gpt-5-mini",
     max_completion_tokens: 400,
@@ -581,6 +589,7 @@ Return ONLY valid JSON with this structure (no markdown, no explanation):
   ]
 }`;
 
+  incrementAiCall();
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-5-mini",
@@ -628,6 +637,7 @@ Return ONLY valid JSON with this structure (no markdown, no explanation):
       formatWarning: workoutFormat === "UNKNOWN" ? formatResult.warning : undefined,
     };
   } catch {
+    incrementAiFallback("analyzeWorkoutImageAI");
     return {
       label: "Workout",
       workoutType: "other",
@@ -653,6 +663,7 @@ export async function parseWorkoutDescriptionAI(description: string): Promise<{
   workoutFormat: WorkoutFormat;
   formatWarning?: string;
 }> {
+  incrementAiCall();
   const response = await openai.chat.completions.create({
     model: "gpt-5-mini",
     max_completion_tokens: 800,
@@ -710,6 +721,7 @@ Rules:
       formatWarning: formatResult.warning,
     };
   } catch {
+    incrementAiFallback("parseWorkoutDescriptionAI");
     const formatResult = detectWorkoutFormat(description);
     return {
       muscleGroups: [],
@@ -768,6 +780,7 @@ Rules:
 - Reference the actual workout muscles, duration, intensity in tip details
 - Never give generic advice — always tie to their specific numbers`;
 
+  incrementAiCall();
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
@@ -794,6 +807,7 @@ Rules:
       tips,
     };
   } catch {
+    incrementAiFallback("generateRecoveryInsights");
     return {
       headline: "Great session — here's how to recover well.",
       tips: [
