@@ -71,6 +71,9 @@ export interface WorkoutMovement {
   fatiguePercent: number;
 }
 
+export const WORKOUT_FORMAT_VALUES = ["AMRAP", "EMOM", "FOR_TIME", "STANDARD", "UNKNOWN"] as const;
+export type WorkoutFormat = typeof WORKOUT_FORMAT_VALUES[number];
+
 export const externalWorkoutsTable = pgTable("external_workouts", {
   id: serial("id").primaryKey(),
   userId: varchar("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
@@ -86,6 +89,11 @@ export const externalWorkoutsTable = pgTable("external_workouts", {
   isMetcon: boolean("is_metcon").default(false),
   metconFormat: varchar("metcon_format"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  parserConfidence: real("parser_confidence"),
+  parserWarnings: jsonb("parser_warnings").$type<string[]>().default([]),
+  workoutFormat: varchar("workout_format").$type<WorkoutFormat>(),
+  wasUserEdited: boolean("was_user_edited").default(false),
+  editedFields: jsonb("edited_fields").$type<string[]>().default([]),
 });
 
 export type ExternalWorkout = typeof externalWorkoutsTable.$inferSelect;

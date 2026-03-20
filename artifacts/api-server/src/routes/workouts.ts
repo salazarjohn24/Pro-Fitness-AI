@@ -1,6 +1,13 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, externalWorkoutsTable, workoutSessionsTable } from "@workspace/db";
 import { desc, eq, and, gte, ne } from "drizzle-orm";
+import {
+  WORKOUT_FORMAT_VALUES,
+  validateParserConfidence,
+  validateParserWarnings,
+  validateWorkoutFormat,
+  validateEditedFields,
+} from "../lib/parserValidator.js";
 
 const router: IRouter = Router();
 
@@ -10,7 +17,11 @@ router.post("/workouts/external", async (req: Request, res: Response) => {
     return;
   }
 
-  const { label, duration, workoutType, source, intensity, muscleGroups, stimulusPoints, workoutDate, movements, isMetcon, metconFormat } = req.body;
+  const {
+    label, duration, workoutType, source, intensity, muscleGroups, stimulusPoints,
+    workoutDate, movements, isMetcon, metconFormat,
+    parserConfidence, parserWarnings, workoutFormat, wasUserEdited, editedFields,
+  } = req.body;
 
   if (!label || !workoutType) {
     res.status(400).json({ error: "Missing required fields: label, workoutType" });
@@ -52,6 +63,15 @@ router.post("/workouts/external", async (req: Request, res: Response) => {
     }
   }
 
+  const errConf = validateParserConfidence(parserConfidence);
+  if (errConf) { res.status(400).json({ error: errConf }); return; }
+  const errWarn = validateParserWarnings(parserWarnings);
+  if (errWarn) { res.status(400).json({ error: errWarn }); return; }
+  const errFmt = validateWorkoutFormat(workoutFormat);
+  if (errFmt) { res.status(400).json({ error: errFmt }); return; }
+  const errEf = validateEditedFields(editedFields);
+  if (errEf) { res.status(400).json({ error: errEf }); return; }
+
   const [workout] = await db
     .insert(externalWorkoutsTable)
     .values({
@@ -67,8 +87,17 @@ router.post("/workouts/external", async (req: Request, res: Response) => {
       movements: movements ?? [],
       isMetcon: isMetcon ?? false,
       metconFormat: metconFormat ?? null,
+      parserConfidence: parserConfidence ?? null,
+      parserWarnings: parserWarnings ?? [],
+      workoutFormat: workoutFormat ?? null,
+      wasUserEdited: wasUserEdited ?? false,
+      editedFields: editedFields ?? [],
     })
     .returning();
+
+  if (parserConfidence != null) {
+    console.log(`[parser-telemetry] workoutId=${workout.id} confidence=${parserConfidence} format=${workoutFormat ?? "null"} warnings=${(parserWarnings ?? []).length} source=${source ?? "manual"}`);
+  }
 
   res.json(workout);
 });
@@ -101,7 +130,10 @@ router.put("/workouts/external/:id", async (req: Request, res: Response) => {
     return;
   }
 
-  const { label, duration, workoutType, intensity, muscleGroups, stimulusPoints, workoutDate } = req.body;
+  const {
+    label, duration, workoutType, intensity, muscleGroups, stimulusPoints, workoutDate,
+    parserConfidence, parserWarnings, workoutFormat, wasUserEdited, editedFields,
+  } = req.body;
 
   const updateData: Record<string, unknown> = {};
   if (label !== undefined) updateData.label = label;
@@ -135,6 +167,28 @@ router.put("/workouts/external/:id", async (req: Request, res: Response) => {
     updateData.muscleGroups = muscleGroups;
   }
   if (stimulusPoints !== undefined) updateData.stimulusPoints = stimulusPoints;
+
+  if (parserConfidence !== undefined) {
+    const e = validateParserConfidence(parserConfidence);
+    if (e) { res.status(400).json({ error: e }); return; }
+    updateData.parserConfidence = parserConfidence ?? null;
+  }
+  if (parserWarnings !== undefined) {
+    const e = validateParserWarnings(parserWarnings);
+    if (e) { res.status(400).json({ error: e }); return; }
+    updateData.parserWarnings = parserWarnings ?? [];
+  }
+  if (workoutFormat !== undefined) {
+    const e = validateWorkoutFormat(workoutFormat);
+    if (e) { res.status(400).json({ error: e }); return; }
+    updateData.workoutFormat = workoutFormat ?? null;
+  }
+  if (wasUserEdited !== undefined) updateData.wasUserEdited = Boolean(wasUserEdited);
+  if (editedFields !== undefined) {
+    const e = validateEditedFields(editedFields);
+    if (e) { res.status(400).json({ error: e }); return; }
+    updateData.editedFields = editedFields ?? [];
+  }
 
   if (Object.keys(updateData).length === 0) {
     res.status(400).json({ error: "No fields to update" });
@@ -238,6 +292,11 @@ router.get("/workouts/history", async (req: Request, res: Response) => {
       feedback: null,
       workoutType: e.workoutType,
       intensity: e.intensity,
+      parserConfidence: e.parserConfidence ?? null,
+      parserWarnings: e.parserWarnings ?? [],
+      workoutFormat: e.workoutFormat ?? null,
+      wasUserEdited: e.wasUserEdited ?? false,
+      editedFields: e.editedFields ?? [],
     })),
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
