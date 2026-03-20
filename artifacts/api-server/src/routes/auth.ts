@@ -18,6 +18,7 @@ import {
   ISSUER_URL,
   type SessionData,
 } from "../lib/auth";
+import { authSigninLimit, authSignupLimit } from "../middlewares/rateLimitMiddleware";
 
 const OIDC_COOKIE_TTL = 10 * 60 * 1000;
 const SALT_ROUNDS = 12;
@@ -92,7 +93,7 @@ router.get("/auth/user", (req: Request, res: Response) => {
   );
 });
 
-router.post("/auth/signup", async (req: Request, res: Response) => {
+router.post("/auth/signup", authSignupLimit, async (req: Request, res: Response) => {
   const { username, email, password, firstName, lastName } = req.body;
 
   if (!password || password.length < 8) {
@@ -160,7 +161,7 @@ router.post("/auth/signup", async (req: Request, res: Response) => {
     };
 
     const sid = await createSession(sessionData);
-    res.cookie(SESSION_COOKIE, sid, { httpOnly: true, maxAge: SESSION_TTL, sameSite: "lax" });
+    setSessionCookie(res, sid);
     res.json({ token: sid });
   } catch (err: any) {
     console.error("Signup error:", err);
@@ -178,7 +179,7 @@ router.post("/auth/signup", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/auth/signin", async (req: Request, res: Response) => {
+router.post("/auth/signin", authSigninLimit, async (req: Request, res: Response) => {
   const { identifier, password } = req.body;
 
   if (!identifier || !password) {
@@ -223,7 +224,7 @@ router.post("/auth/signin", async (req: Request, res: Response) => {
     };
 
     const sid = await createSession(sessionData);
-    res.cookie(SESSION_COOKIE, sid, { httpOnly: true, maxAge: SESSION_TTL, sameSite: "lax" });
+    setSessionCookie(res, sid);
     res.json({ token: sid });
   } catch (err) {
     console.error("Signin error:", err);

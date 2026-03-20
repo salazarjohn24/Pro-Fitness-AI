@@ -4,6 +4,7 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 import { db, usersTable } from "@workspace/db";
 import { eq, or } from "drizzle-orm";
 import { createSession } from "../lib/auth";
+import { authOAuthLimit } from "../middlewares/rateLimitMiddleware";
 
 const router: IRouter = Router();
 
@@ -167,7 +168,7 @@ router.get("/auth/web-complete", (req: Request, res: Response) => {
   const payload = JSON.stringify({ success: !error, error: error ?? null });
   const html = `<!DOCTYPE html><html><head><script>
     if (window.opener) {
-      window.opener.postMessage(${payload}, '*');
+      window.opener.postMessage(${payload}, window.location.origin);
       window.close();
     } else {
       window.location.href = '/';
@@ -177,7 +178,7 @@ router.get("/auth/web-complete", (req: Request, res: Response) => {
   res.send(html);
 });
 
-router.get("/auth/social/:provider", (req: Request, res: Response) => {
+router.get("/auth/social/:provider", authOAuthLimit, (req: Request, res: Response) => {
   const { provider } = req.params;
   const platform = req.query.platform === "web" ? "web" : "mobile";
   const state = crypto.randomBytes(16).toString("hex");
@@ -362,7 +363,7 @@ router.get("/auth/social/:provider/callback", async (req: Request, res: Response
 
 const appleJWKS = createRemoteJWKSet(new URL("https://appleid.apple.com/auth/keys"));
 
-router.post("/auth/social/apple", async (req: Request, res: Response) => {
+router.post("/auth/social/apple", authOAuthLimit, async (req: Request, res: Response) => {
   const { identityToken, fullName, authorizationCode } = req.body;
 
   if (!identityToken) {

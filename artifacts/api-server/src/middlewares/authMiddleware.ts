@@ -51,7 +51,8 @@ async function refreshIfExpired(
       : session.expires_at;
     await updateSession(sid, session);
     return session;
-  } catch {
+  } catch (err) {
+    console.error("[auth] Token refresh failed for sid:", sid, err);
     return null;
   }
 }
