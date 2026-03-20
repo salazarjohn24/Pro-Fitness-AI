@@ -4,6 +4,8 @@ import { detectWorkoutFormat, normalizeMetconFormatString } from "../lib/formatP
 import type { WorkoutFormat } from "../lib/parserValidator";
 import { incrementAiCall, incrementAiFallback } from "../lib/metrics";
 
+const AI_MODEL = "gpt-5-mini";
+
 function sanitizeUserInput(input: string | null | undefined): string {
   if (!input) return "";
   return input
@@ -210,7 +212,7 @@ Generate the ideal workout. Apply progressive overload where previous performanc
 
   incrementAiCall();
   const response = await openai.chat.completions.create({
-    model: "gpt-5-mini",
+    model: AI_MODEL,
     max_completion_tokens: 8192,
     messages: [
       { role: "system", content: systemPrompt },
@@ -318,7 +320,7 @@ Generate the custom workout targeting the requested muscle groups. Adjust exerci
 
   incrementAiCall();
   const response = await openai.chat.completions.create({
-    model: "gpt-5-mini",
+    model: AI_MODEL,
     max_completion_tokens: 8192,
     messages: [
       { role: "system", content: systemPrompt },
@@ -375,7 +377,7 @@ export async function generateCoachNote(
 
   incrementAiCall();
   const response = await openai.chat.completions.create({
-    model: "gpt-5-mini",
+    model: AI_MODEL,
     max_completion_tokens: 300,
     messages: [
       {
@@ -423,7 +425,7 @@ export async function generateRebalancePlan(
 
   incrementAiCall();
   const response = await openai.chat.completions.create({
-    model: "gpt-5-mini",
+    model: AI_MODEL,
     max_completion_tokens: 900,
     response_format: { type: "json_object" },
     messages: [
@@ -518,7 +520,7 @@ export async function generateAuditInsight(
 
   incrementAiCall();
   const response = await openai.chat.completions.create({
-    model: "gpt-5-mini",
+    model: AI_MODEL,
     max_completion_tokens: 400,
     messages: [
       {
@@ -592,7 +594,7 @@ Return ONLY valid JSON with this structure (no markdown, no explanation):
   incrementAiCall();
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-5-mini",
+      model: AI_MODEL,
       max_completion_tokens: 1000,
       messages: [
         { role: "system", content: systemPrompt },
@@ -665,7 +667,7 @@ export async function parseWorkoutDescriptionAI(description: string): Promise<{
 }> {
   incrementAiCall();
   const response = await openai.chat.completions.create({
-    model: "gpt-5-mini",
+    model: AI_MODEL,
     max_completion_tokens: 800,
     messages: [
       {
@@ -788,7 +790,7 @@ Rules:
       { role: "user", content: user },
     ],
     temperature: 0.7,
-    max_tokens: 800,
+    max_completion_tokens: 800,
     response_format: { type: "json_object" },
   });
 

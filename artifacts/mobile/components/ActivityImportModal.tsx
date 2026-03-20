@@ -25,7 +25,7 @@ import {
 import { getApiBase, getAuthHeaders, getFetchOptions } from "@/hooks/apiHelpers";
 import { DatePickerSheet, getLocalToday, formatDisplayDate } from "@/components/DatePickerSheet";
 import { ParsedWorkoutForm, type ParsedFormResult } from "@/components/ParsedWorkoutForm";
-import { computeParserConfidence } from "@/utils/parserMeta";
+import { computeParserConfidence, LOW_CONFIDENCE_THRESHOLD } from "@/utils/parserMeta";
 import { track } from "@/lib/telemetry";
 
 export interface ImportedWorkoutData {
@@ -179,7 +179,7 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
               confidence: screenshotConfidence,
               confidence_pct: Math.round(screenshotConfidence * 100),
               source: "screenshot",
-              has_warning: screenshotConfidence < 0.65,
+              has_warning: screenshotConfidence < LOW_CONFIDENCE_THRESHOLD,
               workout_type: analysis.workoutType,
             },
           });
@@ -250,7 +250,7 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
               confidence: camConfidence,
               confidence_pct: Math.round(camConfidence * 100),
               source: "screenshot",
-              has_warning: camConfidence < 0.65,
+              has_warning: camConfidence < LOW_CONFIDENCE_THRESHOLD,
               workout_type: analysis.workoutType,
             },
           });
@@ -348,7 +348,7 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
             confidence: textConfidence,
             confidence_pct: Math.round(textConfidence * 100),
             source: "text",
-            has_warning: textConfidence < 0.65,
+            has_warning: textConfidence < LOW_CONFIDENCE_THRESHOLD,
             workout_type: parsedResult.workoutType,
           },
         });
