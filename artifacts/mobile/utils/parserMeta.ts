@@ -21,6 +21,7 @@ export interface EditableFields {
   duration: number;
   intensity: number;
   muscleGroups: string[];
+  workoutFormat?: string | null;
 }
 
 export function detectEditedFields(
@@ -36,5 +37,12 @@ export function detectEditedFields(
     current.muscleGroups.length === initial.muscleGroups.length &&
     current.muscleGroups.every((g) => initial.muscleGroups.includes(g));
   if (!sameGroups) edited.push("muscleGroups");
+  if (
+    "workoutFormat" in initial &&
+    "workoutFormat" in current &&
+    (current.workoutFormat ?? null) !== (initial.workoutFormat ?? null)
+  ) {
+    edited.push("workoutFormat");
+  }
   return edited;
 }

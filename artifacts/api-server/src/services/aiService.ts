@@ -1,5 +1,7 @@
 import { openai } from "@workspace/integrations-openai-ai-server";
 import type { ExerciseData } from "../data/exercises";
+import { detectWorkoutFormat, normalizeMetconFormatString } from "../lib/formatParser";
+import type { WorkoutFormat } from "../lib/parserValidator";
 
 function sanitizeUserInput(input: string | null | undefined): string {
   if (!input) return "";
@@ -547,6 +549,8 @@ export interface WorkoutImageAnalysis {
   movements: AnalyzedMovement[];
   isMetcon: boolean;
   metconFormat: string | null;
+  workoutFormat: WorkoutFormat;
+  formatWarning?: string;
 }
 
 export async function analyzeWorkoutImageAI(base64Image: string, mimeType = "image/jpeg"): Promise<WorkoutImageAnalysis> {
@@ -605,6 +609,12 @@ Return ONLY valid JSON with this structure (no markdown, no explanation):
         }))
       : [];
 
+    const rawMetconFormat = parsed.metconFormat ?? null;
+    const formatResult = detectWorkoutFormat(parsed.label ? `${parsed.label} ${rawMetconFormat ?? ""}` : rawMetconFormat ?? "");
+    const workoutFormat = rawMetconFormat
+      ? normalizeMetconFormatString(rawMetconFormat)
+      : formatResult.format;
+
     return {
       label: parsed.label ?? "Workout",
       workoutType: parsed.workoutType ?? "other",
@@ -613,7 +623,9 @@ Return ONLY valid JSON with this structure (no markdown, no explanation):
       muscleGroups: Array.isArray(parsed.muscleGroups) ? parsed.muscleGroups : [],
       movements,
       isMetcon: Boolean(parsed.isMetcon),
-      metconFormat: parsed.metconFormat ?? null,
+      metconFormat: rawMetconFormat,
+      workoutFormat,
+      formatWarning: workoutFormat === "UNKNOWN" ? formatResult.warning : undefined,
     };
   } catch {
     return {
@@ -625,6 +637,8 @@ Return ONLY valid JSON with this structure (no markdown, no explanation):
       movements: [],
       isMetcon: false,
       metconFormat: null,
+      workoutFormat: "UNKNOWN",
+      formatWarning: "Could not determine workout format from image.",
     };
   }
 }
@@ -636,6 +650,8 @@ export async function parseWorkoutDescriptionAI(description: string): Promise<{
   workoutType: string;
   label: string;
   movements: Array<{ name: string; volume: string; muscleGroups: string[]; fatiguePercent: number }>;
+  workoutFormat: WorkoutFormat;
+  formatWarning?: string;
 }> {
   const response = await openai.chat.completions.create({
     model: "gpt-5-mini",
@@ -682,6 +698,7 @@ Rules:
           fatiguePercent: Math.max(0, Math.min(100, parseInt(m.fatiguePercent) || 50)),
         }))
       : [];
+    const formatResult = detectWorkoutFormat(description);
     return {
       muscleGroups: Array.isArray(parsed.muscleGroups) ? parsed.muscleGroups : [],
       intensity: Math.max(1, Math.min(10, parseInt(parsed.intensity) || 5)),
@@ -689,8 +706,11 @@ Rules:
       workoutType: parsed.workoutType ?? "Other",
       label: parsed.label ?? "Workout",
       movements,
+      workoutFormat: formatResult.format,
+      formatWarning: formatResult.warning,
     };
   } catch {
+    const formatResult = detectWorkoutFormat(description);
     return {
       muscleGroups: [],
       intensity: 5,
@@ -698,6 +718,8 @@ Rules:
       workoutType: "Other",
       label: "Workout",
       movements: [],
+      workoutFormat: formatResult.format,
+      formatWarning: formatResult.warning,
     };
   }
 }

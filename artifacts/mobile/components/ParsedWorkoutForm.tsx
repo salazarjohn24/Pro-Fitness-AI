@@ -23,6 +23,14 @@ const WORKOUT_TYPES = [
 ];
 const DURATION_OPTIONS = [15, 20, 30, 45, 60, 75, 90, 120];
 
+const FORMAT_CHIPS: Array<{ value: string; label: string }> = [
+  { value: "AMRAP", label: "AMRAP" },
+  { value: "EMOM", label: "EMOM" },
+  { value: "FOR_TIME", label: "FOR TIME" },
+  { value: "STANDARD", label: "STANDARD" },
+  { value: "UNKNOWN", label: "?" },
+];
+
 function resolveSkillLevel(raw?: string | null): SkillLevel {
   if (raw === "Beginner" || raw === "Intermediate" || raw === "Advanced") return raw;
   return "Intermediate";
@@ -73,6 +81,9 @@ export function ParsedWorkoutForm({
   const [muscleGroups, setMuscleGroups] = useState<string[]>(initial.muscleGroups);
   const [workoutDate, setWorkoutDate] = useState(initial.workoutDate || getLocalToday());
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [workoutFormat, setWorkoutFormat] = useState<string | null>(
+    initial.workoutFormat ?? "UNKNOWN",
+  );
 
   const showBanner =
     initial.parserConfidence !== null &&
@@ -104,8 +115,9 @@ export function ParsedWorkoutForm({
         duration: initial.duration,
         intensity: initial.intensity,
         muscleGroups: initial.muscleGroups,
+        workoutFormat: initial.workoutFormat,
       },
-      { label, workoutType, duration, intensity, muscleGroups },
+      { label, workoutType, duration, intensity, muscleGroups, workoutFormat },
     );
 
     onSubmit({
@@ -118,7 +130,7 @@ export function ParsedWorkoutForm({
       workoutDate,
       parserConfidence: initial.parserConfidence,
       parserWarnings: initial.parserWarnings,
-      workoutFormat: initial.workoutFormat,
+      workoutFormat,
       stimulusPoints,
       wasUserEdited: editedFields.length > 0,
       editedFields,
@@ -204,6 +216,52 @@ export function ParsedWorkoutForm({
             })}
           </View>
         </ScrollView>
+      </View>
+
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>FORMAT</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          accessibilityRole="menu"
+          accessibilityLabel="Workout format selector"
+        >
+          <View style={styles.chipRow}>
+            {FORMAT_CHIPS.map(({ value, label: chipLabel }) => {
+              const selected = (workoutFormat ?? "UNKNOWN") === value;
+              return (
+                <Pressable
+                  key={value}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setWorkoutFormat(value);
+                  }}
+                  style={[
+                    styles.formatChip,
+                    selected && (value === "UNKNOWN" ? styles.formatChipUnknownSelected : styles.formatChipSelected),
+                  ]}
+                  accessibilityRole="menuitem"
+                  accessibilityLabel={`Format: ${chipLabel}`}
+                  accessibilityState={{ selected }}
+                >
+                  <Text
+                    style={[
+                      styles.formatChipText,
+                      selected && (value === "UNKNOWN" ? styles.formatChipTextUnknown : styles.formatChipTextSelected),
+                    ]}
+                  >
+                    {chipLabel}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </ScrollView>
+        {workoutFormat === "UNKNOWN" && (
+          <Text style={styles.formatUnknownHint} accessibilityRole="alert">
+            Format unknown — tap a format above to classify this workout.
+          </Text>
+        )}
       </View>
 
       <View style={styles.formGroup}>
@@ -435,6 +493,36 @@ const styles = StyleSheet.create({
     color: Colors.textSubtle,
   },
   typeChipTextSelected: { color: Colors.orange },
+  formatChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 100,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: "transparent",
+  },
+  formatChipSelected: {
+    borderColor: "#6366F1",
+    backgroundColor: "rgba(99,102,241,0.12)",
+  },
+  formatChipUnknownSelected: {
+    borderColor: Colors.textSubtle,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  formatChipText: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    color: Colors.textSubtle,
+  },
+  formatChipTextSelected: { color: "#818CF8" },
+  formatChipTextUnknown: { color: Colors.textSubtle },
+  formatUnknownHint: {
+    marginTop: 8,
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    color: "#F59E0B",
+    lineHeight: 15,
+  },
   durationChip: {
     paddingHorizontal: 14,
     paddingVertical: 8,

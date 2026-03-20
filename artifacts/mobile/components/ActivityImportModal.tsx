@@ -63,6 +63,8 @@ interface ImageAnalysis {
   movements: Array<{ name: string; volume: string; muscleGroups: string[]; fatiguePercent: number }>;
   isMetcon: boolean;
   metconFormat: string | null;
+  workoutFormat: string | null;
+  formatWarning?: string;
 }
 
 type Step = "choose" | "screenshot_prompt" | "scanning" | "screenshot_done" | "manual" | "ai_interpreter";
@@ -101,6 +103,8 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
   const [aiParserConfidence, setAiParserConfidence] = useState<number | null>(null);
   const [aiParserLabel, setAiParserLabel] = useState("");
   const [aiParserDuration, setAiParserDuration] = useState(30);
+  const [aiParserFormat, setAiParserFormat] = useState<string | null>(null);
+  const [aiParserFormatWarning, setAiParserFormatWarning] = useState<string | undefined>(undefined);
 
   const [screenshotData, setScreenshotData] = useState<{
     duration: number;
@@ -282,6 +286,8 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
             workoutType: parsedResult.workoutType,
           }),
         );
+        setAiParserFormat(data.workoutFormat ?? "UNKNOWN");
+        setAiParserFormatWarning(data.formatWarning ?? undefined);
       } else {
         const parsed = parseWorkoutDescription(aiText);
         const fallback = { ...parsed, workoutType: "Other", movements: [] };
@@ -289,6 +295,8 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
         setAiParserLabel("");
         setAiParserDuration(30);
         setAiParserConfidence(computeParserConfidence(fallback));
+        setAiParserFormat("UNKNOWN");
+        setAiParserFormatWarning(undefined);
       }
     } catch {
       const parsed = parseWorkoutDescription(aiText);
@@ -297,6 +305,8 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
       setAiParserLabel("");
       setAiParserDuration(30);
       setAiParserConfidence(computeParserConfidence(fallback));
+      setAiParserFormat("UNKNOWN");
+      setAiParserFormatWarning(undefined);
     } finally {
       setAiParseLoading(false);
     }
@@ -364,6 +374,8 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
       setAiParserConfidence(null);
       setAiParserLabel("");
       setAiParserDuration(30);
+      setAiParserFormat(null);
+      setAiParserFormatWarning(undefined);
       setScreenshotData(null);
       setImageAnalysis(null);
       setScreenshotLabel("");
@@ -595,8 +607,8 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
                         workoutType: imageAnalysis.workoutType,
                       })
                     : 0.4,
-                  parserWarnings: [],
-                  workoutFormat: imageAnalysis?.metconFormat ?? null,
+                  parserWarnings: imageAnalysis?.formatWarning ? [imageAnalysis.formatWarning] : [],
+                  workoutFormat: imageAnalysis?.workoutFormat ?? "UNKNOWN",
                 }}
                 onSubmit={handleScreenshotFormSubmit}
                 skillLevel={rawSkillLevel}
@@ -756,8 +768,8 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
                       movements: aiParsed.movements,
                       workoutDate: getLocalToday(),
                       parserConfidence: aiParserConfidence,
-                      parserWarnings: [],
-                      workoutFormat: null,
+                      parserWarnings: aiParserFormatWarning ? [aiParserFormatWarning] : [],
+                      workoutFormat: aiParserFormat ?? "UNKNOWN",
                     }}
                     onSubmit={handleAiFormSubmit}
                     skillLevel={rawSkillLevel}
