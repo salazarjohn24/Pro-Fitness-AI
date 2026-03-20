@@ -2,11 +2,20 @@
 # auth-release-check.sh — Pre-release gate for every TestFlight build.
 # Run from repo root: bash scripts/auth-release-check.sh
 # Exit 0 = all checks pass. Exit 1 = one or more failures.
+#
+# Checks (5 total):
+#   1. EXPO_PUBLIC_DOMAIN matches canonical production domain in eas.json
+#   2. ascAppId is present in eas.json submit profile
+#   3. iOS buildNumber was incremented vs the previous git commit
+#   4. GET /api/healthz returns HTTP 200
+#   5. GET /api/auth/social/google returns HTTP 302 → accounts.google.com
+#      with redirect_uri pointing at the canonical domain
 
 set -euo pipefail
 
 PROD_DOMAIN="pro-fitness-ai.replit.app"
 EXPECTED_EXPO_PUBLIC_DOMAIN="pro-fitness-ai.replit.app"
+EXPECTED_ASC_APP_ID="6760667643"
 EAS_JSON="artifacts/mobile/eas.json"
 APP_JSON="artifacts/mobile/app.json"
 PASS="✅ PASS"
@@ -20,7 +29,7 @@ echo "╚═══════════════════════�
 echo ""
 
 # ── CHECK 1: EXPO_PUBLIC_DOMAIN ───────────────────────────────────────────────
-echo "[1/4] EXPO_PUBLIC_DOMAIN in eas.json"
+echo "[1/5] EXPO_PUBLIC_DOMAIN in eas.json"
 actual_domain=$(node -e "process.stdout.write(require('./${EAS_JSON}').build.production.env.EXPO_PUBLIC_DOMAIN || '')")
 if [ "$actual_domain" = "$EXPECTED_EXPO_PUBLIC_DOMAIN" ]; then
   echo "      $PASS  EXPO_PUBLIC_DOMAIN=${actual_domain}"
@@ -30,11 +39,26 @@ else
   failures=$((failures + 1))
 fi
 
-# ── CHECK 2: iOS buildNumber incremented vs last git commit ───────────────────
+# ── CHECK 2: ascAppId in submit profile ───────────────────────────────────────
 echo ""
-echo "[2/4] iOS buildNumber in app.json"
+echo "[2/5] ascAppId in eas.json submit profile"
+actual_asc=$(node -e "
+  const j = require('./${EAS_JSON}');
+  const id = (j.submit && j.submit.production && j.submit.production.ios && j.submit.production.ios.ascAppId) || '';
+  process.stdout.write(id);
+")
+if [ "$actual_asc" = "$EXPECTED_ASC_APP_ID" ]; then
+  echo "      $PASS  ascAppId=${actual_asc}"
+else
+  echo "      $FAIL  Expected ascAppId='${EXPECTED_ASC_APP_ID}', got '${actual_asc:-<not set>}'"
+  echo "             Fix: set submit.production.ios.ascAppId in ${EAS_JSON}"
+  failures=$((failures + 1))
+fi
+
+# ── CHECK 3: iOS buildNumber incremented vs last git commit ───────────────────
+echo ""
+echo "[3/5] iOS buildNumber in app.json"
 current_build=$(node -e "process.stdout.write(require('./${APP_JSON}').expo.ios.buildNumber || '')")
-# Get the buildNumber from the previous git commit for comparison
 prev_build=$(git show HEAD~1:"${APP_JSON}" 2>/dev/null | node -e "
   let d=''; process.stdin.on('data',c=>d+=c).on('end',()=>{
     try{ process.stdout.write(JSON.parse(d).expo.ios.buildNumber||'0') }catch{ process.stdout.write('0') }
@@ -58,9 +82,9 @@ else
   failures=$((failures + 1))
 fi
 
-# ── CHECK 3: /api/healthz returns 200 ─────────────────────────────────────────
+# ── CHECK 4: /api/healthz returns 200 ─────────────────────────────────────────
 echo ""
-echo "[3/4] GET https://${PROD_DOMAIN}/api/healthz"
+echo "[4/5] GET https://${PROD_DOMAIN}/api/healthz"
 healthz_status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
   "https://${PROD_DOMAIN}/api/healthz" 2>/dev/null || echo "000")
 healthz_body=$(curl -s --max-time 10 \
@@ -75,9 +99,9 @@ else
   failures=$((failures + 1))
 fi
 
-# ── CHECK 4: /api/auth/social/google returns 302 to accounts.google.com ───────
+# ── CHECK 5: /api/auth/social/google returns 302 to accounts.google.com ───────
 echo ""
-echo "[4/4] GET https://${PROD_DOMAIN}/api/auth/social/google"
+echo "[5/5] GET https://${PROD_DOMAIN}/api/auth/social/google"
 google_status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
   "https://${PROD_DOMAIN}/api/auth/social/google" 2>/dev/null || echo "000")
 google_location=$(curl -s -o /dev/null -w "%{redirect_url}" --max-time 10 \
@@ -86,11 +110,8 @@ google_location=$(curl -s -o /dev/null -w "%{redirect_url}" --max-time 10 \
 if [ "$google_status" = "302" ] && echo "$google_location" | grep -q "accounts.google.com"; then
   echo "      $PASS  HTTP ${google_status} → accounts.google.com"
 
-  # redirect_uri is URL-encoded; hyphens and dots are not encoded so domain appears as-is
-  # Check the raw Location URL for the production domain (plain and percent-encoded forms)
   encoded_domain=$(node -e "process.stdout.write(encodeURIComponent('https://${PROD_DOMAIN}'))" 2>/dev/null || echo "")
   if echo "$google_location" | grep -qE "${PROD_DOMAIN}|${encoded_domain}"; then
-    # Extract and display the decoded redirect_uri for the log
     decoded_uri=$(node -e "
       const url = '${google_location}';
       const m = url.match(/redirect_uri=([^&]+)/);
@@ -118,6 +139,7 @@ if [ "$failures" -eq 0 ]; then
   echo "  ✅  ALL CHECKS PASSED — safe to build and submit to TestFlight"
   echo "      Build number: ${current_build}"
   echo "      Domain:       ${actual_domain}"
+  echo "      ascAppId:     ${actual_asc}"
   echo "══════════════════════════════════════════════════════════"
   echo ""
   exit 0
