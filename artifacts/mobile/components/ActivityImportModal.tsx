@@ -26,6 +26,7 @@ import { getApiBase, getAuthHeaders, getFetchOptions } from "@/hooks/apiHelpers"
 import { DatePickerSheet, getLocalToday, formatDisplayDate } from "@/components/DatePickerSheet";
 import { ParsedWorkoutForm, type ParsedFormResult } from "@/components/ParsedWorkoutForm";
 import { computeParserConfidence } from "@/utils/parserMeta";
+import { track } from "@/lib/telemetry";
 
 export interface ImportedWorkoutData {
   label: string;
@@ -165,6 +166,32 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
           setScreenshotData({ duration: analysis.duration, intensity: analysis.intensity, muscleGroups: analysis.muscleGroups, stimulusPoints });
           setStep("screenshot_done");
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          // telemetry: screenshot analysis complete
+          const screenshotConfidence = computeParserConfidence({
+            muscleGroups: analysis.muscleGroups,
+            movements: analysis.movements,
+            workoutType: analysis.workoutType,
+          });
+          const screenshotFormat = analysis.workoutFormat ?? "UNKNOWN";
+          track({
+            name: "parser_confidence_recorded",
+            props: {
+              confidence: screenshotConfidence,
+              confidence_pct: Math.round(screenshotConfidence * 100),
+              source: "screenshot",
+              has_warning: screenshotConfidence < 0.65,
+              workout_type: analysis.workoutType,
+            },
+          });
+          track({
+            name: "workout_format_detected",
+            props: {
+              format: screenshotFormat,
+              source: "screenshot",
+              has_format_warning: Boolean(analysis.formatWarning),
+              confidence: screenshotConfidence,
+            },
+          });
           return;
         }
       }
@@ -210,6 +237,32 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
           setScreenshotData({ duration: analysis.duration, intensity: analysis.intensity, muscleGroups: analysis.muscleGroups, stimulusPoints });
           setStep("screenshot_done");
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          // telemetry: screenshot (camera) analysis complete
+          const camConfidence = computeParserConfidence({
+            muscleGroups: analysis.muscleGroups,
+            movements: analysis.movements,
+            workoutType: analysis.workoutType,
+          });
+          const camFormat = analysis.workoutFormat ?? "UNKNOWN";
+          track({
+            name: "parser_confidence_recorded",
+            props: {
+              confidence: camConfidence,
+              confidence_pct: Math.round(camConfidence * 100),
+              source: "screenshot",
+              has_warning: camConfidence < 0.65,
+              workout_type: analysis.workoutType,
+            },
+          });
+          track({
+            name: "workout_format_detected",
+            props: {
+              format: camFormat,
+              source: "screenshot",
+              has_format_warning: Boolean(analysis.formatWarning),
+              confidence: camConfidence,
+            },
+          });
           return;
         }
       }
@@ -279,15 +332,35 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
         setAiParsed(parsedResult);
         setAiParserLabel(data.label ?? "");
         setAiParserDuration(data.estimatedDuration ?? 30);
-        setAiParserConfidence(
-          computeParserConfidence({
-            muscleGroups: parsedResult.muscleGroups,
-            movements: parsedResult.movements,
-            workoutType: parsedResult.workoutType,
-          }),
-        );
-        setAiParserFormat(data.workoutFormat ?? "UNKNOWN");
+        const textConfidence = computeParserConfidence({
+          muscleGroups: parsedResult.muscleGroups,
+          movements: parsedResult.movements,
+          workoutType: parsedResult.workoutType,
+        });
+        setAiParserConfidence(textConfidence);
+        const textFormat = data.workoutFormat ?? "UNKNOWN";
+        setAiParserFormat(textFormat);
         setAiParserFormatWarning(data.formatWarning ?? undefined);
+        // telemetry: text parse complete
+        track({
+          name: "parser_confidence_recorded",
+          props: {
+            confidence: textConfidence,
+            confidence_pct: Math.round(textConfidence * 100),
+            source: "text",
+            has_warning: textConfidence < 0.65,
+            workout_type: parsedResult.workoutType,
+          },
+        });
+        track({
+          name: "workout_format_detected",
+          props: {
+            format: textFormat,
+            source: "text",
+            has_format_warning: Boolean(data.formatWarning),
+            confidence: textConfidence,
+          },
+        });
       } else {
         const parsed = parseWorkoutDescription(aiText);
         const fallback = { ...parsed, workoutType: "Other", movements: [] };
@@ -592,6 +665,7 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
 
               <ParsedWorkoutForm
                 key="screenshot-form"
+                importSource="screenshot"
                 initial={{
                   label: screenshotLabel || imageAnalysis?.label || "Screenshot Import",
                   workoutType: imageAnalysis?.workoutType ?? "Imported",
@@ -759,6 +833,7 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
 
                   <ParsedWorkoutForm
                     key={JSON.stringify(aiParsed)}
+                    importSource="text"
                     initial={{
                       label: aiParserLabel,
                       workoutType: aiParsed.workoutType || "Other",

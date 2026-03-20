@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -16,6 +16,7 @@ import {
   LOW_CONFIDENCE_THRESHOLD,
   detectEditedFields,
 } from "@/utils/parserMeta";
+import { track } from "@/lib/telemetry";
 
 const WORKOUT_TYPES = [
   "Strength", "Cardio", "HIIT", "CrossFit", "Yoga",
@@ -61,6 +62,7 @@ interface Props {
   skillLevel?: string | null;
   submitLabel?: string;
   submitDisabled?: boolean;
+  importSource?: "text" | "screenshot" | "manual";
 }
 
 export function ParsedWorkoutForm({
@@ -69,6 +71,7 @@ export function ParsedWorkoutForm({
   skillLevel,
   submitLabel = "LOG WORKOUT",
   submitDisabled,
+  importSource = "manual",
 }: Props) {
   const userSkillLevel = resolveSkillLevel(skillLevel);
 
@@ -88,6 +91,21 @@ export function ParsedWorkoutForm({
   const showBanner =
     initial.parserConfidence !== null &&
     initial.parserConfidence < LOW_CONFIDENCE_THRESHOLD;
+
+  // telemetry: fire once per form mount when the low-confidence banner is shown
+  useEffect(() => {
+    if (showBanner && initial.parserConfidence !== null) {
+      track({
+        name: "parser_warning_shown",
+        props: {
+          confidence: initial.parserConfidence,
+          confidence_pct: Math.round(initial.parserConfidence * 100),
+          source: importSource,
+          warning_count: initial.parserWarnings.length,
+        },
+      });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleMuscleGroup = (group: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -119,6 +137,20 @@ export function ParsedWorkoutForm({
       },
       { label, workoutType, duration, intensity, muscleGroups, workoutFormat },
     );
+
+    // telemetry: capture which fields the user corrected before saving
+    if (editedFields.length > 0) {
+      track({
+        name: "import_user_edited_fields",
+        props: {
+          edited_fields: editedFields,
+          edited_field_count: editedFields.length,
+          source: importSource,
+          format: workoutFormat ?? "UNKNOWN",
+          had_low_confidence: showBanner,
+        },
+      });
+    }
 
     onSubmit({
       label: label.trim(),
@@ -234,6 +266,19 @@ export function ParsedWorkoutForm({
                   key={value}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    // telemetry: only fire when the user actively changes away from the detected format
+                    const originalFormat = initial.workoutFormat ?? "UNKNOWN";
+                    if (value !== workoutFormat && value !== originalFormat) {
+                      track({
+                        name: "workout_format_overridden",
+                        props: {
+                          from: originalFormat,
+                          to: value,
+                          source: importSource,
+                          confidence: initial.parserConfidence ?? 0,
+                        },
+                      });
+                    }
                     setWorkoutFormat(value);
                   }}
                   style={[
