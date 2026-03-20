@@ -1007,6 +1007,34 @@ export default function ProfileScreen() {
           </ScrollView>
         </View>
 
+        {notifPrefs.insightFrequency === "weekly" && (
+          <View style={styles.notifTimeRow}>
+            <Text style={styles.notifTimeLabel}>DAY</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={styles.notifChips}>
+                {(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const).map((day, i) => {
+                  const weekday = i + 1;
+                  return (
+                    <Pressable
+                      key={weekday}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        setNotifPrefs((p) => ({ ...p, insightWeekday: weekday }));
+                        setNotifDirty(true);
+                      }}
+                      style={[styles.notifChip, notifPrefs.insightWeekday === weekday && styles.notifChipActive]}
+                    >
+                      <Text style={[styles.notifChipText, notifPrefs.insightWeekday === weekday && styles.notifChipTextActive]}>
+                        {day}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          </View>
+        )}
+
         {notifPrefs.insightFrequency !== "off" && (
           <View style={styles.notifTimeRow}>
             <Text style={styles.notifTimeLabel}>TIME</Text>

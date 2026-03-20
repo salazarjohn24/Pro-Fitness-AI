@@ -237,6 +237,37 @@ describe("NOTIF-4 — timezone handling", () => {
 });
 
 // ---------------------------------------------------------------------------
+// NOTIF-6 — weekday picker: DEFAULT_NOTIF_PREFS and per-weekday scheduling
+// ---------------------------------------------------------------------------
+describe("NOTIF-6 — weekday picker defaults and per-day scheduling", () => {
+  it("DEFAULT_NOTIF_PREFS has insightWeekday=1 (Sunday)", async () => {
+    const { DEFAULT_NOTIF_PREFS: prefs } = await import("../notifications");
+    expect(prefs.insightWeekday).toBe(1);
+  });
+
+  it("each weekday 1-7 produces a CALENDAR trigger with that exact weekday", async () => {
+    for (const wd of [1, 2, 3, 4, 5, 6, 7]) {
+      vi.clearAllMocks();
+      await applyNotifPrefs(basePrefs({ insightFrequency: "weekly", insightWeekday: wd }));
+      const trigger = scheduleAsync.mock.calls[0][0].trigger;
+      expect(trigger.weekday, `weekday ${wd}`).toBe(wd);
+    }
+  });
+
+  it("changing weekday via picker (simulated state update) produces correct trigger", async () => {
+    // Simulate user changing from Sunday (1) to Monday (2) in the UI.
+    const afterPick = basePrefs({ insightFrequency: "weekly", insightWeekday: 2 });
+    await applyNotifPrefs(afterPick);
+    expect(scheduleAsync.mock.calls[0][0].trigger.weekday).toBe(2);
+  });
+
+  it("weekday picker change produces CALENDAR type, not TIME_INTERVAL", async () => {
+    await applyNotifPrefs(basePrefs({ insightFrequency: "weekly", insightWeekday: 5 }));
+    expect(scheduleAsync.mock.calls[0][0].trigger.type).toBe("calendar");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // NOTIF-5 — check-in and workout scheduling not broken by the fix
 // ---------------------------------------------------------------------------
 describe("NOTIF-5 — check-in and workout scheduling unaffected", () => {
