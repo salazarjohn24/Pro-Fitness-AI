@@ -27,6 +27,13 @@ export interface NotifPrefs {
   insightFrequency: "daily" | "weekly" | "off";
   insightHour: number;
   insightMinute: number;
+  /**
+   * Day of week for weekly insight notification.
+   * Uses iOS Calendar weekday convention: 1=Sunday, 2=Monday, …, 7=Saturday.
+   * Only used when insightFrequency === "weekly".
+   * The CALENDAR trigger fires at device-local time — no UTC offset is applied.
+   */
+  insightWeekday: number;
 }
 
 export const DEFAULT_NOTIF_PREFS: NotifPrefs = {
@@ -39,6 +46,7 @@ export const DEFAULT_NOTIF_PREFS: NotifPrefs = {
   insightFrequency: "weekly",
   insightHour: 9,
   insightMinute: 0,
+  insightWeekday: 1, // Sunday
 };
 
 const CHECKIN_MESSAGES = [
@@ -99,12 +107,17 @@ async function cancelById(id: string): Promise<void> {
   } catch {}
 }
 
+/**
+ * Schedule a notification to fire every day at the given local time.
+ * The CALENDAR trigger (hour + minute, no weekday) repeats daily in
+ * device-local time — no UTC offset is applied.
+ */
 async function scheduleDaily(
   id: string,
   title: string,
   body: string,
   hour: number,
-  minute: number
+  minute: number,
 ): Promise<void> {
   if (Platform.OS === "web") return;
   try {
@@ -121,6 +134,40 @@ async function scheduleDaily(
     });
   } catch (e) {
     console.warn("[notifications] scheduleDaily error:", e);
+  }
+}
+
+/**
+ * Schedule a notification to fire once per week at the given local time.
+ * The CALENDAR trigger (hour + minute + weekday) repeats weekly in
+ * device-local time — no UTC offset is applied.
+ *
+ * @param weekday  iOS Calendar weekday: 1=Sunday, 2=Monday, …, 7=Saturday.
+ */
+async function scheduleWeekly(
+  id: string,
+  title: string,
+  body: string,
+  hour: number,
+  minute: number,
+  weekday: number,
+): Promise<void> {
+  if (Platform.OS === "web") return;
+  try {
+    await cancelById(id);
+    await Notifications.scheduleNotificationAsync({
+      identifier: id,
+      content: { title, body, sound: true },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
+        hour,
+        minute,
+        weekday,
+        repeats: true,
+      },
+    });
+  } catch (e) {
+    console.warn("[notifications] scheduleWeekly error:", e);
   }
 }
 
@@ -143,9 +190,22 @@ export async function applyNotifPrefs(prefs: NotifPrefs): Promise<void> {
     await cancelById(ID_WORKOUT);
   }
 
-  if (prefs.insightFrequency !== "off") {
+  // Insight frequency — three distinct paths; "weekly" fires once per week,
+  // NOT daily. Previously both "daily" and "weekly" called scheduleDaily()
+  // which caused weekly to fire every day (L03 bug).
+  if (prefs.insightFrequency === "daily") {
     const msg = pickRandom(INSIGHT_MESSAGES);
     await scheduleDaily(ID_INSIGHT, msg.title, msg.body, prefs.insightHour, prefs.insightMinute);
+  } else if (prefs.insightFrequency === "weekly") {
+    const msg = pickRandom(INSIGHT_MESSAGES);
+    await scheduleWeekly(
+      ID_INSIGHT,
+      msg.title,
+      msg.body,
+      prefs.insightHour,
+      prefs.insightMinute,
+      prefs.insightWeekday,
+    );
   } else {
     await cancelById(ID_INSIGHT);
   }
