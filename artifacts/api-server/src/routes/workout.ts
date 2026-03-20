@@ -5,6 +5,7 @@ import { EXERCISE_LIBRARY, exerciseMap, type ExerciseData } from "../data/exerci
 import { generateAIWorkout, generateAIArchitectWorkout, parseWorkoutDescriptionAI, analyzeWorkoutImageAI, generateRecoveryInsights } from "../services/aiService";
 import { aiRateLimit } from "../middlewares/rateLimitMiddleware";
 import { internalSessionLoad, externalSessionLoad, sessionLoadToVolumeEquiv } from "../lib/sessionLoad";
+import { MUSCLE_ALIAS, normalizeMuscle } from "../lib/muscleNormalization";
 
 const router: IRouter = Router();
 
@@ -81,30 +82,13 @@ function normalizeInjuries(injuries: string[]): string[] {
           break;
         }
       }
-      const directMap = BODYMAP_MUSCLE_ALIAS[lower];
+      const directMap = MUSCLE_ALIAS[lower];
       if (directMap) result.push(directMap);
       else if (!result.includes(lower)) result.push(lower);
     }
   }
   return [...new Set(result)];
 }
-
-const BODYMAP_MUSCLE_ALIAS: Record<string, string> = {
-  biceps_l: "biceps",
-  biceps_r: "biceps",
-  triceps_l: "triceps",
-  triceps_r: "triceps",
-  quads_l: "quads",
-  quads_r: "quads",
-  hamstrings_l: "hamstrings",
-  hamstrings_r: "hamstrings",
-  abs: "core",
-  upper_back: "back",
-  lower_back: "back",
-  lats: "back",
-  traps: "shoulders",
-  shins: "calves",
-};
 
 function normalizeGoal(goal: string | null): string {
   const raw = (goal ?? "general fitness").toLowerCase().trim();
@@ -121,10 +105,6 @@ function normalizeEquipment(items: string[]): string[] {
     .filter(e => e.length > 0);
 }
 
-function normalizeMuscle(muscle: string): string {
-  const lower = muscle.toLowerCase().trim();
-  return BODYMAP_MUSCLE_ALIAS[lower] ?? lower;
-}
 
 const MUSCLE_GROUPS_FOR_GOAL: Record<string, string[]> = {
   "muscle gain": ["chest", "back", "quads", "shoulders", "hamstrings", "glutes", "biceps", "triceps"],

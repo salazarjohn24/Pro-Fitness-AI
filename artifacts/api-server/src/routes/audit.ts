@@ -4,6 +4,7 @@ import { eq, desc, and, gte, ne } from "drizzle-orm";
 import { exerciseMap } from "../data/exercises";
 import { generateAuditInsight, generateRebalancePlan } from "../services/aiService";
 import { aiRateLimit } from "../middlewares/rateLimitMiddleware";
+import { normalizeMuscle } from "../lib/muscleNormalization";
 
 const router: IRouter = Router();
 
@@ -12,24 +13,6 @@ const CANONICAL_MUSCLES = [
   "glutes", "biceps", "triceps", "core", "calves",
 ];
 
-const MUSCLE_NORMALIZATION: Record<string, string> = {
-  legs: "quads",
-  arms: "biceps",
-  hips: "glutes",
-  abs: "core",
-  abdominals: "core",
-  lats: "back",
-  traps: "back",
-  forearms: "biceps",
-  pecs: "chest",
-  deltoids: "shoulders",
-  delts: "shoulders",
-};
-
-function normalizeMuscleName(muscle: string): string {
-  const lower = muscle.toLowerCase();
-  return MUSCLE_NORMALIZATION[lower] ?? lower;
-}
 
 interface SessionSet {
   reps: number;
@@ -95,7 +78,7 @@ router.get("/audit/alerts", async (req: Request, res: Response) => {
 
     const exerciseMuscleMap: Record<number, string> = {};
     for (const ex of exerciseLibrary) {
-      exerciseMuscleMap[ex.id] = normalizeMuscleName(ex.muscleGroup ?? "");
+      exerciseMuscleMap[ex.id] = normalizeMuscle(ex.muscleGroup ?? "");
     }
 
     const muscleLastTrained: Record<string, { date: Date; consistencyIndex: number | null }> = {};
@@ -122,7 +105,7 @@ router.get("/audit/alerts", async (req: Request, res: Response) => {
       const groups = (ew.muscleGroups as string[]) ?? [];
       const ewDate = new Date(ew.createdAt);
       for (const mg of groups) {
-        const key = normalizeMuscleName(mg);
+        const key = normalizeMuscle(mg);
         if (!muscleLastTrained[key] || ewDate > muscleLastTrained[key].date) {
           muscleLastTrained[key] = { date: ewDate, consistencyIndex: null };
         }
@@ -466,7 +449,7 @@ router.get("/audit/rebalance-plan", aiRateLimit, async (req: Request, res: Respo
 
     const exerciseMuscleMap: Record<number, string> = {};
     for (const ex of exerciseLibrary) {
-      exerciseMuscleMap[ex.id] = normalizeMuscleName(ex.muscleGroup ?? "");
+      exerciseMuscleMap[ex.id] = normalizeMuscle(ex.muscleGroup ?? "");
     }
 
     const muscleLastTrained: Record<string, { date: Date; consistencyIndex: number | null }> = {};
@@ -522,7 +505,7 @@ router.get("/audit/ai-insight", aiRateLimit, async (req: Request, res: Response)
 
       const exerciseMuscleMap: Record<number, string> = {};
       for (const ex of exerciseLibrary) {
-        exerciseMuscleMap[ex.id] = normalizeMuscleName(ex.muscleGroup ?? "");
+        exerciseMuscleMap[ex.id] = normalizeMuscle(ex.muscleGroup ?? "");
       }
 
       const muscleLastTrained: Record<string, { date: Date; consistencyIndex: number | null }> = {};
