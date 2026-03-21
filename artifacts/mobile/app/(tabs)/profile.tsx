@@ -35,6 +35,7 @@ import { Colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
 import { useProfile, useUpdateProfile, useDeleteAccount } from "@/hooks/useProfile";
 import { useHealthSync, formatLastSynced } from "@/hooks/useHealthSync";
+import { HealthDiagnosticsPanel } from "@/components/HealthDiagnosticsPanel";
 import { useEnvironments, useCreateEnvironment, useUpdateEnvironment, useActivateEnvironment, useDeleteEnvironment } from "@/hooks/useEnvironments";
 import { EquipmentChecklist } from "@/components/EquipmentChecklist";
 
@@ -863,6 +864,8 @@ export default function ProfileScreen() {
           </Pressable>
         </View>
       )}
+
+      {__DEV__ && <HealthDiagnosticsPanel />}
 
       <View style={styles.sectionCard}>
         <View style={styles.auditHeaderRow}>

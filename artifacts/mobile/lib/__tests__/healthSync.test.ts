@@ -22,6 +22,8 @@ import {
   HEALTH_ERROR,
   HEALTH_USER_MESSAGES,
   HealthSyncError,
+  DIAG_INITIAL,
+  DIAG_STORAGE_KEY,
   dedupeWorkouts,
   formatLastSynced,
   localDayEnd,
@@ -32,6 +34,7 @@ import {
   toLocalDateString,
   withRetry,
   withTimeout,
+  type DiagnosticState,
   type HKSample,
 } from "../healthSyncUtils";
 
@@ -409,5 +412,152 @@ describe("HS-10 — formatLastSynced helper", () => {
   it("does not include 'Today' for a past date", () => {
     const past = new Date("2023-01-01T12:00:00Z").toISOString();
     expect(formatLastSynced(past)).not.toContain("Today");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HS-11  DiagnosticState / DIAG_INITIAL shape
+// ---------------------------------------------------------------------------
+describe("HS-11 — DiagnosticState / DIAG_INITIAL shape", () => {
+  it("DIAG_INITIAL has all required fields", () => {
+    const fields: (keyof DiagnosticState)[] = [
+      "hkAvailableChecked",
+      "hkAvailable",
+      "authRequestAttempted",
+      "authResult",
+      "initHealthKitError",
+      "lastStageReached",
+      "lastErrorCode",
+      "lastErrorMsg",
+      "lastSyncAttemptAt",
+    ];
+    for (const f of fields) {
+      expect(DIAG_INITIAL).toHaveProperty(f);
+    }
+  });
+
+  it("DIAG_INITIAL starts with false/null values indicating no sync has run", () => {
+    expect(DIAG_INITIAL.hkAvailableChecked).toBe(false);
+    expect(DIAG_INITIAL.hkAvailable).toBeNull();
+    expect(DIAG_INITIAL.authRequestAttempted).toBe(false);
+    expect(DIAG_INITIAL.authResult).toBeNull();
+    expect(DIAG_INITIAL.initHealthKitError).toBeNull();
+    expect(DIAG_INITIAL.lastStageReached).toBeNull();
+    expect(DIAG_INITIAL.lastErrorCode).toBeNull();
+    expect(DIAG_INITIAL.lastErrorMsg).toBeNull();
+    expect(DIAG_INITIAL.lastSyncAttemptAt).toBeNull();
+  });
+
+  it("spreading DIAG_INITIAL produces an independent copy", () => {
+    const copy = { ...DIAG_INITIAL };
+    copy.authRequestAttempted = true;
+    expect(DIAG_INITIAL.authRequestAttempted).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HS-12  DIAG_STORAGE_KEY
+// ---------------------------------------------------------------------------
+describe("HS-12 — DIAG_STORAGE_KEY", () => {
+  it("is a non-empty string", () => {
+    expect(typeof DIAG_STORAGE_KEY).toBe("string");
+    expect(DIAG_STORAGE_KEY.trim().length).toBeGreaterThan(0);
+  });
+
+  it("includes a version segment to allow future schema changes", () => {
+    expect(DIAG_STORAGE_KEY).toMatch(/v\d+/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HS-13  logError — accepts and emits details (retry_count + timeout_status)
+// ---------------------------------------------------------------------------
+describe("HS-13 — logError with LogDetails (retry_count / timeout_status)", () => {
+  it("emits retry_count in the log line when provided", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    logError("read", HEALTH_ERROR.READ_FAILED, "Read failed.", undefined, {
+      retry_count: 3,
+    });
+    expect(spy).toHaveBeenCalledWith(
+      expect.stringContaining("retry_count=3"),
+      "",
+    );
+    spy.mockRestore();
+  });
+
+  it("emits timeout_status=timed_out in the log line when provided", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    logError("read", HEALTH_ERROR.READ_TIMEOUT, "Read timed out.", undefined, {
+      timeout_status: "timed_out",
+    });
+    expect(spy).toHaveBeenCalledWith(
+      expect.stringContaining('timeout_status="timed_out"'),
+      "",
+    );
+    spy.mockRestore();
+  });
+
+  it("still emits error_code and user_message alongside details", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    logError("save", HEALTH_ERROR.SYNC_TIMEOUT, "Sync timed out.", undefined, {
+      retry_count: 1,
+      timeout_status: "timed_out",
+    });
+    const [msg] = spy.mock.calls[0];
+    expect(msg).toContain("error_code=SYNC_TIMEOUT");
+    expect(msg).toContain("retry_count=1");
+    expect(msg).toContain('timeout_status="timed_out"');
+    spy.mockRestore();
+  });
+
+  it("works without details (backwards compatible)", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    logError("permission", HEALTH_ERROR.NOT_AVAILABLE, "Not available.");
+    expect(spy).toHaveBeenCalledWith(
+      expect.stringContaining("error_code=NOT_AVAILABLE"),
+      "",
+    );
+    spy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HS-14  log — emits retry_count and timeout_status when in LogDetails
+// ---------------------------------------------------------------------------
+describe("HS-14 — log with retry_count / timeout_status in details", () => {
+  it("emits retry_count in structured log line", () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    log("read", "steps_ok", { count: 100, retry_count: 2 });
+    expect(spy).toHaveBeenCalledWith(
+      expect.stringContaining("retry_count=2"),
+    );
+    spy.mockRestore();
+  });
+
+  it("emits timeout_status=ok in structured log line", () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    log("read", "workouts_ok", { count: 5, timeout_status: "ok" });
+    expect(spy).toHaveBeenCalledWith(
+      expect.stringContaining('timeout_status="ok"'),
+    );
+    spy.mockRestore();
+  });
+
+  it("emits both retry_count and timeout_status when both provided", () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    log("permission", "granted", { retry_count: 0, timeout_status: "ok" });
+    const [msg] = spy.mock.calls[0];
+    expect(msg).toContain("retry_count=0");
+    expect(msg).toContain('timeout_status="ok"');
+    spy.mockRestore();
+  });
+
+  it("stage and event are still present when details include retry_count", () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    log("dedupe", "complete", { unique: 3, retry_count: 1 });
+    expect(spy).toHaveBeenCalledWith(
+      expect.stringContaining("[health-sync] stage=dedupe event=complete"),
+    );
+    spy.mockRestore();
   });
 });

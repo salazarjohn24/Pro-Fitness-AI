@@ -201,14 +201,58 @@ export function dedupeWorkouts(workouts: HKSample[]): HKSample[] {
 }
 
 // ---------------------------------------------------------------------------
+// Diagnostic state — persisted to AsyncStorage for the diagnostics panel
+// ---------------------------------------------------------------------------
+
+export const DIAG_STORAGE_KEY = "@health_diag_v1";
+
+export type AuthCategory = "Workout" | "Steps" | "ActiveEnergyBurned";
+export type HealthAuthStatus = "NotDetermined" | "SharingDenied" | "SharingAuthorized";
+
+export interface DiagnosticState {
+  /** True if AppleHealthKit.isAvailable() was called and result received */
+  hkAvailableChecked: boolean;
+  /** Result from AppleHealthKit.isAvailable() */
+  hkAvailable: boolean | null;
+  /** True if initHealthKit was invoked at least once */
+  authRequestAttempted: boolean;
+  /** Per-category auth status from getAuthStatus() after initHealthKit */
+  authResult: Record<AuthCategory, HealthAuthStatus> | null;
+  /** Raw error string from initHealthKit callback, null on success */
+  initHealthKitError: string | null;
+  /** Furthest pipeline stage reached in the last sync attempt */
+  lastStageReached: SyncStage | null;
+  lastErrorCode: HealthErrorCode | null;
+  lastErrorMsg: string | null;
+  lastSyncAttemptAt: string | null;
+}
+
+export const DIAG_INITIAL: DiagnosticState = {
+  hkAvailableChecked: false,
+  hkAvailable: null,
+  authRequestAttempted: false,
+  authResult: null,
+  initHealthKitError: null,
+  lastStageReached: null,
+  lastErrorCode: null,
+  lastErrorMsg: null,
+  lastSyncAttemptAt: null,
+};
+
+// ---------------------------------------------------------------------------
 // Structured logging
 // ---------------------------------------------------------------------------
+
+export interface LogDetails extends Record<string, unknown> {
+  retry_count?: number;
+  timeout_status?: "ok" | "timed_out";
+}
 
 /** Emits a structured log line: [health-sync] stage=X event=Y key="val" … */
 export function log(
   stage: SyncStage,
   event: string,
-  details?: Record<string, unknown>,
+  details?: LogDetails,
 ): void {
   const parts: string[] = [`[health-sync] stage=${stage}`, `event=${event}`];
   if (details) {
@@ -225,11 +269,19 @@ export function logError(
   code: HealthErrorCode,
   userMessage: string,
   err?: unknown,
+  details?: LogDetails,
 ): void {
-  console.error(
-    `[health-sync] stage=${stage} error_code=${code} user_message=${JSON.stringify(userMessage)}`,
-    err ?? "",
-  );
+  const parts: string[] = [
+    `[health-sync] stage=${stage}`,
+    `error_code=${code}`,
+    `user_message=${JSON.stringify(userMessage)}`,
+  ];
+  if (details) {
+    for (const [k, v] of Object.entries(details)) {
+      parts.push(`${k}=${JSON.stringify(v)}`);
+    }
+  }
+  console.error(parts.join(" "), err ?? "");
 }
 
 // ---------------------------------------------------------------------------
