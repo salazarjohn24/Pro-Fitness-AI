@@ -160,6 +160,7 @@ export const workoutHistoryTable = pgTable("workout_history", {
   performedAt: timestamp("performed_at", { withTimezone: true }).notNull().defaultNow(),
   externalWorkoutId: integer("external_workout_id").references(() => externalWorkoutsTable.id, { onDelete: "set null" }),
   durationSeconds: integer("duration_seconds"),
+  distanceMeters: integer("distance_meters"),
   source: varchar("source").default("internal"),
 });
 

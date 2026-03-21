@@ -220,9 +220,13 @@ router.get("/exercises/:id/history", async (req: Request, res: Response) => {
     .limit(3);
 
   const sessions = history.map((h) => {
+    const distMeters: number | null = (h as any).distanceMeters ?? null;
+    const durSecs: number | null = (h as any).durationSeconds ?? null;
     let totalVolume: number;
-    if ((h as any).durationSeconds != null && (h as any).durationSeconds > 0) {
-      totalVolume = (h as any).durationSeconds;
+    if (distMeters != null && distMeters > 0) {
+      totalVolume = distMeters;
+    } else if (durSecs != null && durSecs > 0) {
+      totalVolume = durSecs;
     } else if (h.weight > 0) {
       totalVolume = h.weight * h.reps * h.sets;
     } else {
@@ -235,7 +239,8 @@ router.get("/exercises/:id/history", async (req: Request, res: Response) => {
       reps: h.reps,
       sets: h.sets,
       consistencyIndex: h.consistencyIndex,
-      durationSeconds: (h as any).durationSeconds ?? null,
+      durationSeconds: durSecs,
+      distanceMeters: distMeters,
       source: (h as any).source ?? "internal",
     };
   });
@@ -243,7 +248,9 @@ router.get("/exercises/:id/history", async (req: Request, res: Response) => {
   let estimated1RM: number | null = null;
   if (history.length > 0) {
     const latest = history[0];
-    estimated1RM = computeEstimated1RM(latest.weight, latest.reps);
+    if (latest.weight > 0 && latest.reps > 0) {
+      estimated1RM = computeEstimated1RM(latest.weight, latest.reps);
+    }
   }
 
   let isPlateaued = false;

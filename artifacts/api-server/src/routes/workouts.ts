@@ -77,37 +77,47 @@ router.post("/workouts/external", async (req: Request, res: Response) => {
   const errEf = validateEditedFields(editedFields);
   if (errEf) { res.status(400).json({ error: errEf }); return; }
 
-  const [workout] = await db
-    .insert(externalWorkoutsTable)
-    .values({
-      userId: req.user.id,
-      label,
-      duration: isRest ? 0 : duration,
-      workoutType,
-      source: source ?? "manual",
-      intensity: intensity ?? null,
-      muscleGroups: muscleGroups ?? [],
-      stimulusPoints: stimulusPoints ?? null,
-      workoutDate: workoutDate ?? null,
-      movements: movements ?? [],
-      isMetcon: isMetcon ?? false,
-      metconFormat: metconFormat ?? null,
-      parserConfidence: parserConfidence ?? null,
-      parserWarnings: parserWarnings ?? [],
-      workoutFormat: workoutFormat ?? null,
-      wasUserEdited: wasUserEdited ?? false,
-      editedFields: editedFields ?? [],
-    })
-    .returning();
+  const hasMovements = Array.isArray(movements) && movements.length > 0 && workoutType !== "rest";
+
+  const workout = await db.transaction(async (tx) => {
+    const [inserted] = await tx
+      .insert(externalWorkoutsTable)
+      .values({
+        userId: req.user.id,
+        label,
+        duration: isRest ? 0 : duration,
+        workoutType,
+        source: source ?? "manual",
+        intensity: intensity ?? null,
+        muscleGroups: muscleGroups ?? [],
+        stimulusPoints: stimulusPoints ?? null,
+        workoutDate: workoutDate ?? null,
+        movements: movements ?? [],
+        isMetcon: isMetcon ?? false,
+        metconFormat: metconFormat ?? null,
+        parserConfidence: parserConfidence ?? null,
+        parserWarnings: parserWarnings ?? [],
+        workoutFormat: workoutFormat ?? null,
+        wasUserEdited: wasUserEdited ?? false,
+        editedFields: editedFields ?? [],
+      })
+      .returning();
+
+    if (hasMovements) {
+      await ingestMovementsToVault(
+        inserted.id,
+        req.user.id,
+        movements as RichMovement[],
+        workoutDate ?? null,
+        tx as unknown as typeof db
+      );
+    }
+
+    return inserted;
+  });
 
   if (parserConfidence != null) {
     console.log(`[parser-telemetry] workoutId=${workout.id} confidence=${parserConfidence} format=${workoutFormat ?? "null"} warnings=${(parserWarnings ?? []).length} source=${source ?? "manual"}`);
-  }
-
-  if (Array.isArray(movements) && movements.length > 0 && workoutType !== "rest") {
-    ingestMovementsToVault(workout.id, req.user.id, movements as RichMovement[], workoutDate ?? null).catch((err) => {
-      console.error(`[vault-ingestion] externalWorkoutId=${workout.id} error:`, err);
-    });
   }
 
   res.json(workout);

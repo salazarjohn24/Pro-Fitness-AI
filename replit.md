@@ -43,7 +43,7 @@ The PostgreSQL database schema includes tables for:
 - `user_profiles`: Fitness-specific user data, onboarding information, and preferences.
 - `daily_check_ins`: Daily user check-in data including energy, sleep, stress, and soreness.
 - `external_workouts`: Records of workouts logged from external sources. Includes parser columns: `parserConfidence` (real), `parserWarnings` (jsonb), `workoutFormat` (varchar), `wasUserEdited` (boolean), `editedFields` (jsonb, includes "sets" when set-level data was edited). The `movements` jsonb column stores enriched `RichMovement` objects with `movementType` + `setRows` (P3, backward-compatible).
-- `workout_history`: Per-exercise history. P4 additions: `externalWorkoutId` (int, nullable FK → external_workouts ON DELETE SET NULL), `durationSeconds` (int nullable, for holds/cardio), `source` (varchar, 'internal'|'external').
+- `workout_history`: Per-exercise history. P4 additions: `externalWorkoutId` (int, nullable FK → external_workouts ON DELETE SET NULL), `durationSeconds` (int nullable, for holds/cardio), `distanceMeters` (int nullable, for cardio — P4.1), `source` (varchar, 'internal'|'external'). Cardio rows: weight=0, reps=0, sets=1.
 - `exercise_performance`: Aggregated performance records. P4 additions: `externalWorkoutId` (int, nullable FK → external_workouts ON DELETE SET NULL), `source` (varchar, 'internal'|'external').
 - `gym_environments`: User-defined gym setups with equipment.
 - `workout_sessions`: Details of completed workout sessions.

@@ -1,4 +1,4 @@
-import { db, exerciseLibraryTable, workoutHistoryTable, exercisePerformanceTable } from "@workspace/db";
+import { db as globalDb, exerciseLibraryTable, workoutHistoryTable, exercisePerformanceTable } from "@workspace/db";
 import { eq, and, ilike } from "drizzle-orm";
 
 export type MovementType = "strength" | "bodyweight" | "hold" | "cardio";
@@ -48,6 +48,8 @@ export interface CardioAggregate {
   totalDistance: number;
   totalCalories: number;
 }
+
+type DbClient = typeof globalDb;
 
 export function normalizeExerciseName(name: string): string {
   return name
@@ -162,11 +164,12 @@ export function inferLibraryDefaults(
 export async function resolveOrCreateExerciseId(
   name: string,
   movementType: MovementType,
-  muscleGroups: string[]
+  muscleGroups: string[],
+  client: DbClient = globalDb
 ): Promise<number> {
   const trimmed = name.trim();
 
-  const [exact] = await db
+  const [exact] = await client
     .select({ id: exerciseLibraryTable.id })
     .from(exerciseLibraryTable)
     .where(ilike(exerciseLibraryTable.name, trimmed))
@@ -175,7 +178,7 @@ export async function resolveOrCreateExerciseId(
 
   const normalized = normalizeExerciseName(trimmed);
   if (normalized !== trimmed.toLowerCase()) {
-    const [norm] = await db
+    const [norm] = await client
       .select({ id: exerciseLibraryTable.id })
       .from(exerciseLibraryTable)
       .where(ilike(exerciseLibraryTable.name, normalized))
@@ -185,7 +188,7 @@ export async function resolveOrCreateExerciseId(
 
   const firstWord = trimmed.split(/\s+/)[0];
   if (firstWord && firstWord.length >= 4) {
-    const [partial] = await db
+    const [partial] = await client
       .select({ id: exerciseLibraryTable.id })
       .from(exerciseLibraryTable)
       .where(ilike(exerciseLibraryTable.name, `%${firstWord}%`))
@@ -194,7 +197,7 @@ export async function resolveOrCreateExerciseId(
   }
 
   const defaults = inferLibraryDefaults(movementType, muscleGroups);
-  const [created] = await db
+  const [created] = await client
     .insert(exerciseLibraryTable)
     .values({
       name: trimmed,
@@ -210,10 +213,11 @@ export async function resolveOrCreateExerciseId(
 
 export async function deleteVaultEntriesForExternalWorkout(
   externalWorkoutId: number,
-  userId: string
+  userId: string,
+  client: DbClient = globalDb
 ): Promise<void> {
   await Promise.all([
-    db
+    client
       .delete(workoutHistoryTable)
       .where(
         and(
@@ -221,7 +225,7 @@ export async function deleteVaultEntriesForExternalWorkout(
           eq(workoutHistoryTable.userId, userId)
         )
       ),
-    db
+    client
       .delete(exercisePerformanceTable)
       .where(
         and(
@@ -236,7 +240,8 @@ export async function ingestMovementsToVault(
   externalWorkoutId: number,
   userId: string,
   movements: RichMovement[],
-  workoutDate?: string | null
+  workoutDate?: string | null,
+  client: DbClient = globalDb
 ): Promise<void> {
   if (!Array.isArray(movements) || movements.length === 0) return;
 
@@ -252,23 +257,39 @@ export async function ingestMovementsToVault(
 
     if (movementType === "cardio") {
       const agg = aggregateCardio(setRows);
-      const totalVolume = agg.totalDistance > 0 ? agg.totalDistance : agg.totalDurationSeconds;
-      await db.insert(exercisePerformanceTable).values({
-        userId,
-        exerciseName: name,
-        sets: 1,
-        avgReps: null,
-        maxWeight: null,
-        avgWeight: null,
-        totalVolume: totalVolume > 0 ? totalVolume : null,
-        performedAt,
-        externalWorkoutId,
-        source: "external",
-      });
+      const exerciseId = await resolveOrCreateExerciseId(name, movementType, muscleGroups, client);
+      const primaryVolume = agg.totalDistance > 0 ? agg.totalDistance : agg.totalDurationSeconds;
+
+      await Promise.all([
+        client.insert(workoutHistoryTable).values({
+          userId,
+          exerciseId,
+          weight: 0,
+          reps: 0,
+          sets: 1,
+          durationSeconds: agg.totalDurationSeconds > 0 ? agg.totalDurationSeconds : null,
+          distanceMeters: agg.totalDistance > 0 ? Math.round(agg.totalDistance) : null,
+          performedAt,
+          externalWorkoutId,
+          source: "external",
+        }),
+        client.insert(exercisePerformanceTable).values({
+          userId,
+          exerciseName: name,
+          sets: 1,
+          avgReps: null,
+          maxWeight: null,
+          avgWeight: null,
+          totalVolume: primaryVolume > 0 ? primaryVolume : null,
+          performedAt,
+          externalWorkoutId,
+          source: "external",
+        }),
+      ]);
       continue;
     }
 
-    const exerciseId = await resolveOrCreateExerciseId(name, movementType, muscleGroups);
+    const exerciseId = await resolveOrCreateExerciseId(name, movementType, muscleGroups, client);
 
     if (movementType === "hold") {
       const agg = aggregateHold(setRows);
@@ -277,18 +298,18 @@ export async function ingestMovementsToVault(
       const totalDuration = agg.totalDurationSeconds;
 
       await Promise.all([
-        db.insert(workoutHistoryTable).values({
+        client.insert(workoutHistoryTable).values({
           userId,
           exerciseId,
           weight: 0,
           reps: Math.max(0, Math.round(agg.avgDurationSeconds)),
           sets: setsCount,
-          durationSeconds: totalDuration,
+          durationSeconds: totalDuration > 0 ? totalDuration : null,
           performedAt,
           externalWorkoutId,
           source: "external",
         }),
-        db.insert(exercisePerformanceTable).values({
+        client.insert(exercisePerformanceTable).values({
           userId,
           exerciseName: name,
           sets: setsCount,
@@ -310,7 +331,7 @@ export async function ingestMovementsToVault(
       const setsCount = agg.sets > 0 ? agg.sets : Math.max(1, setRows.length);
 
       await Promise.all([
-        db.insert(workoutHistoryTable).values({
+        client.insert(workoutHistoryTable).values({
           userId,
           exerciseId,
           weight: 0,
@@ -320,7 +341,7 @@ export async function ingestMovementsToVault(
           externalWorkoutId,
           source: "external",
         }),
-        db.insert(exercisePerformanceTable).values({
+        client.insert(exercisePerformanceTable).values({
           userId,
           exerciseName: name,
           sets: setsCount,
@@ -341,7 +362,7 @@ export async function ingestMovementsToVault(
     const setsCount = agg.sets > 0 ? agg.sets : Math.max(1, setRows.length);
 
     await Promise.all([
-      db.insert(workoutHistoryTable).values({
+      client.insert(workoutHistoryTable).values({
         userId,
         exerciseId,
         weight: agg.weight,
@@ -351,7 +372,7 @@ export async function ingestMovementsToVault(
         externalWorkoutId,
         source: "external",
       }),
-      db.insert(exercisePerformanceTable).values({
+      client.insert(exercisePerformanceTable).values({
         userId,
         exerciseName: name,
         sets: setsCount,

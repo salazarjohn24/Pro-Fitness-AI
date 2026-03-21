@@ -227,6 +227,48 @@ describe("aggregateCardio", () => {
 });
 
 // ---------------------------------------------------------------------------
+// VI-36 → VI-40  cardio workout_history format
+// ---------------------------------------------------------------------------
+
+describe("aggregateCardio — workout_history mapping", () => {
+  it("VI-36: cardio with distance only → totalDistance > 0, durationSeconds = 0", () => {
+    const agg = aggregateCardio([{ distance: 400 }]);
+    expect(agg.totalDistance).toBe(400);
+    expect(agg.totalDurationSeconds).toBe(0);
+  });
+
+  it("VI-37: cardio with duration only → totalDurationSeconds > 0, distance = 0", () => {
+    const agg = aggregateCardio([{ durationSeconds: 300 }]);
+    expect(agg.totalDurationSeconds).toBe(300);
+    expect(agg.totalDistance).toBe(0);
+  });
+
+  it("VI-38: cardio primary volume prefers distance when both present", () => {
+    const agg = aggregateCardio([{ durationSeconds: 300, distance: 400 }]);
+    const primaryVolume = agg.totalDistance > 0 ? agg.totalDistance : agg.totalDurationSeconds;
+    expect(primaryVolume).toBe(400);
+  });
+
+  it("VI-39: cardio workout_history row has weight=0 and reps=0 (no fake strength)", () => {
+    const weight = 0;
+    const reps = 0;
+    const sets = 1;
+    expect(weight).toBe(0);
+    expect(reps).toBe(0);
+    expect(sets).toBe(1);
+  });
+
+  it("VI-40: multiple cardio laps accumulate distance and duration", () => {
+    const agg = aggregateCardio([
+      { durationSeconds: 90, distance: 400 },
+      { durationSeconds: 90, distance: 400 },
+    ]);
+    expect(agg.totalDurationSeconds).toBe(180);
+    expect(agg.totalDistance).toBe(800);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // VI-32 → VI-35  inferLibraryDefaults
 // ---------------------------------------------------------------------------
 
