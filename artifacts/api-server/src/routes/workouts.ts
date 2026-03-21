@@ -8,6 +8,11 @@ import {
   validateWorkoutFormat,
   validateEditedFields,
 } from "../lib/parserValidator.js";
+import {
+  ingestMovementsToVault,
+  deleteVaultEntriesForExternalWorkout,
+  type RichMovement,
+} from "../lib/vaultIngestion.js";
 
 const router: IRouter = Router();
 
@@ -99,6 +104,12 @@ router.post("/workouts/external", async (req: Request, res: Response) => {
     console.log(`[parser-telemetry] workoutId=${workout.id} confidence=${parserConfidence} format=${workoutFormat ?? "null"} warnings=${(parserWarnings ?? []).length} source=${source ?? "manual"}`);
   }
 
+  if (Array.isArray(movements) && movements.length > 0 && workoutType !== "rest") {
+    ingestMovementsToVault(workout.id, req.user.id, movements as RichMovement[], workoutDate ?? null).catch((err) => {
+      console.error(`[vault-ingestion] externalWorkoutId=${workout.id} error:`, err);
+    });
+  }
+
   res.json(workout);
 });
 
@@ -132,7 +143,7 @@ router.put("/workouts/external/:id", async (req: Request, res: Response) => {
 
   const {
     label, duration, workoutType, intensity, muscleGroups, stimulusPoints, workoutDate,
-    parserConfidence, parserWarnings, workoutFormat, wasUserEdited, editedFields,
+    parserConfidence, parserWarnings, workoutFormat, wasUserEdited, editedFields, movements,
   } = req.body;
 
   const updateData: Record<string, unknown> = {};
@@ -189,6 +200,9 @@ router.put("/workouts/external/:id", async (req: Request, res: Response) => {
     if (e) { res.status(400).json({ error: e }); return; }
     updateData.editedFields = editedFields ?? [];
   }
+  if (movements !== undefined && Array.isArray(movements)) {
+    updateData.movements = movements;
+  }
 
   if (Object.keys(updateData).length === 0) {
     res.status(400).json({ error: "No fields to update" });
@@ -209,6 +223,14 @@ router.put("/workouts/external/:id", async (req: Request, res: Response) => {
   if (!updated) {
     res.status(404).json({ error: "Workout not found" });
     return;
+  }
+
+  if (Array.isArray(movements) && movements.length > 0 && updated.workoutType !== "rest") {
+    deleteVaultEntriesForExternalWorkout(workoutId, req.user.id)
+      .then(() => ingestMovementsToVault(workoutId, req.user.id, movements as RichMovement[], updated.workoutDate ?? null))
+      .catch((err) => {
+        console.error(`[vault-reingestion] externalWorkoutId=${workoutId} error:`, err);
+      });
   }
 
   res.json(updated);

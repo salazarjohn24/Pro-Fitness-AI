@@ -158,6 +158,9 @@ export const workoutHistoryTable = pgTable("workout_history", {
   sets: integer("sets").notNull(),
   consistencyIndex: real("consistency_index"),
   performedAt: timestamp("performed_at", { withTimezone: true }).notNull().defaultNow(),
+  externalWorkoutId: integer("external_workout_id").references(() => externalWorkoutsTable.id, { onDelete: "set null" }),
+  durationSeconds: integer("duration_seconds"),
+  source: varchar("source").default("internal"),
 });
 
 export type WorkoutHistory = typeof workoutHistoryTable.$inferSelect;
@@ -174,6 +177,8 @@ export const exercisePerformanceTable = pgTable("exercise_performance", {
   avgWeight: real("avg_weight"),
   totalVolume: real("total_volume"),
   performedAt: timestamp("performed_at", { withTimezone: true }).notNull().defaultNow(),
+  externalWorkoutId: integer("external_workout_id").references(() => externalWorkoutsTable.id, { onDelete: "set null" }),
+  source: varchar("source").default("internal"),
 }, (table) => [
   index("ep_user_exercise_idx").on(table.userId, table.exerciseName),
 ]);

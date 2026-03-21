@@ -219,14 +219,26 @@ router.get("/exercises/:id/history", async (req: Request, res: Response) => {
     .orderBy(desc(workoutHistoryTable.performedAt))
     .limit(3);
 
-  const sessions = history.map((h) => ({
-    performedAt: h.performedAt.toISOString(),
-    totalVolume: h.weight * h.reps * h.sets,
-    weight: h.weight,
-    reps: h.reps,
-    sets: h.sets,
-    consistencyIndex: h.consistencyIndex,
-  }));
+  const sessions = history.map((h) => {
+    let totalVolume: number;
+    if ((h as any).durationSeconds != null && (h as any).durationSeconds > 0) {
+      totalVolume = (h as any).durationSeconds;
+    } else if (h.weight > 0) {
+      totalVolume = h.weight * h.reps * h.sets;
+    } else {
+      totalVolume = h.reps * h.sets;
+    }
+    return {
+      performedAt: h.performedAt.toISOString(),
+      totalVolume,
+      weight: h.weight,
+      reps: h.reps,
+      sets: h.sets,
+      consistencyIndex: h.consistencyIndex,
+      durationSeconds: (h as any).durationSeconds ?? null,
+      source: (h as any).source ?? "internal",
+    };
+  });
 
   let estimated1RM: number | null = null;
   if (history.length > 0) {
