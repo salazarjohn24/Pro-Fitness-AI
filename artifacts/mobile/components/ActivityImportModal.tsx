@@ -692,7 +692,7 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
           )}
 
           {step === "ai_interpreter" && (
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 520 }}>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 520 }} keyboardShouldPersistTaps="handled">
               <Text style={styles.overline}>AI INTERPRETER</Text>
               <Text style={styles.title}>Paste your{"\n"}<Text style={styles.titleAccent}>workout</Text></Text>
               <Text style={styles.desc}>
@@ -709,6 +709,15 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
                   onChangeText={(t) => { setAiText(t); setAiParsed(null); }}
                   multiline
                 />
+                <Pressable
+                  onPress={() => { const { Keyboard } = require("react-native"); Keyboard.dismiss(); }}
+                  style={styles.dismissKeyboardBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Dismiss keyboard"
+                >
+                  <Feather name="chevron-down" size={12} color={Colors.textSubtle} />
+                  <Text style={styles.dismissKeyboardText}>Dismiss keyboard</Text>
+                </Pressable>
               </View>
 
               {!aiParsed && (
@@ -1000,6 +1009,19 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
 }
 
 const styles = StyleSheet.create({
+  dismissKeyboardBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingTop: 6,
+    paddingBottom: 2,
+    alignSelf: "flex-end",
+  },
+  dismissKeyboardText: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
+  },
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" },
   backdropTouch: { flex: 1 },
   sheet: {

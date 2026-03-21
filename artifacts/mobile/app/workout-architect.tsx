@@ -5,6 +5,7 @@ import React, { useState, useCallback, useEffect } from "react";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -1156,6 +1157,10 @@ export default function WorkoutArchitectScreen() {
         </View>
 
         <Modal visible={addEnvOpen} transparent animationType="slide">
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+          >
           <View style={styles.newEnvOverlay}>
             <View style={styles.newEnvSheet}>
               <View style={styles.swapHandle} />
@@ -1226,6 +1231,7 @@ export default function WorkoutArchitectScreen() {
               </View>
             </View>
           </View>
+          </KeyboardAvoidingView>
         </Modal>
       </View>
     );

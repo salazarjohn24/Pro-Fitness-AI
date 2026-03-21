@@ -2,7 +2,6 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -18,6 +17,17 @@ import {
   detectEditedFields,
 } from "@/utils/parserMeta";
 import { track } from "@/lib/telemetry";
+import { MovementSetEditor } from "@/components/MovementSetEditor";
+import {
+  defaultSetRow,
+  inferMovementTypeFromName,
+  inferMovementTypeFromWorkout,
+  parseVolumeToSets,
+  generateVolumeString,
+  type RichMovement,
+  type MovementType,
+  type SetRow,
+} from "@/utils/movementSets";
 
 const WORKOUT_TYPES = [
   "Strength", "Cardio", "HIIT", "CrossFit", "Yoga",
@@ -44,14 +54,38 @@ export interface ParsedWorkoutFormInitial {
   duration: number;
   intensity: number;
   muscleGroups: string[];
-  movements: Array<{ name: string; volume: string; muscleGroups: string[]; fatiguePercent: number }>;
+  movements: Array<{
+    name: string;
+    volume: string;
+    muscleGroups: string[];
+    fatiguePercent: number;
+    movementType?: MovementType;
+    setRows?: SetRow[];
+  }>;
   workoutDate: string;
   parserConfidence: number | null;
   parserWarnings: string[];
   workoutFormat: string | null;
 }
 
-export interface ParsedFormResult extends ParsedWorkoutFormInitial {
+export interface ParsedFormResult {
+  label: string;
+  workoutType: string;
+  duration: number;
+  intensity: number;
+  muscleGroups: string[];
+  movements: Array<{
+    name: string;
+    volume: string;
+    muscleGroups: string[];
+    fatiguePercent: number;
+    movementType: MovementType;
+    setRows: SetRow[];
+  }>;
+  workoutDate: string;
+  parserConfidence: number | null;
+  parserWarnings: string[];
+  workoutFormat: string | null;
   stimulusPoints: number;
   wasUserEdited: boolean;
   editedFields: string[];
@@ -66,6 +100,24 @@ interface Props {
   importSource?: "text" | "screenshot" | "manual";
 }
 
+function buildRichMovements(
+  rawMovements: ParsedWorkoutFormInitial["movements"],
+  defaultMvType: MovementType,
+): RichMovement[] {
+  return (rawMovements ?? []).map((mv) => {
+    const mtype: MovementType =
+      mv.movementType ?? inferMovementTypeFromName(mv.name) ?? defaultMvType;
+    return {
+      name: mv.name,
+      volume: mv.volume,
+      muscleGroups: mv.muscleGroups,
+      fatiguePercent: mv.fatiguePercent,
+      movementType: mtype,
+      setRows: mv.setRows?.length ? mv.setRows : parseVolumeToSets(mv.volume, mtype),
+    };
+  });
+}
+
 export function ParsedWorkoutForm({
   initial,
   onSubmit,
@@ -75,6 +127,7 @@ export function ParsedWorkoutForm({
   importSource = "manual",
 }: Props) {
   const userSkillLevel = resolveSkillLevel(skillLevel);
+  const defaultMvType = inferMovementTypeFromWorkout(initial.workoutType);
 
   const [label, setLabel] = useState(initial.label);
   const [workoutType, setWorkoutType] = useState(initial.workoutType);
@@ -89,11 +142,21 @@ export function ParsedWorkoutForm({
     initial.workoutFormat ?? "UNKNOWN",
   );
 
-  type Movement = { name: string; volume: string; muscleGroups: string[]; fatiguePercent: number };
-  const [movements, setMovements] = useState<Movement[]>(initial.movements ?? []);
+  const [movements, setMovements] = useState<RichMovement[]>(() =>
+    buildRichMovements(initial.movements, defaultMvType),
+  );
   const [newMovementName, setNewMovementName] = useState("");
-  const [reviewOpen, setReviewOpen] = useState(false);
   const addInputRef = useRef<TextInput>(null);
+
+  const initialSetsJsonRef = useRef<string>(
+    JSON.stringify(
+      buildRichMovements(initial.movements, defaultMvType).map((m) => ({
+        name: m.name,
+        movementType: m.movementType,
+        setRows: m.setRows,
+      })),
+    ),
+  );
 
   const showBanner =
     initial.parserConfidence !== null &&
@@ -124,7 +187,15 @@ export function ParsedWorkoutForm({
     const name = newMovementName.trim();
     if (!name) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const newMov: Movement = { name, volume: "", muscleGroups: [], fatiguePercent: 20 };
+    const mtype = inferMovementTypeFromName(name);
+    const newMov: RichMovement = {
+      name,
+      volume: "",
+      muscleGroups: [],
+      fatiguePercent: 20,
+      movementType: mtype,
+      setRows: [defaultSetRow(mtype)],
+    };
     setMovements((prev) => [...prev, newMov]);
     setNewMovementName("");
     track({
@@ -135,6 +206,10 @@ export function ParsedWorkoutForm({
         confidence: initial.parserConfidence,
       },
     });
+  };
+
+  const updateMovement = (idx: number, updated: RichMovement) => {
+    setMovements((prev) => prev.map((m, i) => (i === idx ? updated : m)));
   };
 
   const deleteMovement = (index: number) => {
@@ -175,6 +250,17 @@ export function ParsedWorkoutForm({
       { label, workoutType, duration, intensity, muscleGroups, workoutFormat },
     );
 
+    const currentSetsJson = JSON.stringify(
+      movements.map((m) => ({
+        name: m.name,
+        movementType: m.movementType,
+        setRows: m.setRows,
+      })),
+    );
+    if (currentSetsJson !== initialSetsJsonRef.current && !editedFields.includes("sets")) {
+      editedFields.push("sets");
+    }
+
     if (editedFields.length > 0) {
       track({
         name: "import_user_edited_fields",
@@ -188,13 +274,22 @@ export function ParsedWorkoutForm({
       });
     }
 
+    const outputMovements = movements.map((m) => ({
+      name: m.name,
+      volume: generateVolumeString(m.setRows, m.movementType),
+      muscleGroups: m.muscleGroups,
+      fatiguePercent: m.fatiguePercent,
+      movementType: m.movementType,
+      setRows: m.setRows,
+    }));
+
     onSubmit({
       label: label.trim(),
       workoutType,
       duration,
       intensity,
       muscleGroups: resolvedGroups,
-      movements,
+      movements: outputMovements,
       workoutDate,
       parserConfidence: initial.parserConfidence,
       parserWarnings: initial.parserWarnings,
@@ -205,43 +300,40 @@ export function ParsedWorkoutForm({
     });
   };
 
-  const handleSubmit = () => {
-    if (!label.trim() || submitDisabled) return;
-    if (showBanner) {
-      track({
-        name: "import_low_confidence_review_opened",
-        props: {
-          confidence: initial.parserConfidence ?? 0,
-          confidence_pct: Math.round((initial.parserConfidence ?? 0) * 100),
-          source: importSource,
-          movement_count: movements.length,
-        },
-      });
-      setReviewOpen(true);
-      return;
-    }
-    doSubmit();
-  };
-
   return (
     <>
       {showBanner && (
         <View
           style={styles.confidenceBanner}
           accessibilityRole="alert"
-          accessibilityLabel={`Low confidence parse. Parser confidence: ${Math.round((initial.parserConfidence ?? 0) * 100)}%. Please review the details below before saving.`}
+          accessibilityLabel={`Low confidence parse. Parser confidence: ${Math.round((initial.parserConfidence ?? 0) * 100)}%. Review details below before saving.`}
         >
-          <Feather name="alert-triangle" size={14} color="#F59E0B" />
-          <View style={styles.bannerTextWrap}>
+          <View style={styles.bannerTopRow}>
+            <Feather name="alert-triangle" size={14} color="#F59E0B" />
             <Text style={styles.bannerTitle}>LOW CONFIDENCE PARSE</Text>
-            <Text style={styles.bannerDesc}>
-              Review movements below, then tap to confirm before saving.
-            </Text>
+            <View style={styles.bannerBadge}>
+              <Text style={styles.bannerBadgeText}>
+                {Math.round((initial.parserConfidence ?? 0) * 100)}%
+              </Text>
+            </View>
           </View>
-          <View style={styles.bannerBadge}>
-            <Text style={styles.bannerBadgeText}>
-              {Math.round((initial.parserConfidence ?? 0) * 100)}%
-            </Text>
+          <Text style={styles.bannerDesc}>
+            Review set details below before saving, or skip right to saving now.
+          </Text>
+          <View style={styles.bannerActions}>
+            <Text style={styles.editDetailsHint}>↓ Edit details below</Text>
+            <Pressable
+              onPress={doSubmit}
+              style={[
+                styles.saveAnywayBtn,
+                (!label.trim() || submitDisabled) && styles.saveAnywayBtnDisabled,
+              ]}
+              disabled={!label.trim() || submitDisabled}
+              accessibilityRole="button"
+              accessibilityLabel="Save without reviewing details"
+            >
+              <Text style={styles.saveAnywayText}>SAVE ANYWAY</Text>
+            </Pressable>
           </View>
         </View>
       )}
@@ -336,7 +428,10 @@ export function ParsedWorkoutForm({
                   }}
                   style={[
                     styles.formatChip,
-                    selected && (value === "UNKNOWN" ? styles.formatChipUnknownSelected : styles.formatChipSelected),
+                    selected &&
+                      (value === "UNKNOWN"
+                        ? styles.formatChipUnknownSelected
+                        : styles.formatChipSelected),
                   ]}
                   accessibilityRole="menuitem"
                   accessibilityLabel={`Format: ${chipLabel}`}
@@ -345,7 +440,10 @@ export function ParsedWorkoutForm({
                   <Text
                     style={[
                       styles.formatChipText,
-                      selected && (value === "UNKNOWN" ? styles.formatChipTextUnknown : styles.formatChipTextSelected),
+                      selected &&
+                        (value === "UNKNOWN"
+                          ? styles.formatChipTextUnknown
+                          : styles.formatChipTextSelected),
                     ]}
                   >
                     {chipLabel}
@@ -416,12 +514,12 @@ export function ParsedWorkoutForm({
           {intensity <= 3
             ? "Light effort"
             : intensity <= 5
-            ? "Moderate effort"
-            : intensity <= 7
-            ? "Hard effort"
-            : intensity <= 9
-            ? "Very hard"
-            : "Max effort"}
+              ? "Moderate effort"
+              : intensity <= 7
+                ? "Hard effort"
+                : intensity <= 9
+                  ? "Very hard"
+                  : "Max effort"}
         </Text>
       </View>
 
@@ -452,51 +550,58 @@ export function ParsedWorkoutForm({
         </View>
       </View>
 
-      {(movements.length > 0 || showBanner) && (
-        <View style={styles.formGroup}>
-          <Text style={styles.fieldLabel}>MOVEMENTS</Text>
-          {movements.map((mv, idx) => (
-            <View key={idx} style={styles.movementEditRow}>
-              <View style={styles.movementEditInfo}>
-                <Text style={styles.movementEditName}>{mv.name}</Text>
-                {mv.volume ? (
-                  <Text style={styles.movementEditVolume}>{mv.volume}</Text>
-                ) : null}
-              </View>
-              <Pressable
-                onPress={() => deleteMovement(idx)}
-                style={styles.movementDeleteBtn}
-                accessibilityRole="button"
-                accessibilityLabel={`Remove ${mv.name}`}
-              >
-                <Feather name="x" size={14} color="#F87171" />
-              </Pressable>
-            </View>
-          ))}
-          <View style={styles.addMovementRow}>
-            <TextInput
-              ref={addInputRef}
-              style={styles.addMovementInput}
-              placeholder="Add movement…"
-              placeholderTextColor={Colors.textSubtle}
-              value={newMovementName}
-              onChangeText={setNewMovementName}
-              onSubmitEditing={addMovement}
-              returnKeyType="done"
-              accessibilityLabel="New movement name"
-            />
-            <Pressable
-              onPress={addMovement}
-              style={[styles.addMovementBtn, !newMovementName.trim() && styles.addMovementBtnDisabled]}
-              disabled={!newMovementName.trim()}
-              accessibilityRole="button"
-              accessibilityLabel="Add movement"
-            >
-              <Feather name="plus" size={14} color={newMovementName.trim() ? Colors.orange : Colors.textSubtle} />
-            </Pressable>
+      <View style={styles.formGroup}>
+        <Text style={styles.fieldLabel}>EXERCISES & SETS</Text>
+
+        {movements.length === 0 && (
+          <View style={styles.emptyMovements}>
+            <Feather name="layers" size={14} color={Colors.textSubtle} />
+            <Text style={styles.emptyMovementsText}>
+              No exercises yet — add one below.
+            </Text>
           </View>
+        )}
+
+        {movements.map((mv, idx) => (
+          <MovementSetEditor
+            key={`${mv.name}-${idx}`}
+            movement={mv}
+            index={idx}
+            onChange={(updated) => updateMovement(idx, updated)}
+            onDelete={() => deleteMovement(idx)}
+          />
+        ))}
+
+        <View style={styles.addMovementRow}>
+          <TextInput
+            ref={addInputRef}
+            style={styles.addMovementInput}
+            placeholder="Add exercise (e.g. Back Squat)…"
+            placeholderTextColor={Colors.textSubtle}
+            value={newMovementName}
+            onChangeText={setNewMovementName}
+            onSubmitEditing={addMovement}
+            returnKeyType="done"
+            accessibilityLabel="New exercise name"
+          />
+          <Pressable
+            onPress={addMovement}
+            style={[
+              styles.addMovementBtn,
+              !newMovementName.trim() && styles.addMovementBtnDisabled,
+            ]}
+            disabled={!newMovementName.trim()}
+            accessibilityRole="button"
+            accessibilityLabel="Add exercise"
+          >
+            <Feather
+              name="plus"
+              size={14}
+              color={newMovementName.trim() ? Colors.orange : Colors.textSubtle}
+            />
+          </Pressable>
         </View>
-      )}
+      </View>
 
       <View style={styles.formGroup}>
         <Text style={styles.fieldLabel}>LOG FOR DATE</Text>
@@ -521,14 +626,14 @@ export function ParsedWorkoutForm({
           (!label.trim() || submitDisabled) && styles.saveBtnDisabled,
           { opacity: pressed ? 0.9 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
         ]}
-        onPress={handleSubmit}
+        onPress={doSubmit}
         disabled={!label.trim() || submitDisabled}
         accessibilityRole="button"
-        accessibilityLabel={showBanner ? "Review & Confirm" : submitLabel}
+        accessibilityLabel={submitLabel}
         accessibilityState={{ disabled: !label.trim() || submitDisabled }}
       >
-        <Feather name={showBanner ? "eye" : "check-circle"} size={16} color="#fff" />
-        <Text style={styles.saveBtnText}>{showBanner ? "REVIEW & CONFIRM" : submitLabel}</Text>
+        <Feather name="check-circle" size={16} color="#fff" />
+        <Text style={styles.saveBtnText}>{submitLabel}</Text>
       </Pressable>
 
       <DatePickerSheet
@@ -537,161 +642,31 @@ export function ParsedWorkoutForm({
         onClose={() => setDatePickerOpen(false)}
         onSelect={(date) => setWorkoutDate(date)}
       />
-
-      <Modal
-        visible={reviewOpen}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setReviewOpen(false)}
-      >
-        <View style={styles.reviewBackdrop}>
-          <Pressable style={styles.reviewBackdropTouch} onPress={() => setReviewOpen(false)} />
-          <View style={styles.reviewSheet}>
-            <View style={styles.reviewHandle} />
-            <View style={styles.reviewHeader}>
-              <View style={styles.reviewHeaderLeft}>
-                <Feather name="alert-triangle" size={15} color="#F59E0B" />
-                <Text style={styles.reviewTitle}>REVIEW BEFORE SAVING</Text>
-              </View>
-              <View style={styles.reviewBadge}>
-                <Text style={styles.reviewBadgeText}>
-                  {Math.round((initial.parserConfidence ?? 0) * 100)}% confidence
-                </Text>
-              </View>
-            </View>
-            <Text style={styles.reviewSubtitle}>
-              The parser wasn't fully confident. Confirm your format, duration, and movements before saving.
-            </Text>
-
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }} contentContainerStyle={{ paddingBottom: 16 }}>
-              <Text style={[styles.fieldLabel, { marginBottom: 8 }]}>FORMAT</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-                <View style={styles.chipRow}>
-                  {FORMAT_CHIPS.map(({ value, label: chipLabel }) => {
-                    const selected = (workoutFormat ?? "UNKNOWN") === value;
-                    return (
-                      <Pressable
-                        key={value}
-                        onPress={() => {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          setWorkoutFormat(value);
-                        }}
-                        style={[
-                          styles.formatChip,
-                          selected && (value === "UNKNOWN" ? styles.formatChipUnknownSelected : styles.formatChipSelected),
-                        ]}
-                      >
-                        <Text style={[
-                          styles.formatChipText,
-                          selected && (value === "UNKNOWN" ? styles.formatChipTextUnknown : styles.formatChipTextSelected),
-                        ]}>
-                          {chipLabel}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </ScrollView>
-
-              <Text style={[styles.fieldLabel, { marginBottom: 8 }]}>DURATION (MINUTES)</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-                <View style={styles.chipRow}>
-                  {DURATION_OPTIONS.map((d) => {
-                    const selected = duration === d;
-                    return (
-                      <Pressable
-                        key={d}
-                        onPress={() => {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          setDuration(d);
-                        }}
-                        style={[styles.durationChip, selected && styles.durationChipSelected]}
-                      >
-                        <Text style={[styles.durationChipText, selected && styles.durationChipTextSelected]}>
-                          {d}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </ScrollView>
-
-              <Text style={[styles.fieldLabel, { marginBottom: 8 }]}>MOVEMENTS</Text>
-              {movements.length === 0 && (
-                <Text style={styles.reviewEmptyMovements}>No movements detected — add them below.</Text>
-              )}
-              {movements.map((mv, idx) => (
-                <View key={idx} style={styles.movementEditRow}>
-                  <View style={styles.movementEditInfo}>
-                    <Text style={styles.movementEditName}>{mv.name}</Text>
-                    {mv.volume ? <Text style={styles.movementEditVolume}>{mv.volume}</Text> : null}
-                  </View>
-                  <Pressable
-                    onPress={() => deleteMovement(idx)}
-                    style={styles.movementDeleteBtn}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Remove ${mv.name}`}
-                  >
-                    <Feather name="x" size={14} color="#F87171" />
-                  </Pressable>
-                </View>
-              ))}
-              <View style={[styles.addMovementRow, { marginTop: 8 }]}>
-                <TextInput
-                  style={styles.addMovementInput}
-                  placeholder="Add movement…"
-                  placeholderTextColor={Colors.textSubtle}
-                  value={newMovementName}
-                  onChangeText={setNewMovementName}
-                  onSubmitEditing={addMovement}
-                  returnKeyType="done"
-                />
-                <Pressable
-                  onPress={addMovement}
-                  style={[styles.addMovementBtn, !newMovementName.trim() && styles.addMovementBtnDisabled]}
-                  disabled={!newMovementName.trim()}
-                >
-                  <Feather name="plus" size={14} color={newMovementName.trim() ? Colors.orange : Colors.textSubtle} />
-                </Pressable>
-              </View>
-            </ScrollView>
-
-            <Pressable
-              style={({ pressed }) => [styles.reviewConfirmBtn, { opacity: pressed ? 0.9 : 1 }]}
-              onPress={() => {
-                setReviewOpen(false);
-                doSubmit();
-              }}
-            >
-              <Feather name="check-circle" size={16} color="#fff" />
-              <Text style={styles.reviewConfirmText}>CONFIRM & SAVE</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
     </>
   );
 }
 
 const styles = StyleSheet.create({
   confidenceBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
     backgroundColor: "rgba(245,158,11,0.08)",
     borderWidth: 1,
     borderColor: "rgba(245,158,11,0.35)",
     borderRadius: 12,
     padding: 12,
     marginBottom: 16,
+    gap: 8,
   },
-  bannerTextWrap: { flex: 1 },
+  bannerTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   bannerTitle: {
+    flex: 1,
     fontSize: 9,
     fontFamily: "Inter_700Bold",
     color: "#F59E0B",
     letterSpacing: 1.5,
-    marginBottom: 2,
   },
   bannerDesc: {
     fontSize: 12,
@@ -709,6 +684,35 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: "Inter_700Bold",
     color: "#F59E0B",
+  },
+  bannerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 2,
+  },
+  editDetailsHint: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
+    fontStyle: "italic",
+  },
+  saveAnywayBtn: {
+    backgroundColor: "rgba(245,158,11,0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(245,158,11,0.4)",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  saveAnywayBtnDisabled: {
+    opacity: 0.4,
+  },
+  saveAnywayText: {
+    fontSize: 10,
+    fontFamily: "Inter_700Bold",
+    color: "#F59E0B",
+    letterSpacing: 1,
   },
   warningsBox: {
     backgroundColor: "rgba(255,255,255,0.03)",
@@ -864,32 +868,19 @@ const styles = StyleSheet.create({
     color: Colors.textSubtle,
   },
   muscleChipTextSelected: { color: Colors.highlight },
-  movementEditRow: {
+  emptyMovements: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.03)",
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    marginBottom: 6,
     gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 2,
+    marginBottom: 6,
   },
-  movementEditInfo: { flex: 1 },
-  movementEditName: {
+  emptyMovementsText: {
     fontSize: 13,
-    fontFamily: "Inter_700Bold",
-    color: Colors.text,
-  },
-  movementEditVolume: {
-    fontSize: 11,
     fontFamily: "Inter_400Regular",
     color: Colors.textSubtle,
-    marginTop: 2,
-  },
-  movementDeleteBtn: {
-    padding: 4,
+    fontStyle: "italic",
   },
   addMovementRow: {
     flexDirection: "row",
@@ -923,13 +914,6 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     backgroundColor: "transparent",
   },
-  reviewEmptyMovements: {
-    fontSize: 12,
-    fontFamily: "Inter_400Regular",
-    color: Colors.textSubtle,
-    marginBottom: 10,
-    fontStyle: "italic",
-  },
   dateTrigger: {
     flexDirection: "row",
     alignItems: "center",
@@ -959,81 +943,6 @@ const styles = StyleSheet.create({
   },
   saveBtnDisabled: { opacity: 0.4 },
   saveBtnText: {
-    fontSize: 13,
-    fontFamily: "Inter_900Black",
-    color: "#fff",
-    letterSpacing: 1,
-  },
-  reviewBackdrop: {
-    flex: 1,
-    justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.6)",
-  },
-  reviewBackdropTouch: { flex: 1 },
-  reviewSheet: {
-    backgroundColor: "#111110",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingBottom: 32,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderColor: Colors.border,
-  },
-  reviewHandle: {
-    width: 36,
-    height: 4,
-    backgroundColor: Colors.border,
-    borderRadius: 2,
-    alignSelf: "center",
-    marginBottom: 16,
-  },
-  reviewHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 8,
-  },
-  reviewHeaderLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  reviewTitle: {
-    fontSize: 11,
-    fontFamily: "Inter_900Black",
-    color: "#F59E0B",
-    letterSpacing: 1.5,
-  },
-  reviewBadge: {
-    backgroundColor: "rgba(245,158,11,0.12)",
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  reviewBadgeText: {
-    fontSize: 10,
-    fontFamily: "Inter_700Bold",
-    color: "#F59E0B",
-  },
-  reviewSubtitle: {
-    fontSize: 12,
-    fontFamily: "Inter_400Regular",
-    color: Colors.textSubtle,
-    lineHeight: 17,
-    marginBottom: 16,
-  },
-  reviewConfirmBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: Colors.orange,
-    borderRadius: 14,
-    paddingVertical: 16,
-    marginTop: 12,
-  },
-  reviewConfirmText: {
     fontSize: 13,
     fontFamily: "Inter_900Black",
     color: "#fff",
