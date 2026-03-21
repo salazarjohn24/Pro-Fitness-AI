@@ -89,7 +89,12 @@ export interface ParsedFormResult {
   stimulusPoints: number;
   wasUserEdited: boolean;
   editedFields: string[];
+  lastEditedAt: string | null;
+  editSource: "user" | "ai" | "manual" | null;
 }
+
+// A1: movement types that conflict with a declared rest day
+const REST_DAY_CONFLICT_TYPES = new Set<string>(["strength", "bodyweight", "cardio"]);
 
 interface Props {
   initial: ParsedWorkoutFormInitial;
@@ -161,6 +166,22 @@ export function ParsedWorkoutForm({
   const showBanner =
     initial.parserConfidence !== null &&
     initial.parserConfidence < LOW_CONFIDENCE_THRESHOLD;
+
+  // A1: rest-day conflict detection
+  const restDayConflictCount =
+    workoutType === "rest"
+      ? movements.filter((m) => REST_DAY_CONFLICT_TYPES.has(m.movementType)).length
+      : 0;
+
+  const stripConflictingMovements = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    setMovements((prev) => prev.filter((m) => !REST_DAY_CONFLICT_TYPES.has(m.movementType)));
+  };
+
+  const convertToWorkoutDay = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setWorkoutType("Strength");
+  };
 
   useEffect(() => {
     if (showBanner && initial.parserConfidence !== null) {
@@ -297,6 +318,8 @@ export function ParsedWorkoutForm({
       stimulusPoints,
       wasUserEdited: editedFields.length > 0,
       editedFields,
+      lastEditedAt: editedFields.length > 0 ? new Date().toISOString() : null,
+      editSource: editedFields.length > 0 ? "user" : importSource === "manual" ? "manual" : "ai",
     });
   };
 
@@ -333,6 +356,40 @@ export function ParsedWorkoutForm({
               accessibilityLabel="Save without reviewing details"
             >
               <Text style={styles.saveAnywayText}>SAVE ANYWAY</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
+      {restDayConflictCount > 0 && (
+        <View
+          style={styles.restDayConflictBanner}
+          accessibilityRole="alert"
+          accessibilityLabel={`Rest day conflict: ${restDayConflictCount} movement${restDayConflictCount > 1 ? "s" : ""} will not be tracked on a rest day.`}
+        >
+          <View style={styles.bannerTopRow}>
+            <Feather name="moon" size={14} color="#60A5FA" />
+            <Text style={styles.restDayConflictTitle}>REST DAY CONFLICT</Text>
+          </View>
+          <Text style={styles.restDayConflictDesc}>
+            {restDayConflictCount} movement{restDayConflictCount > 1 ? "s" : ""} won't be tracked on a rest day.
+          </Text>
+          <View style={styles.restDayConflictActions}>
+            <Pressable
+              onPress={stripConflictingMovements}
+              style={styles.restDayKeepBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Keep rest day and remove conflicting movements"
+            >
+              <Text style={styles.restDayKeepText}>KEEP REST DAY</Text>
+            </Pressable>
+            <Pressable
+              onPress={convertToWorkoutDay}
+              style={styles.restDayConvertBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Convert to a workout day"
+            >
+              <Text style={styles.restDayConvertText}>CONVERT TO WORKOUT</Text>
             </Pressable>
           </View>
         </View>
@@ -619,6 +676,15 @@ export function ParsedWorkoutForm({
           <Feather name="chevron-down" size={14} color={Colors.textSubtle} />
         </Pressable>
       </View>
+
+      {movements.length > 0 && workoutType !== "rest" && (
+        <View style={styles.vaultInfoBanner}>
+          <Feather name="database" size={12} color="#6366F1" />
+          <Text style={styles.vaultInfoText}>
+            {movements.length} movement{movements.length > 1 ? "s" : ""} will be logged to your exercise vault
+          </Text>
+        </View>
+      )}
 
       <Pressable
         style={({ pressed }) => [
@@ -947,5 +1013,81 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_900Black",
     color: "#fff",
     letterSpacing: 1,
+  },
+  // A1: rest-day conflict banner
+  restDayConflictBanner: {
+    backgroundColor: "rgba(96,165,250,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(96,165,250,0.35)",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+    gap: 6,
+  },
+  restDayConflictTitle: {
+    fontSize: 10,
+    fontFamily: "Inter_700Bold",
+    color: "#60A5FA",
+    letterSpacing: 0.8,
+    marginLeft: 6,
+  },
+  restDayConflictDesc: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
+    lineHeight: 17,
+  },
+  restDayConflictActions: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 4,
+  },
+  restDayKeepBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(96,165,250,0.4)",
+    alignItems: "center",
+  },
+  restDayKeepText: {
+    fontSize: 10,
+    fontFamily: "Inter_700Bold",
+    color: "#60A5FA",
+    letterSpacing: 0.6,
+  },
+  restDayConvertBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: "rgba(96,165,250,0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(96,165,250,0.4)",
+    alignItems: "center",
+  },
+  restDayConvertText: {
+    fontSize: 10,
+    fontFamily: "Inter_700Bold",
+    color: "#93C5FD",
+    letterSpacing: 0.6,
+  },
+  // A6: vault movement count info banner
+  vaultInfoBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: "rgba(99,102,241,0.07)",
+    borderWidth: 1,
+    borderColor: "rgba(99,102,241,0.25)",
+    borderRadius: 10,
+    marginBottom: 10,
+  },
+  vaultInfoText: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    color: "#818CF8",
+    flex: 1,
   },
 });

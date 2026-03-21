@@ -222,6 +222,8 @@ router.get("/exercises/:id/history", async (req: Request, res: Response) => {
   const sessions = history.map((h) => {
     const distMeters: number | null = (h as any).distanceMeters ?? null;
     const durSecs: number | null = (h as any).durationSeconds ?? null;
+    const longestSet: number | null = (h as any).longestSetDuration ?? null;
+
     let totalVolume: number;
     if (distMeters != null && distMeters > 0) {
       totalVolume = distMeters;
@@ -232,6 +234,13 @@ router.get("/exercises/:id/history", async (req: Request, res: Response) => {
     } else {
       totalVolume = h.reps * h.sets;
     }
+
+    // A2: derived pace (m/min) when both distance and duration are available
+    let pace: number | null = null;
+    if (distMeters != null && distMeters > 0 && durSecs != null && durSecs > 0) {
+      pace = Math.round((distMeters / (durSecs / 60)) * 100) / 100;
+    }
+
     return {
       performedAt: h.performedAt.toISOString(),
       totalVolume,
@@ -241,6 +250,8 @@ router.get("/exercises/:id/history", async (req: Request, res: Response) => {
       consistencyIndex: h.consistencyIndex,
       durationSeconds: durSecs,
       distanceMeters: distMeters,
+      longestSetDuration: longestSet,
+      pace,
       source: (h as any).source ?? "internal",
     };
   });

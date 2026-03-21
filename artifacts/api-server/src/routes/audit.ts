@@ -5,6 +5,10 @@ import { exerciseMap } from "../data/exercises";
 import { generateAuditInsight, generateRebalancePlan } from "../services/aiService";
 import { aiRateLimit } from "../middlewares/rateLimitMiddleware";
 import { normalizeMuscle } from "../lib/muscleNormalization";
+import { isFeatureEnabled } from "../lib/featureFlags.js";
+
+// A4/B10: confidence threshold — mirrors mobile LOW_CONFIDENCE_THRESHOLD (0.65)
+const INSIGHT_LOW_CONFIDENCE_THRESHOLD = 0.65;
 
 const router: IRouter = Router();
 
@@ -94,11 +98,20 @@ router.get("/audit/alerts", async (req: Request, res: Response) => {
       }
     }
 
-    const externalWorkouts = await db
+    const externalWorkoutsRaw = await db
       .select()
       .from(externalWorkoutsTable)
       .where(eq(externalWorkoutsTable.userId, userId))
       .orderBy(desc(externalWorkoutsTable.createdAt));
+
+    // A4/B10: exclude low-confidence unreviewed imports from insight engine when flag is off
+    const externalWorkouts = isFeatureEnabled("low_confidence_insights_inclusion")
+      ? externalWorkoutsRaw
+      : externalWorkoutsRaw.filter((ew) => {
+          if (ew.wasUserEdited) return true;
+          if (ew.parserConfidence == null) return true;
+          return ew.parserConfidence >= INSIGHT_LOW_CONFIDENCE_THRESHOLD;
+        });
 
     for (const ew of externalWorkouts) {
       if (ew.workoutType === "rest") continue;

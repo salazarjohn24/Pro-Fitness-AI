@@ -94,6 +94,9 @@ export const externalWorkoutsTable = pgTable("external_workouts", {
   workoutFormat: varchar("workout_format").$type<WorkoutFormat>(),
   wasUserEdited: boolean("was_user_edited").default(false),
   editedFields: jsonb("edited_fields").$type<string[]>().default([]),
+  lastEditedAt: timestamp("last_edited_at", { withTimezone: true }),
+  editSource: varchar("edit_source"),
+  rawImportText: text("raw_import_text"),
 });
 
 export type ExternalWorkout = typeof externalWorkoutsTable.$inferSelect;
@@ -161,6 +164,7 @@ export const workoutHistoryTable = pgTable("workout_history", {
   externalWorkoutId: integer("external_workout_id").references(() => externalWorkoutsTable.id, { onDelete: "set null" }),
   durationSeconds: integer("duration_seconds"),
   distanceMeters: integer("distance_meters"),
+  longestSetDuration: integer("longest_set_duration"),
   source: varchar("source").default("internal"),
 });
 

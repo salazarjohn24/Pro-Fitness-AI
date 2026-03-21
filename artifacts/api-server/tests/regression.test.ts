@@ -346,10 +346,10 @@ describe("REG-4: Vault atomicity guarantee", () => {
 });
 
 // ---------------------------------------------------------------------------
-// REG-5: Rest day POST — ingestion never attempted, always 200
+// REG-5: Rest day POST — A1 conflict guard + hold-only pass-through
 // ---------------------------------------------------------------------------
 describe("REG-5: Rest day import — no vault ingestion attempted", () => {
-  it("POST workoutType='rest' with non-empty movements returns 200 without ingestion errors", async () => {
+  it("POST workoutType='rest' with conflicting strength movements returns 422 REST_DAY_MOVEMENT_CONFLICT", async () => {
     const res = await request(app)
       .post("/api/workouts/external")
       .set("Cookie", "sid=regression-test-session")
@@ -358,6 +358,24 @@ describe("REG-5: Rest day import — no vault ingestion attempted", () => {
         workoutType: "rest",
         duration: 0,
         movements: [{ name: "Squat", movementType: "strength", setRows: [{ reps: 5, weight: "100" }] }],
+      });
+
+    expect(res.status).toBe(422);
+    expect(res.body.code).toBe("REST_DAY_MOVEMENT_CONFLICT");
+    expect(res.body.options).toContain("keep_rest");
+    expect(res.body.options).toContain("convert_workout");
+    // No row should be committed for a 422 conflict
+  });
+
+  it("POST workoutType='rest' with hold-only movements returns 200 (no conflict)", async () => {
+    const res = await request(app)
+      .post("/api/workouts/external")
+      .set("Cookie", "sid=regression-test-session")
+      .send({
+        label: "Rest Day with Stretching",
+        workoutType: "rest",
+        duration: 0,
+        movements: [{ name: "Plank Hold", movementType: "hold", setRows: [] }],
       });
 
     expect(res.status).toBe(200);

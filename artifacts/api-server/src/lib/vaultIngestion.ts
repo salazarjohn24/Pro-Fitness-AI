@@ -297,6 +297,14 @@ export async function ingestMovementsToVault(
       const setsCount = agg.sets > 0 ? agg.sets : Math.max(1, setRows.length);
       const totalDuration = agg.totalDurationSeconds;
 
+      // A3: longest single set duration for progressive overload tracking
+      const validDurations = setRows
+        .map((r) => r.durationSeconds ?? 0)
+        .filter((d) => d > 0);
+      const longestSetDuration = validDurations.length > 0
+        ? Math.max(...validDurations)
+        : null;
+
       await Promise.all([
         client.insert(workoutHistoryTable).values({
           userId,
@@ -305,6 +313,7 @@ export async function ingestMovementsToVault(
           reps: Math.max(0, Math.round(agg.avgDurationSeconds)),
           sets: setsCount,
           durationSeconds: totalDuration > 0 ? totalDuration : null,
+          longestSetDuration,
           performedAt,
           externalWorkoutId,
           source: "external",

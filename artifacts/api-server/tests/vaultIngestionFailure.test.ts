@@ -1,11 +1,15 @@
 /**
  * vaultIngestionFailure.test.ts
  *
- * P4.1 reliability — proves that vault ingestion failures surface as HTTP 500,
- * not as silent 200 responses. Uses a mocked vault ingestion module so the DB
- * insert inside db.transaction() throws BEFORE committing, verifying that:
- *   1. POST /api/workouts/external returns 500
- *   2. The external_workouts row was rolled back (no orphaned row in DB)
+ * A8 reliability — proves that vault ingestion failures surface as HTTP 207
+ * Multi-Status (not silent 200 or 500). The workout row IS committed; only
+ * the exercise-vault step failed. Client receives:
+ *   { ...workout, ingestionError: { code: "VAULT_INGESTION_FAILED", retryable: true } }
+ *
+ * Verifies:
+ *   1. POST /api/workouts/external returns 207 when vault ingestion throws
+ *   2. The external_workouts row WAS committed (workout is saved, vault partial)
+ *   3. ingestionError payload has the expected shape
  *
  * Auth mock inlines the user ID literal (hoisting requirement for vi.mock).
  * Vault ingestion mock throws on every call to ingestMovementsToVault.
@@ -84,12 +88,10 @@ afterAll(async () => {
 });
 
 // ---------------------------------------------------------------------------
-// P4.1-D  Failed ingestion returns 500, not silent 200
+// A8  Failed ingestion returns 207 Multi-Status (workout saved, vault partial)
 // ---------------------------------------------------------------------------
 describe("P4.1-D: Failed vault ingestion surfaces as HTTP 500", () => {
-  it("POST /api/workouts/external returns 500 when vault ingestion throws", async () => {
-    const testStart = new Date();
-
+  it("POST /api/workouts/external returns 207 when vault ingestion throws", async () => {
     const res = await request(app)
       .post("/api/workouts/external")
       .set("Cookie", "sid=vault-failure-test-session")
@@ -106,11 +108,16 @@ describe("P4.1-D: Failed vault ingestion surfaces as HTTP 500", () => {
         ],
       });
 
-    expect(res.status).toBe(500);
+    // A8: workout saved, vault failed → 207 with structured ingestionError
+    expect(res.status).toBe(207);
+    expect(res.body.ingestionError).toBeDefined();
+    expect(res.body.ingestionError.code).toBe("VAULT_INGESTION_FAILED");
+    expect(res.body.ingestionError.retryable).toBe(true);
+    expect(res.body.id).toBeDefined();
   });
 
-  it("transaction rollback: no external_workouts row committed after 500", async () => {
-    const testStart = new Date(Date.now() - 5000);
+  it("workout row IS committed after vault failure (A8: workout saved, vault partial)", async () => {
+    const testStart = new Date(Date.now() - 10000);
 
     const rows = await db
       .select({ id: externalWorkoutsTable.id })
@@ -122,7 +129,13 @@ describe("P4.1-D: Failed vault ingestion surfaces as HTTP 500", () => {
         )
       );
 
-    expect(rows.length).toBe(0);
+    // The workout must be committed even though vault ingestion failed
+    expect(rows.length).toBeGreaterThanOrEqual(1);
+
+    // Cleanup
+    for (const row of rows) {
+      await db.delete(externalWorkoutsTable).where(eq(externalWorkoutsTable.id, row.id));
+    }
   });
 
   it("POST without movements (rest day) still succeeds — ingestion never called", async () => {

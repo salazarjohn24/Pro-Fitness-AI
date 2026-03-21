@@ -13,6 +13,10 @@ import {
   deleteVaultEntriesForExternalWorkout,
   type RichMovement,
 } from "../lib/vaultIngestion.js";
+import { isFeatureEnabled } from "../lib/featureFlags.js";
+
+// Movement types that conflict with a declared rest day (A1)
+const REST_DAY_CONFLICT_TYPES = new Set(["strength", "bodyweight", "cardio"]);
 
 const router: IRouter = Router();
 
@@ -26,6 +30,7 @@ router.post("/workouts/external", async (req: Request, res: Response) => {
     label, duration, workoutType, source, intensity, muscleGroups, stimulusPoints,
     workoutDate, movements, isMetcon, metconFormat,
     parserConfidence, parserWarnings, workoutFormat, wasUserEdited, editedFields,
+    lastEditedAt, editSource, rawImportText,
   } = req.body;
 
   if (!label || !workoutType) {
@@ -39,6 +44,21 @@ router.post("/workouts/external", async (req: Request, res: Response) => {
     if (duration !== undefined && duration !== 0 && duration !== null) {
       res.status(400).json({ error: "Rest day duration must be 0 or omitted" });
       return;
+    }
+
+    // A1: REST day + non-recovery movement types → structured 422 warning
+    if (Array.isArray(movements) && movements.length > 0) {
+      const conflicting = movements.filter(
+        (m: { movementType?: string }) => REST_DAY_CONFLICT_TYPES.has(m.movementType ?? "strength")
+      );
+      if (conflicting.length > 0) {
+        res.status(422).json({
+          error: `${conflicting.length} movement(s) conflict with a rest day`,
+          code: "REST_DAY_MOVEMENT_CONFLICT",
+          options: ["keep_rest", "convert_workout"],
+        });
+        return;
+      }
     }
   } else {
     if (!duration || typeof duration !== "number" || duration < 1 || duration > 600) {
@@ -77,47 +97,64 @@ router.post("/workouts/external", async (req: Request, res: Response) => {
   const errEf = validateEditedFields(editedFields);
   if (errEf) { res.status(400).json({ error: errEf }); return; }
 
-  const hasMovements = Array.isArray(movements) && movements.length > 0 && workoutType !== "rest";
+  const hasMovements = Array.isArray(movements) && movements.length > 0 && !isRest;
 
-  const workout = await db.transaction(async (tx) => {
-    const [inserted] = await tx
-      .insert(externalWorkoutsTable)
-      .values({
-        userId: req.user.id,
-        label,
-        duration: isRest ? 0 : duration,
-        workoutType,
-        source: source ?? "manual",
-        intensity: intensity ?? null,
-        muscleGroups: muscleGroups ?? [],
-        stimulusPoints: stimulusPoints ?? null,
-        workoutDate: workoutDate ?? null,
-        movements: movements ?? [],
-        isMetcon: isMetcon ?? false,
-        metconFormat: metconFormat ?? null,
-        parserConfidence: parserConfidence ?? null,
-        parserWarnings: parserWarnings ?? [],
-        workoutFormat: workoutFormat ?? null,
-        wasUserEdited: wasUserEdited ?? false,
-        editedFields: editedFields ?? [],
-      })
-      .returning();
-
-    if (hasMovements) {
-      await ingestMovementsToVault(
-        inserted.id,
-        req.user.id,
-        movements as RichMovement[],
-        workoutDate ?? null,
-        tx as unknown as typeof db
-      );
-    }
-
-    return inserted;
-  });
+  // A5: persist edit-provenance fields
+  const [workout] = await db
+    .insert(externalWorkoutsTable)
+    .values({
+      userId: req.user.id,
+      label,
+      duration: isRest ? 0 : duration,
+      workoutType,
+      source: source ?? "manual",
+      intensity: intensity ?? null,
+      muscleGroups: muscleGroups ?? [],
+      stimulusPoints: stimulusPoints ?? null,
+      workoutDate: workoutDate ?? null,
+      movements: movements ?? [],
+      isMetcon: isMetcon ?? false,
+      metconFormat: metconFormat ?? null,
+      parserConfidence: parserConfidence ?? null,
+      parserWarnings: parserWarnings ?? [],
+      workoutFormat: workoutFormat ?? null,
+      wasUserEdited: wasUserEdited ?? false,
+      editedFields: editedFields ?? [],
+      lastEditedAt: lastEditedAt ? new Date(lastEditedAt) : null,
+      editSource: editSource ?? null,
+      rawImportText: rawImportText ?? null,
+    })
+    .returning();
 
   if (parserConfidence != null) {
     console.log(`[parser-telemetry] workoutId=${workout.id} confidence=${parserConfidence} format=${workoutFormat ?? "null"} warnings=${(parserWarnings ?? []).length} source=${source ?? "manual"}`);
+  }
+
+  // A4 + A8: flag-gated vault ingestion with structured error response
+  if (hasMovements) {
+    if (isFeatureEnabled("external_to_vault_ingestion")) {
+      try {
+        await ingestMovementsToVault(
+          workout.id,
+          req.user.id,
+          movements as RichMovement[],
+          workoutDate ?? null
+        );
+      } catch (err) {
+        console.error(`[vault-ingestion] workoutId=${workout.id} error:`, err);
+        res.status(207).json({
+          ...workout,
+          ingestionError: {
+            error: "Vault ingestion failed — workout saved",
+            code: "VAULT_INGESTION_FAILED",
+            retryable: true,
+          },
+        });
+        return;
+      }
+    } else {
+      console.log(`[vault-ingestion] skipped workoutId=${workout.id} (flag off)`);
+    }
   }
 
   res.json(workout);
@@ -154,6 +191,7 @@ router.put("/workouts/external/:id", async (req: Request, res: Response) => {
   const {
     label, duration, workoutType, intensity, muscleGroups, stimulusPoints, workoutDate,
     parserConfidence, parserWarnings, workoutFormat, wasUserEdited, editedFields, movements,
+    lastEditedAt, editSource, rawImportText,
   } = req.body;
 
   const updateData: Record<string, unknown> = {};
@@ -214,6 +252,13 @@ router.put("/workouts/external/:id", async (req: Request, res: Response) => {
     updateData.movements = movements;
   }
 
+  // A5: edit-provenance fields
+  if (lastEditedAt !== undefined) {
+    updateData.lastEditedAt = lastEditedAt ? new Date(lastEditedAt) : null;
+  }
+  if (editSource !== undefined) updateData.editSource = editSource ?? null;
+  if (rawImportText !== undefined) updateData.rawImportText = rawImportText ?? null;
+
   if (Object.keys(updateData).length === 0) {
     res.status(400).json({ error: "No fields to update" });
     return;
@@ -235,12 +280,17 @@ router.put("/workouts/external/:id", async (req: Request, res: Response) => {
     return;
   }
 
+  // A4: gate re-ingestion on feature flag
   if (Array.isArray(movements) && movements.length > 0 && updated.workoutType !== "rest") {
-    deleteVaultEntriesForExternalWorkout(workoutId, req.user.id)
-      .then(() => ingestMovementsToVault(workoutId, req.user.id, movements as RichMovement[], updated.workoutDate ?? null))
-      .catch((err) => {
-        console.error(`[vault-reingestion] externalWorkoutId=${workoutId} error:`, err);
-      });
+    if (isFeatureEnabled("external_to_vault_ingestion")) {
+      deleteVaultEntriesForExternalWorkout(workoutId, req.user.id)
+        .then(() => ingestMovementsToVault(workoutId, req.user.id, movements as RichMovement[], updated.workoutDate ?? null))
+        .catch((err) => {
+          console.error(`[vault-reingestion] externalWorkoutId=${workoutId} error:`, err);
+        });
+    } else {
+      console.log(`[vault-reingestion] skipped workoutId=${workoutId} (flag off)`);
+    }
   }
 
   res.json(updated);

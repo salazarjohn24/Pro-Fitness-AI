@@ -37,7 +37,7 @@ export interface ImportedWorkoutData {
   muscleGroups: string[];
   stimulusPoints: number;
   workoutDate?: string | null;
-  movements?: Array<{ name: string; volume: string; muscleGroups: string[]; fatiguePercent: number }>;
+  movements?: Array<{ name: string; volume: string; muscleGroups: string[]; fatiguePercent: number; movementType?: string; setRows?: unknown[] }>;
   isMetcon?: boolean;
   metconFormat?: string | null;
   parserConfidence?: number | null;
@@ -45,6 +45,8 @@ export interface ImportedWorkoutData {
   workoutFormat?: string | null;
   wasUserEdited?: boolean;
   editedFields?: string[];
+  lastEditedAt?: string | null;
+  editSource?: "user" | "ai" | "manual" | null;
 }
 
 interface Props {
@@ -401,6 +403,8 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
         workoutFormat: formData.workoutFormat,
         wasUserEdited: formData.wasUserEdited,
         editedFields: formData.editedFields,
+        lastEditedAt: formData.lastEditedAt,
+        editSource: formData.editSource,
       });
     }
     resetState();
@@ -424,6 +428,8 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
       workoutFormat: formData.workoutFormat,
       wasUserEdited: formData.wasUserEdited,
       editedFields: formData.editedFields,
+      lastEditedAt: formData.lastEditedAt,
+      editSource: formData.editSource,
     });
     resetState();
   };
@@ -692,7 +698,7 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
           )}
 
           {step === "ai_interpreter" && (
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 520 }} keyboardShouldPersistTaps="handled">
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 520 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
               <Text style={styles.overline}>AI INTERPRETER</Text>
               <Text style={styles.title}>Paste your{"\n"}<Text style={styles.titleAccent}>workout</Text></Text>
               <Text style={styles.desc}>

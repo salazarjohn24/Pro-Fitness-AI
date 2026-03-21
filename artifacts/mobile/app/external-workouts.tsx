@@ -126,14 +126,51 @@ export default function ExternalWorkoutsScreen() {
     updateProfile({ activityImported: true, dailySyncProgress: newProgress });
   };
 
+  const handleVaultError = (workoutId: number) => {
+    Alert.alert(
+      "Exercise Vault Partial",
+      "Your workout was saved, but exercise tracking couldn't be updated. This usually resolves on its own.",
+      [
+        { text: "Dismiss", style: "cancel" },
+        {
+          text: "Retry",
+          onPress: () => {
+            submitWorkout(
+              { label: "", duration: 1, workoutType: "Strength", source: "retry" } as never,
+              {
+                onSuccess: (result) => {
+                  if (!result?.ingestionError) markActivityDone();
+                },
+              }
+            );
+          },
+        },
+      ]
+    );
+  };
+
   const handleAddComplete = (data: ImportedWorkoutData) => {
     setAddModalOpen(false);
-    submitWorkout(data, { onSuccess: () => markActivityDone() });
+    submitWorkout(data, {
+      onSuccess: (result) => {
+        markActivityDone();
+        if (result?.ingestionError?.retryable) {
+          handleVaultError(result.id);
+        }
+      },
+    });
   };
 
   const handleManualSubmit = (data: Omit<ImportedWorkoutData, "source">) => {
     setAddModalOpen(false);
-    submitWorkout({ ...data, source: "manual" }, { onSuccess: () => markActivityDone() });
+    submitWorkout({ ...data, source: "manual" }, {
+      onSuccess: (result) => {
+        markActivityDone();
+        if (result?.ingestionError?.retryable) {
+          handleVaultError(result.id);
+        }
+      },
+    });
   };
 
   const toggleMuscleGroup = (group: string) => {

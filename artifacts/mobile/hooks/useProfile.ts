@@ -173,33 +173,46 @@ export interface ExternalWorkout {
   editedFields?: string[] | null;
 }
 
+export type SubmitExternalWorkoutData = {
+  label: string;
+  duration: number;
+  workoutType: string;
+  source?: string;
+  intensity?: number;
+  muscleGroups?: string[];
+  stimulusPoints?: number;
+  workoutDate?: string | null;
+  movements?: Array<{ name: string; volume: string; muscleGroups: string[]; fatiguePercent: number; movementType?: string; setRows?: unknown[] }>;
+  isMetcon?: boolean;
+  metconFormat?: string | null;
+  parserConfidence?: number | null;
+  parserWarnings?: string[];
+  workoutFormat?: string | null;
+  wasUserEdited?: boolean;
+  editedFields?: string[];
+  lastEditedAt?: string | null;
+  editSource?: "user" | "ai" | "manual" | null;
+  rawImportText?: string | null;
+};
+
+export type SubmitExternalWorkoutResult = {
+  id: number;
+  [key: string]: unknown;
+  ingestionError?: { error: string; code: string; retryable: boolean };
+};
+
 export function useSubmitExternalWorkout() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: {
-      label: string;
-      duration: number;
-      workoutType: string;
-      source?: string;
-      intensity?: number;
-      muscleGroups?: string[];
-      stimulusPoints?: number;
-      workoutDate?: string | null;
-      movements?: Array<{ name: string; volume: string; muscleGroups: string[]; fatiguePercent: number }>;
-      isMetcon?: boolean;
-      metconFormat?: string | null;
-      parserConfidence?: number | null;
-      parserWarnings?: string[];
-      workoutFormat?: string | null;
-      wasUserEdited?: boolean;
-      editedFields?: string[];
-    }) => {
+    mutationFn: async (data: SubmitExternalWorkoutData): Promise<SubmitExternalWorkoutResult> => {
       const headers = await getAuthHeaders();
       const res = await fetch(`${getApiBase()}/api/workouts/external`, {
         ...getFetchOptions(headers),
         method: "POST",
         body: JSON.stringify(data),
       });
+      // 207 Multi-Status means workout saved but vault ingestion failed (A8)
+      if (res.status === 207) return res.json();
       if (!res.ok) throw new Error("Failed to log workout");
       return res.json();
     },
