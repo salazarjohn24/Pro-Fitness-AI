@@ -94,6 +94,20 @@ npx eas-cli@latest submit --platform ios --latest
 - EAS Project: `@salazarjohn24/mobile`
 - ASC App ID: `6760667643`
 
+## Pre-Release Gate (P5 Complete)
+
+Run before every TestFlight build:
+```bash
+bash scripts/pre-release-check.sh
+```
+Gates: auth config check (prod domain) + API tests + mobile tests. Exit 0 = all pass.
+
+**Test baseline (March 21 2026):**
+- API: 399 tests across 14 files (`artifacts/api-server`)
+- Mobile: 162 tests across 4 files (`artifacts/mobile`)
+- Regression suites: `artifacts/api-server/tests/regression.test.ts` (REG-1→REG-5), `artifacts/mobile/lib/__tests__/regression.test.ts` (REG-M1→REG-M7)
+- PM release checklist: `docs/RELEASE_CHECKLIST.md`
+
 ## External Dependencies
 
 - **OpenAI**: Integrated via Replit AI Integrations for all AI-powered features (workout generation, parsing, insights, coach notes).
