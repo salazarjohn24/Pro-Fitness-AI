@@ -2,7 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import * as AppleAuthentication from "expo-apple-authentication";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -26,6 +26,8 @@ export default function LoginScreen() {
   const { signin, loginWithGoogle, loginWithApple, appleAvailable } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+
+  const passwordRef = useRef<TextInput>(null);
 
   const [view, setView] = useState<LoginView>("options");
   const [identifier, setIdentifier] = useState("");
@@ -170,6 +172,9 @@ export default function LoginScreen() {
                   autoCorrect={false}
                   keyboardType="email-address"
                   autoFocus
+                  returnKeyType="next"
+                  onSubmitEditing={() => passwordRef.current?.focus()}
+                  blurOnSubmit={false}
                 />
               </View>
             </View>
@@ -179,6 +184,7 @@ export default function LoginScreen() {
               <View style={styles.inputWrap}>
                 <Feather name="lock" size={16} color={Colors.textMuted} style={styles.inputIcon} />
                 <TextInput
+                  ref={passwordRef}
                   style={[styles.input, { flex: 1 }]}
                   value={password}
                   onChangeText={setPassword}

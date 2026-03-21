@@ -761,6 +761,8 @@ export default function WorkoutArchitectScreen() {
               value={workoutName}
               onChangeText={setWorkoutName}
               placeholderTextColor={Colors.textSubtle}
+              returnKeyType="done"
+              blurOnSubmit
             />
             <Text style={styles.rationaleText}>{generatedWorkout.rationale}</Text>
             <View style={styles.reviewStats}>
@@ -855,6 +857,8 @@ export default function WorkoutArchitectScreen() {
                     value={exerciseWeights[ex.exerciseId] ?? ex.weight}
                     onChangeText={(t) => setExerciseWeights(prev => ({ ...prev, [ex.exerciseId]: t }))}
                     placeholderTextColor={Colors.textSubtle}
+                    returnKeyType="done"
+                    blurOnSubmit
                   />
                 </View>
               </View>
@@ -1165,6 +1169,8 @@ export default function WorkoutArchitectScreen() {
                 onChangeText={setNewEnvName}
                 placeholder="Environment name (e.g., Home Gym)"
                 placeholderTextColor={Colors.textSubtle}
+                returnKeyType="done"
+                blurOnSubmit
               />
               <ScrollView style={styles.newEnvScroll} showsVerticalScrollIndicator={false}>
                 <View style={styles.newEnvGrid}>

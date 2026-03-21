@@ -3,7 +3,9 @@ import * as Haptics from "expo-haptics";
 import React, { useState, useEffect } from "react";
 import {
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -133,7 +135,10 @@ export function EditWorkoutModal({ visible, workout, skillLevel, onClose, onSave
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
+      <KeyboardAvoidingView
+        style={styles.backdrop}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
         <Pressable style={styles.backdropTouch} onPress={onClose} />
         <View style={styles.sheet}>
           <View style={styles.handle} />
@@ -166,6 +171,8 @@ export function EditWorkoutModal({ visible, workout, skillLevel, onClose, onSave
                     placeholderTextColor={Colors.textSubtle}
                     value={label}
                     onChangeText={setLabel}
+                    returnKeyType="done"
+                    blurOnSubmit
                   />
                 </View>
 
@@ -278,7 +285,7 @@ export function EditWorkoutModal({ visible, workout, skillLevel, onClose, onSave
             </View>
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
 
       <DatePickerSheet
         visible={datePickerOpen}

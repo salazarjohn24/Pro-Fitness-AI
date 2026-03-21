@@ -405,7 +405,7 @@ export default function OnboardingScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <View style={[styles.headerArea, { paddingTop: topPad + 12 }]}>
         <View style={styles.progressBarBg}>

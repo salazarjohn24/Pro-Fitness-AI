@@ -2,7 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import * as AppleAuthentication from "expo-apple-authentication";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -26,6 +26,12 @@ export default function SignupScreen() {
   const { signup, loginWithGoogle, loginWithApple, appleAvailable } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+
+  const lastNameRef = useRef<TextInput>(null);
+  const usernameRef = useRef<TextInput>(null);
+  const emailRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
+  const confirmPasswordRef = useRef<TextInput>(null);
 
   const [view, setView] = useState<SignupView>("options");
   const [firstName, setFirstName] = useState("");
@@ -173,14 +179,20 @@ export default function SignupScreen() {
                 <View style={styles.inputWrap}>
                   <TextInput style={styles.input} value={firstName} onChangeText={setFirstName}
                     placeholder="First" placeholderTextColor={Colors.textSubtle}
-                    autoCapitalize="words" autoFocus />
+                    autoCapitalize="words" autoFocus
+                    returnKeyType="next"
+                    blurOnSubmit={false}
+                    onSubmitEditing={() => lastNameRef.current?.focus()} />
                 </View>
               </View>
               <View style={[styles.field, { flex: 1 }]}>
                 <Text style={styles.label}>Last Name</Text>
                 <View style={styles.inputWrap}>
-                  <TextInput style={styles.input} value={lastName} onChangeText={setLastName}
-                    placeholder="Last" placeholderTextColor={Colors.textSubtle} autoCapitalize="words" />
+                  <TextInput ref={lastNameRef} style={styles.input} value={lastName} onChangeText={setLastName}
+                    placeholder="Last" placeholderTextColor={Colors.textSubtle} autoCapitalize="words"
+                    returnKeyType="next"
+                    blurOnSubmit={false}
+                    onSubmitEditing={() => usernameRef.current?.focus()} />
                 </View>
               </View>
             </View>
@@ -189,9 +201,12 @@ export default function SignupScreen() {
               <Text style={styles.label}>Username</Text>
               <View style={styles.inputWrap}>
                 <Feather name="at-sign" size={16} color={Colors.textMuted} style={styles.inputIcon} />
-                <TextInput style={styles.input} value={username} onChangeText={setUsername}
+                <TextInput ref={usernameRef} style={styles.input} value={username} onChangeText={setUsername}
                   placeholder="Choose a username" placeholderTextColor={Colors.textSubtle}
-                  autoCapitalize="none" autoCorrect={false} />
+                  autoCapitalize="none" autoCorrect={false}
+                  returnKeyType="next"
+                  blurOnSubmit={false}
+                  onSubmitEditing={() => emailRef.current?.focus()} />
               </View>
             </View>
 
@@ -199,9 +214,12 @@ export default function SignupScreen() {
               <Text style={styles.label}>Email <Text style={styles.optional}>(optional)</Text></Text>
               <View style={styles.inputWrap}>
                 <Feather name="mail" size={16} color={Colors.textMuted} style={styles.inputIcon} />
-                <TextInput style={styles.input} value={email} onChangeText={setEmail}
+                <TextInput ref={emailRef} style={styles.input} value={email} onChangeText={setEmail}
                   placeholder="your@email.com" placeholderTextColor={Colors.textSubtle}
-                  autoCapitalize="none" autoCorrect={false} keyboardType="email-address" />
+                  autoCapitalize="none" autoCorrect={false} keyboardType="email-address"
+                  returnKeyType="next"
+                  blurOnSubmit={false}
+                  onSubmitEditing={() => passwordRef.current?.focus()} />
               </View>
             </View>
 
@@ -209,9 +227,12 @@ export default function SignupScreen() {
               <Text style={styles.label}>Password</Text>
               <View style={styles.inputWrap}>
                 <Feather name="lock" size={16} color={Colors.textMuted} style={styles.inputIcon} />
-                <TextInput style={[styles.input, { flex: 1 }]} value={password} onChangeText={setPassword}
+                <TextInput ref={passwordRef} style={[styles.input, { flex: 1 }]} value={password} onChangeText={setPassword}
                   placeholder="Minimum 8 characters" placeholderTextColor={Colors.textSubtle}
-                  secureTextEntry={!showPassword} autoCapitalize="none" autoCorrect={false} />
+                  secureTextEntry={!showPassword} autoCapitalize="none" autoCorrect={false}
+                  returnKeyType="next"
+                  blurOnSubmit={false}
+                  onSubmitEditing={() => confirmPasswordRef.current?.focus()} />
                 <Pressable onPress={() => setShowPassword(v => !v)} style={styles.eyeBtn}>
                   <Feather name={showPassword ? "eye-off" : "eye"} size={16} color={Colors.textMuted} />
                 </Pressable>
@@ -222,7 +243,7 @@ export default function SignupScreen() {
               <Text style={styles.label}>Confirm Password</Text>
               <View style={styles.inputWrap}>
                 <Feather name="lock" size={16} color={Colors.textMuted} style={styles.inputIcon} />
-                <TextInput style={[styles.input, { flex: 1 }]} value={confirmPassword}
+                <TextInput ref={confirmPasswordRef} style={[styles.input, { flex: 1 }]} value={confirmPassword}
                   onChangeText={setConfirmPassword} placeholder="Re-enter password"
                   placeholderTextColor={Colors.textSubtle} secureTextEntry={!showPassword}
                   autoCapitalize="none" autoCorrect={false}

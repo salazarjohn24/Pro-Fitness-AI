@@ -873,6 +873,8 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
                   placeholderTextColor={Colors.textSubtle}
                   value={manualLabel}
                   onChangeText={setManualLabel}
+                  returnKeyType="done"
+                  blurOnSubmit
                 />
               </View>
 
