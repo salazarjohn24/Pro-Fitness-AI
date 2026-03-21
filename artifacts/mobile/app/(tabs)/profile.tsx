@@ -34,7 +34,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/lib/auth";
 import { useProfile, useUpdateProfile, useDeleteAccount } from "@/hooks/useProfile";
-import { syncWithAppleHealth, isHealthKitAvailable } from "@/services/healthKit";
+import { useHealthSync, formatLastSynced } from "@/hooks/useHealthSync";
 import { useEnvironments, useCreateEnvironment, useUpdateEnvironment, useActivateEnvironment, useDeleteEnvironment } from "@/hooks/useEnvironments";
 import { EquipmentChecklist } from "@/components/EquipmentChecklist";
 
@@ -88,8 +88,9 @@ export default function ProfileScreen() {
   const [editEnvType, setEditEnvType] = useState("");
   const [editEnvEquipment, setEditEnvEquipment] = useState<Record<string, string[]>>({});
 
+  const { state: healthSyncState, isAvailable: healthKitAvailable, sync: triggerHealthSync } = useHealthSync();
+
   const [showInsightInfo, setShowInsightInfo] = useState(false);
-  const [healthSyncing, setHealthSyncing] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [notifPrefs, setNotifPrefs] = useState<NotifPrefs>({ ...DEFAULT_NOTIF_PREFS });
   const [notifSaving, setNotifSaving] = useState(false);
@@ -157,38 +158,6 @@ export default function ProfileScreen() {
     );
   };
 
-  const handleHealthSync = async () => {
-    if (!isHealthKitAvailable()) {
-      Alert.alert("Not Available", "Apple Health is only available on iOS devices.");
-      return;
-    }
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setHealthSyncing(true);
-    try {
-      const result = await syncWithAppleHealth();
-      if (result.success) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert(
-          "Sync Complete",
-          `All-time data synced:\n• ${result.steps?.toLocaleString() ?? 0} total steps\n• ${result.activeCalories?.toLocaleString() ?? 0} total active calories\n• ${result.workoutCount ?? 0} total workouts`
-        );
-      } else {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        Alert.alert(
-          "Sync Failed",
-          "Could not connect to Apple Health. Make sure the app has permission in Settings > Privacy & Security > Health, or rebuild the app with HealthKit enabled."
-        );
-      }
-    } catch {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert(
-        "Sync Failed",
-        "Could not connect to Apple Health. Make sure the app has permission in Settings > Privacy & Security > Health, or rebuild the app with HealthKit enabled."
-      );
-    } finally {
-      setHealthSyncing(false);
-    }
-  };
 
   const displayName = user?.firstName
     ? `${user.firstName}${user.lastName ? " " + user.lastName : ""}`
@@ -854,21 +823,45 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      {isHealthKitAvailable() && (
-        <Pressable
-          style={({ pressed }) => [styles.healthSyncBtn, { opacity: pressed || healthSyncing ? 0.8 : 1 }]}
-          onPress={handleHealthSync}
-          disabled={healthSyncing}
-        >
-          {healthSyncing ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Feather name="heart" size={16} color="#fff" />
-          )}
-          <Text style={styles.healthSyncText}>
-            {healthSyncing ? "SYNCING..." : "SYNC WITH APPLE HEALTH"}
-          </Text>
-        </Pressable>
+      {healthKitAvailable && (
+        <View style={styles.healthSyncContainer}>
+          {healthSyncState.status === "failed" && healthSyncState.lastError ? (
+            <Text style={styles.healthSyncError}>{healthSyncState.lastError}</Text>
+          ) : null}
+          {healthSyncState.lastSyncedAt && healthSyncState.status !== "failed" ? (
+            <Text style={styles.healthSyncMeta}>
+              Last synced: {formatLastSynced(healthSyncState.lastSyncedAt)}
+              {healthSyncState.workoutCount != null
+                ? `  ·  ${healthSyncState.workoutCount} workouts`
+                : ""}
+            </Text>
+          ) : null}
+          <Pressable
+            style={({ pressed }) => [
+              styles.healthSyncBtn,
+              healthSyncState.status === "failed" && styles.healthSyncBtnRetry,
+              { opacity: pressed || healthSyncState.status === "syncing" ? 0.8 : 1 },
+            ]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              triggerHealthSync();
+            }}
+            disabled={healthSyncState.status === "syncing"}
+          >
+            {healthSyncState.status === "syncing" ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Feather name="heart" size={16} color="#fff" />
+            )}
+            <Text style={styles.healthSyncText}>
+              {healthSyncState.status === "syncing"
+                ? "SYNCING..."
+                : healthSyncState.status === "failed"
+                ? "RETRY SYNC"
+                : "SYNC WITH APPLE HEALTH"}
+            </Text>
+          </Pressable>
+        </View>
       )}
 
       <View style={styles.sectionCard}>
@@ -1685,6 +1678,9 @@ const styles = StyleSheet.create({
   toggleBtnActive: { backgroundColor: Colors.orange, borderColor: Colors.orange },
   toggleBtnText: { fontSize: 12, fontFamily: "Inter_900Black", color: Colors.textMuted },
   toggleBtnTextActive: { color: "#fff" },
+  healthSyncContainer: {
+    gap: 8,
+  },
   healthSyncBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1694,12 +1690,28 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingVertical: 16,
   },
+  healthSyncBtnRetry: {
+    backgroundColor: "#F97316",
+  },
   healthSyncText: {
     fontSize: 12,
     fontFamily: "Inter_900Black",
     color: "#fff",
     letterSpacing: 1,
     fontStyle: "italic",
+  },
+  healthSyncError: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    color: "#F97316",
+    textAlign: "center",
+    paddingHorizontal: 4,
+  },
+  healthSyncMeta: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
+    textAlign: "center",
   },
   notifStatusBadge: {
     flexDirection: "row",
