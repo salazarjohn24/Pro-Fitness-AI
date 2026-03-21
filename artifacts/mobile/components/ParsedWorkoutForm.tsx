@@ -9,6 +9,12 @@ import {
   TextInput,
   View,
 } from "react-native";
+import {
+  useCheckExerciseMatches,
+  type ExerciseMatchCheck,
+  type ExerciseResolution,
+} from "@/hooks/useProfile";
+import { ExerciseMismatchModal } from "@/components/ExerciseMismatchModal";
 import { Colors } from "@/constants/colors";
 import { MUSCLE_GROUPS, computeStimulusPoints, type SkillLevel } from "@/utils/stimulus";
 import { DatePickerSheet, getLocalToday, formatDisplayDate } from "@/components/DatePickerSheet";
@@ -91,6 +97,7 @@ export interface ParsedFormResult {
   editedFields: string[];
   lastEditedAt: string | null;
   editSource: "user" | "ai" | "manual" | null;
+  exerciseResolutions?: ExerciseResolution[];
 }
 
 // A1: movement types that conflict with a declared rest day
@@ -166,6 +173,12 @@ export function ParsedWorkoutForm({
   const showBanner =
     initial.parserConfidence !== null &&
     initial.parserConfidence < LOW_CONFIDENCE_THRESHOLD;
+
+  // Item 2: Exercise mismatch modal state
+  const { mutateAsync: checkMatches } = useCheckExerciseMatches();
+  const [mismatchVisible, setMismatchVisible] = useState(false);
+  const [unmatchedExercises, setUnmatchedExercises] = useState<ExerciseMatchCheck[]>([]);
+  const [pendingSubmitPayload, setPendingSubmitPayload] = useState<ParsedFormResult | null>(null);
 
   // A1: rest-day conflict detection
   const restDayConflictCount =
@@ -247,10 +260,7 @@ export function ParsedWorkoutForm({
     });
   };
 
-  const doSubmit = () => {
-    if (!label.trim() || submitDisabled) return;
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
+  const buildSubmitPayload = (resolvedMovementNames?: Record<string, string>): ParsedFormResult => {
     const resolvedGroups = muscleGroups.length > 0 ? muscleGroups : [workoutType];
     const stimulusPoints = computeStimulusPoints({
       duration,
@@ -296,7 +306,7 @@ export function ParsedWorkoutForm({
     }
 
     const outputMovements = movements.map((m) => ({
-      name: m.name,
+      name: resolvedMovementNames?.[m.name] ?? m.name,
       volume: generateVolumeString(m.setRows, m.movementType),
       muscleGroups: m.muscleGroups,
       fatiguePercent: m.fatiguePercent,
@@ -304,7 +314,7 @@ export function ParsedWorkoutForm({
       setRows: m.setRows,
     }));
 
-    onSubmit({
+    return {
       label: label.trim(),
       workoutType,
       duration,
@@ -320,7 +330,61 @@ export function ParsedWorkoutForm({
       editedFields,
       lastEditedAt: editedFields.length > 0 ? new Date().toISOString() : null,
       editSource: editedFields.length > 0 ? "user" : importSource === "manual" ? "manual" : "ai",
-    });
+    };
+  };
+
+  const doSubmit = async () => {
+    if (!label.trim() || submitDisabled) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    const isRestDay = workoutType === "rest";
+    const hasMovements = movements.length > 0 && !isRestDay;
+
+    // Item 2: pre-submit mismatch check — show resolution modal if any unmatched
+    if (hasMovements) {
+      try {
+        const checks = await checkMatches(
+          movements.map((m) => ({ name: m.name, movementType: m.movementType }))
+        );
+        const unmatched = checks.filter((c) => c.willCreate);
+        if (unmatched.length > 0) {
+          const payload = buildSubmitPayload();
+          setPendingSubmitPayload(payload);
+          setUnmatchedExercises(unmatched);
+          setMismatchVisible(true);
+          return;
+        }
+      } catch {
+        // Check failed silently — proceed with submit without modal
+      }
+    }
+
+    onSubmit(buildSubmitPayload());
+  };
+
+  const handleMismatchResolve = (resolutions: ExerciseResolution[]) => {
+    setMismatchVisible(false);
+    if (!pendingSubmitPayload) return;
+
+    const resolvedNames: Record<string, string> = {};
+    for (const r of resolutions) {
+      resolvedNames[r.originalName] = r.resolvedName;
+    }
+
+    const resolvedMovements = pendingSubmitPayload.movements.map((m) => ({
+      ...m,
+      name: resolvedNames[m.name] ?? m.name,
+    }));
+
+    onSubmit({ ...pendingSubmitPayload, movements: resolvedMovements, exerciseResolutions: resolutions });
+    setPendingSubmitPayload(null);
+    setUnmatchedExercises([]);
+  };
+
+  const handleMismatchCancel = () => {
+    setMismatchVisible(false);
+    setPendingSubmitPayload(null);
+    setUnmatchedExercises([]);
   };
 
   return (
@@ -707,6 +771,13 @@ export function ParsedWorkoutForm({
         value={workoutDate}
         onClose={() => setDatePickerOpen(false)}
         onSelect={(date) => setWorkoutDate(date)}
+      />
+
+      <ExerciseMismatchModal
+        visible={mismatchVisible}
+        unmatched={unmatchedExercises}
+        onResolve={handleMismatchResolve}
+        onCancel={handleMismatchCancel}
       />
     </>
   );

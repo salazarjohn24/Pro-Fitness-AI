@@ -126,37 +126,29 @@ export default function ExternalWorkoutsScreen() {
     updateProfile({ activityImported: true, dailySyncProgress: newProgress });
   };
 
-  const handleVaultError = (workoutId: number) => {
+  const handleSaveError = (err: unknown, onRetry: () => void) => {
+    const e = err as { message?: string; retryable?: boolean };
+    const retryable = e?.retryable !== false;
     Alert.alert(
-      "Exercise Vault Partial",
-      "Your workout was saved, but exercise tracking couldn't be updated. This usually resolves on its own.",
-      [
-        { text: "Dismiss", style: "cancel" },
-        {
-          text: "Retry",
-          onPress: () => {
-            submitWorkout(
-              { label: "", duration: 1, workoutType: "Strength", source: "retry" } as never,
-              {
-                onSuccess: (result) => {
-                  if (!result?.ingestionError) markActivityDone();
-                },
-              }
-            );
-          },
-        },
-      ]
+      "Workout Not Saved",
+      e?.message ?? "Something went wrong. Please try again.",
+      retryable
+        ? [
+            { text: "Cancel", style: "cancel" },
+            { text: "Retry", onPress: onRetry },
+          ]
+        : [{ text: "OK", style: "cancel" }]
     );
   };
 
   const handleAddComplete = (data: ImportedWorkoutData) => {
     setAddModalOpen(false);
     submitWorkout(data, {
-      onSuccess: (result) => {
+      onSuccess: () => {
         markActivityDone();
-        if (result?.ingestionError?.retryable) {
-          handleVaultError(result.id);
-        }
+      },
+      onError: (err) => {
+        handleSaveError(err, () => handleAddComplete(data));
       },
     });
   };
@@ -164,11 +156,11 @@ export default function ExternalWorkoutsScreen() {
   const handleManualSubmit = (data: Omit<ImportedWorkoutData, "source">) => {
     setAddModalOpen(false);
     submitWorkout({ ...data, source: "manual" }, {
-      onSuccess: (result) => {
+      onSuccess: () => {
         markActivityDone();
-        if (result?.ingestionError?.retryable) {
-          handleVaultError(result.id);
-        }
+      },
+      onError: (err) => {
+        handleSaveError(err, () => handleManualSubmit(data));
       },
     });
   };

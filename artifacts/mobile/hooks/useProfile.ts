@@ -198,7 +198,6 @@ export type SubmitExternalWorkoutData = {
 export type SubmitExternalWorkoutResult = {
   id: number;
   [key: string]: unknown;
-  ingestionError?: { error: string; code: string; retryable: boolean };
 };
 
 export function useSubmitExternalWorkout() {
@@ -211,14 +210,56 @@ export function useSubmitExternalWorkout() {
         method: "POST",
         body: JSON.stringify(data),
       });
-      // 207 Multi-Status means workout saved but vault ingestion failed (A8)
-      if (res.status === 207) return res.json();
-      if (!res.ok) throw new Error("Failed to log workout");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const msg = body?.error ?? "Failed to log workout";
+        const err = new Error(msg) as Error & { code?: string; retryable?: boolean };
+        err.code = body?.code;
+        err.retryable = body?.retryable ?? false;
+        throw err;
+      }
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["profile"] });
       queryClient.invalidateQueries({ queryKey: ["recent-external-workouts"] });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Alignment Item 2: Exercise mismatch check (read-only pre-submit lookup)
+// ---------------------------------------------------------------------------
+
+export type ExerciseMatchCheck = {
+  name: string;
+  willCreate: boolean;
+  matchedId: number | null;
+  matchedName: string | null;
+  suggestion: { id: number; name: string } | null;
+};
+
+export type ExerciseResolution = {
+  originalName: string;
+  resolution: "auto-create" | "use-fit" | "manual";
+  resolvedName: string;
+  suggestedId?: number | null;
+};
+
+export function useCheckExerciseMatches() {
+  return useMutation({
+    mutationFn: async (
+      movements: Array<{ name: string; movementType?: string }>
+    ): Promise<ExerciseMatchCheck[]> => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${getApiBase()}/api/workouts/check-exercise-matches`, {
+        ...getFetchOptions(headers),
+        method: "POST",
+        body: JSON.stringify({ movements }),
+      });
+      if (!res.ok) throw new Error("Failed to check exercise matches");
+      const data = await res.json();
+      return data.checks as ExerciseMatchCheck[];
     },
   });
 }

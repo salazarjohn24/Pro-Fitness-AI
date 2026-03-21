@@ -11,11 +11,13 @@
 
 export type FeatureFlag =
   | "external_to_vault_ingestion"
-  | "low_confidence_insights_inclusion";
+  | "low_confidence_insights_inclusion"
+  | "exercise_mismatch_prompt";
 
 const DEFAULTS: Record<FeatureFlag, boolean> = {
   external_to_vault_ingestion: true,
   low_confidence_insights_inclusion: false,
+  exercise_mismatch_prompt: true,
 };
 
 /**

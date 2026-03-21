@@ -11,6 +11,7 @@ import {
 import {
   ingestMovementsToVault,
   deleteVaultEntriesForExternalWorkout,
+  checkExerciseMatches,
   type RichMovement,
 } from "../lib/vaultIngestion.js";
 import { isFeatureEnabled } from "../lib/featureFlags.js";
@@ -100,61 +101,65 @@ router.post("/workouts/external", async (req: Request, res: Response) => {
   const hasMovements = Array.isArray(movements) && movements.length > 0 && !isRest;
 
   // A5: persist edit-provenance fields
-  const [workout] = await db
-    .insert(externalWorkoutsTable)
-    .values({
-      userId: req.user.id,
-      label,
-      duration: isRest ? 0 : duration,
-      workoutType,
-      source: source ?? "manual",
-      intensity: intensity ?? null,
-      muscleGroups: muscleGroups ?? [],
-      stimulusPoints: stimulusPoints ?? null,
-      workoutDate: workoutDate ?? null,
-      movements: movements ?? [],
-      isMetcon: isMetcon ?? false,
-      metconFormat: metconFormat ?? null,
-      parserConfidence: parserConfidence ?? null,
-      parserWarnings: parserWarnings ?? [],
-      workoutFormat: workoutFormat ?? null,
-      wasUserEdited: wasUserEdited ?? false,
-      editedFields: editedFields ?? [],
-      lastEditedAt: lastEditedAt ? new Date(lastEditedAt) : null,
-      editSource: editSource ?? null,
-      rawImportText: rawImportText ?? null,
-    })
-    .returning();
+  // A4: flag-gated vault ingestion — wrap INSERT + ingest in a single transaction
+  // so a vault failure rolls back the workout row (no committed partial state).
+  const vaultEnabled = hasMovements && isFeatureEnabled("external_to_vault_ingestion");
+
+  let workout: typeof externalWorkoutsTable.$inferSelect;
+  try {
+    workout = await db.transaction(async (tx) => {
+      const [inserted] = await tx
+        .insert(externalWorkoutsTable)
+        .values({
+          userId: req.user.id,
+          label,
+          duration: isRest ? 0 : duration,
+          workoutType,
+          source: source ?? "manual",
+          intensity: intensity ?? null,
+          muscleGroups: muscleGroups ?? [],
+          stimulusPoints: stimulusPoints ?? null,
+          workoutDate: workoutDate ?? null,
+          movements: movements ?? [],
+          isMetcon: isMetcon ?? false,
+          metconFormat: metconFormat ?? null,
+          parserConfidence: parserConfidence ?? null,
+          parserWarnings: parserWarnings ?? [],
+          workoutFormat: workoutFormat ?? null,
+          wasUserEdited: wasUserEdited ?? false,
+          editedFields: editedFields ?? [],
+          lastEditedAt: lastEditedAt ? new Date(lastEditedAt) : null,
+          editSource: editSource ?? null,
+          rawImportText: rawImportText ?? null,
+        })
+        .returning();
+
+      if (vaultEnabled) {
+        await ingestMovementsToVault(
+          inserted.id,
+          req.user.id,
+          movements as RichMovement[],
+          workoutDate ?? null,
+          tx as unknown as typeof db
+        );
+      } else if (hasMovements) {
+        console.log(`[vault-ingestion] skipped workoutId=${inserted.id} (flag off)`);
+      }
+
+      return inserted;
+    });
+  } catch (err) {
+    console.error(`[vault-ingestion] transaction failed — rolling back:`, err);
+    res.status(500).json({
+      error: "Workout could not be saved — please try again.",
+      code: "VAULT_INGESTION_FAILED",
+      retryable: true,
+    });
+    return;
+  }
 
   if (parserConfidence != null) {
     console.log(`[parser-telemetry] workoutId=${workout.id} confidence=${parserConfidence} format=${workoutFormat ?? "null"} warnings=${(parserWarnings ?? []).length} source=${source ?? "manual"}`);
-  }
-
-  // A4 + A8: flag-gated vault ingestion with structured error response
-  if (hasMovements) {
-    if (isFeatureEnabled("external_to_vault_ingestion")) {
-      try {
-        await ingestMovementsToVault(
-          workout.id,
-          req.user.id,
-          movements as RichMovement[],
-          workoutDate ?? null
-        );
-      } catch (err) {
-        console.error(`[vault-ingestion] workoutId=${workout.id} error:`, err);
-        res.status(207).json({
-          ...workout,
-          ingestionError: {
-            error: "Vault ingestion failed — workout saved",
-            code: "VAULT_INGESTION_FAILED",
-            retryable: true,
-          },
-        });
-        return;
-      }
-    } else {
-      console.log(`[vault-ingestion] skipped workoutId=${workout.id} (flag off)`);
-    }
   }
 
   res.json(workout);
@@ -442,6 +447,30 @@ router.delete("/workouts/sessions/:id", async (req: Request, res: Response) => {
   }
 
   res.json({ success: true });
+});
+
+// ---------------------------------------------------------------------------
+// Item 2: Exercise mismatch check — read-only pre-submit lookup
+// ---------------------------------------------------------------------------
+router.post("/workouts/check-exercise-matches", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const { movements } = req.body;
+  if (!Array.isArray(movements)) {
+    res.status(400).json({ error: "movements must be an array" });
+    return;
+  }
+
+  const validMovements = movements.filter(
+    (m): m is { name: string; movementType?: string } =>
+      typeof m === "object" && m !== null && typeof m.name === "string"
+  );
+
+  const checks = await checkExerciseMatches(validMovements);
+  res.json({ checks });
 });
 
 export default router;

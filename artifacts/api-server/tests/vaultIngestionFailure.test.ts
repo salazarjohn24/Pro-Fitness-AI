@@ -1,15 +1,17 @@
 /**
  * vaultIngestionFailure.test.ts
  *
- * A8 reliability — proves that vault ingestion failures surface as HTTP 207
- * Multi-Status (not silent 200 or 500). The workout row IS committed; only
- * the exercise-vault step failed. Client receives:
- *   { ...workout, ingestionError: { code: "VAULT_INGESTION_FAILED", retryable: true } }
+ * Alignment Item 1 — proves transaction atomicity on vault ingestion failure.
+ * When vault ingestion throws, the entire db.transaction() rolls back:
+ *   - No external_workouts row is committed
+ *   - POST returns HTTP 500 with structured retryable error payload
+ *   - Non-movement workouts (rest days) remain unaffected
  *
  * Verifies:
- *   1. POST /api/workouts/external returns 207 when vault ingestion throws
- *   2. The external_workouts row WAS committed (workout is saved, vault partial)
- *   3. ingestionError payload has the expected shape
+ *   1. POST /api/workouts/external returns 500 when vault ingestion throws
+ *   2. The external_workouts row is NOT committed (full rollback)
+ *   3. Error payload has { code: "VAULT_INGESTION_FAILED", retryable: true }
+ *   4. Rest-day POST (no movements) still succeeds — ingestion never called
  *
  * Auth mock inlines the user ID literal (hoisting requirement for vi.mock).
  * Vault ingestion mock throws on every call to ingestMovementsToVault.
@@ -57,11 +59,13 @@ vi.mock("../src/services/aiService", () => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Vault ingestion mock — always throws to simulate a DB error mid-transaction
+// Vault ingestion mock — ingestMovementsToVault always throws to simulate
+// a DB error mid-transaction; checkExerciseMatches is a no-op read.
 // ---------------------------------------------------------------------------
 vi.mock("../src/lib/vaultIngestion.js", () => ({
   ingestMovementsToVault: vi.fn().mockRejectedValue(new Error("Simulated vault DB failure")),
   deleteVaultEntriesForExternalWorkout: vi.fn().mockResolvedValue(undefined),
+  checkExerciseMatches: vi.fn().mockResolvedValue([]),
 }));
 
 import app from "../src/app";
@@ -84,14 +88,17 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await db.delete(externalWorkoutsTable).where(eq(externalWorkoutsTable.userId, TEST_USER_ID));
   await db.delete(usersTable).where(eq(usersTable.id, TEST_USER_ID));
 });
 
 // ---------------------------------------------------------------------------
-// A8  Failed ingestion returns 207 Multi-Status (workout saved, vault partial)
+// Alignment Item 1 — Hard-fail with transaction rollback
 // ---------------------------------------------------------------------------
-describe("P4.1-D: Failed vault ingestion surfaces as HTTP 500", () => {
-  it("POST /api/workouts/external returns 207 when vault ingestion throws", async () => {
+describe("P4.1-D: Failed vault ingestion returns 500 and rolls back the workout row", () => {
+  const testStart = new Date(Date.now() - 5000);
+
+  it("POST /api/workouts/external returns 500 when vault ingestion throws", async () => {
     const res = await request(app)
       .post("/api/workouts/external")
       .set("Cookie", "sid=vault-failure-test-session")
@@ -108,17 +115,15 @@ describe("P4.1-D: Failed vault ingestion surfaces as HTTP 500", () => {
         ],
       });
 
-    // A8: workout saved, vault failed → 207 with structured ingestionError
-    expect(res.status).toBe(207);
-    expect(res.body.ingestionError).toBeDefined();
-    expect(res.body.ingestionError.code).toBe("VAULT_INGESTION_FAILED");
-    expect(res.body.ingestionError.retryable).toBe(true);
-    expect(res.body.id).toBeDefined();
+    expect(res.status).toBe(500);
+    expect(res.body.code).toBe("VAULT_INGESTION_FAILED");
+    expect(res.body.retryable).toBe(true);
+    expect(res.body.error).toMatch(/try again/i);
+    // No workout id in the error response (row was rolled back)
+    expect(res.body.id).toBeUndefined();
   });
 
-  it("workout row IS committed after vault failure (A8: workout saved, vault partial)", async () => {
-    const testStart = new Date(Date.now() - 10000);
-
+  it("workout row is NOT committed after vault failure (transaction atomicity)", async () => {
     const rows = await db
       .select({ id: externalWorkoutsTable.id })
       .from(externalWorkoutsTable)
@@ -129,13 +134,8 @@ describe("P4.1-D: Failed vault ingestion surfaces as HTTP 500", () => {
         )
       );
 
-    // The workout must be committed even though vault ingestion failed
-    expect(rows.length).toBeGreaterThanOrEqual(1);
-
-    // Cleanup
-    for (const row of rows) {
-      await db.delete(externalWorkoutsTable).where(eq(externalWorkoutsTable.id, row.id));
-    }
+    // Transaction must have rolled back — zero rows from this test user
+    expect(rows.length).toBe(0);
   });
 
   it("POST without movements (rest day) still succeeds — ingestion never called", async () => {
@@ -150,9 +150,7 @@ describe("P4.1-D: Failed vault ingestion surfaces as HTTP 500", () => {
       });
 
     expect(res.status).toBe(200);
-
-    await db
-      .delete(externalWorkoutsTable)
-      .where(eq(externalWorkoutsTable.userId, TEST_USER_ID));
+    expect(res.body.id).toBeDefined();
+    expect(res.body.label).toBe("Rest Day");
   });
 });

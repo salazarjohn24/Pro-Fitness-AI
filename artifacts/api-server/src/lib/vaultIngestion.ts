@@ -211,6 +211,75 @@ export async function resolveOrCreateExerciseId(
   return created.id;
 }
 
+// ---------------------------------------------------------------------------
+// Exercise match check — read-only, no inserts (for pre-submit UX)
+// ---------------------------------------------------------------------------
+
+export type ExerciseMatchResult = {
+  name: string;
+  willCreate: boolean;
+  matchedId: number | null;
+  matchedName: string | null;
+  suggestion: { id: number; name: string } | null;
+};
+
+/**
+ * Checks each movement name against the exercise library without inserting.
+ * Returns match status + best-fit suggestion for unmatched names.
+ */
+export async function checkExerciseMatches(
+  movements: Array<{ name: string; movementType?: string }>,
+  client: DbClient = globalDb
+): Promise<ExerciseMatchResult[]> {
+  const results: ExerciseMatchResult[] = [];
+
+  for (const movement of movements) {
+    const raw = movement.name?.trim();
+    if (!raw) continue;
+
+    // 1. Exact case-insensitive match
+    const [exact] = await client
+      .select({ id: exerciseLibraryTable.id, name: exerciseLibraryTable.name })
+      .from(exerciseLibraryTable)
+      .where(ilike(exerciseLibraryTable.name, raw))
+      .limit(1);
+    if (exact) {
+      results.push({ name: raw, willCreate: false, matchedId: exact.id, matchedName: exact.name, suggestion: null });
+      continue;
+    }
+
+    // 2. Normalized match (strip equipment prefix)
+    const normalized = normalizeExerciseName(raw);
+    if (normalized !== raw.toLowerCase()) {
+      const [norm] = await client
+        .select({ id: exerciseLibraryTable.id, name: exerciseLibraryTable.name })
+        .from(exerciseLibraryTable)
+        .where(ilike(exerciseLibraryTable.name, normalized))
+        .limit(1);
+      if (norm) {
+        results.push({ name: raw, willCreate: false, matchedId: norm.id, matchedName: norm.name, suggestion: null });
+        continue;
+      }
+    }
+
+    // 3. First-word partial match → becomes best-fit suggestion, but won't auto-match
+    const firstWord = raw.split(/\s+/)[0];
+    let suggestion: { id: number; name: string } | null = null;
+    if (firstWord && firstWord.length >= 4) {
+      const [partial] = await client
+        .select({ id: exerciseLibraryTable.id, name: exerciseLibraryTable.name })
+        .from(exerciseLibraryTable)
+        .where(ilike(exerciseLibraryTable.name, `%${firstWord}%`))
+        .limit(1);
+      if (partial) suggestion = { id: partial.id, name: partial.name };
+    }
+
+    results.push({ name: raw, willCreate: true, matchedId: null, matchedName: null, suggestion });
+  }
+
+  return results;
+}
+
 export async function deleteVaultEntriesForExternalWorkout(
   externalWorkoutId: number,
   userId: string,
