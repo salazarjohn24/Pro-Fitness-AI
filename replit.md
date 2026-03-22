@@ -94,6 +94,24 @@ npx eas-cli@latest submit --platform ios --latest
 - EAS Project: `@salazarjohn24/mobile`
 - ASC App ID: `6760667643`
 
+## Exercise Library Seeding
+
+The `exercise_library` table is populated by `lib/db/src/seed-exercises.ts`.
+
+**Run the seeder:**
+```bash
+pnpm --filter @workspace/db run seed:exercises
+```
+
+**When to run it:**
+- Fresh environment setup (cloned repo, new Replit workspace)
+- After a full database reset or `push-force` that drops all rows
+- Onboarding a new deployment where the table is empty
+
+**Idempotency:** The script checks for any existing row before inserting. If the table already has data it exits cleanly — it will never duplicate records. To force a re-seed after a partial failure, truncate the table first (`TRUNCATE exercise_library RESTART IDENTITY CASCADE;`) then run the script again.
+
+**Current state (March 22 2026):** 51 exercises seeded — legs, chest, back, shoulders, arms, core; equipment types: barbell, dumbbell, cable, machine, bodyweight; difficulties: beginner, intermediate, advanced.
+
 ## Pre-Release Gate (P5 Complete)
 
 Run before every TestFlight build:
