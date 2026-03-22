@@ -236,6 +236,8 @@ export type ExerciseMatchCheck = {
   willCreate: boolean;
   matchedId: number | null;
   matchedName: string | null;
+  /** Diagnostic: which matching step resolved this name. */
+  matched_by: "exact" | "normalized" | "partial" | "created";
   suggestion: { id: number; name: string } | null;
 };
 

@@ -215,17 +215,36 @@ export async function resolveOrCreateExerciseId(
 // Exercise match check — read-only, no inserts (for pre-submit UX)
 // ---------------------------------------------------------------------------
 
+/**
+ * How the exercise was matched during ingestion or pre-submit check.
+ *
+ *  "exact"      — case-insensitive match on the raw name against the library
+ *  "normalized" — matched after stripping equipment prefix (Barbell/Dumbbell/Cable/…)
+ *  "partial"    — first-word ilike fuzzy match used as best-fit suggestion
+ *                 (still willCreate=true in checkExerciseMatches; willCreate=false in resolveOrCreate)
+ *  "created"    — no library entry found; a new one was (or will be) created
+ */
+export type MatchedBy = "exact" | "normalized" | "partial" | "created";
+
 export type ExerciseMatchResult = {
   name: string;
   willCreate: boolean;
   matchedId: number | null;
   matchedName: string | null;
+  /** Diagnostic: which matching step resolved this name. */
+  matched_by: MatchedBy;
   suggestion: { id: number; name: string } | null;
 };
 
 /**
  * Checks each movement name against the exercise library without inserting.
  * Returns match status + best-fit suggestion for unmatched names.
+ *
+ * matched_by semantics in check mode:
+ *   "exact"      → exact library hit, willCreate=false
+ *   "normalized" → hit after stripping equipment prefix, willCreate=false
+ *   "partial"    → first-word fuzzy hit exists as suggestion, willCreate=true
+ *   "created"    → no hit at all, willCreate=true, suggestion=null
  */
 export async function checkExerciseMatches(
   movements: Array<{ name: string; movementType?: string }>,
@@ -244,7 +263,7 @@ export async function checkExerciseMatches(
       .where(ilike(exerciseLibraryTable.name, raw))
       .limit(1);
     if (exact) {
-      results.push({ name: raw, willCreate: false, matchedId: exact.id, matchedName: exact.name, suggestion: null });
+      results.push({ name: raw, willCreate: false, matchedId: exact.id, matchedName: exact.name, matched_by: "exact", suggestion: null });
       continue;
     }
 
@@ -257,12 +276,12 @@ export async function checkExerciseMatches(
         .where(ilike(exerciseLibraryTable.name, normalized))
         .limit(1);
       if (norm) {
-        results.push({ name: raw, willCreate: false, matchedId: norm.id, matchedName: norm.name, suggestion: null });
+        results.push({ name: raw, willCreate: false, matchedId: norm.id, matchedName: norm.name, matched_by: "normalized", suggestion: null });
         continue;
       }
     }
 
-    // 3. First-word partial match → becomes best-fit suggestion, but won't auto-match
+    // 3. First-word partial match → best-fit suggestion, willCreate=true (user must confirm)
     const firstWord = raw.split(/\s+/)[0];
     let suggestion: { id: number; name: string } | null = null;
     if (firstWord && firstWord.length >= 4) {
@@ -274,10 +293,69 @@ export async function checkExerciseMatches(
       if (partial) suggestion = { id: partial.id, name: partial.name };
     }
 
-    results.push({ name: raw, willCreate: true, matchedId: null, matchedName: null, suggestion });
+    const matched_by: MatchedBy = suggestion ? "partial" : "created";
+    results.push({ name: raw, willCreate: true, matchedId: null, matchedName: null, matched_by, suggestion });
   }
 
   return results;
+}
+
+/**
+ * Like resolveOrCreateExerciseId but also returns which step matched,
+ * enabling structured ingestion logging.
+ */
+export async function resolveOrCreateExerciseIdWithMeta(
+  name: string,
+  movementType: MovementType,
+  muscleGroups: string[],
+  client: DbClient = globalDb
+): Promise<{ id: number; matchedBy: MatchedBy }> {
+  const trimmed = name.trim();
+
+  // 1. Exact
+  const [exact] = await client
+    .select({ id: exerciseLibraryTable.id })
+    .from(exerciseLibraryTable)
+    .where(ilike(exerciseLibraryTable.name, trimmed))
+    .limit(1);
+  if (exact) return { id: exact.id, matchedBy: "exact" };
+
+  // 2. Normalized
+  const normalized = normalizeExerciseName(trimmed);
+  if (normalized !== trimmed.toLowerCase()) {
+    const [norm] = await client
+      .select({ id: exerciseLibraryTable.id })
+      .from(exerciseLibraryTable)
+      .where(ilike(exerciseLibraryTable.name, normalized))
+      .limit(1);
+    if (norm) return { id: norm.id, matchedBy: "normalized" };
+  }
+
+  // 3. Partial (first-word fuzzy) — in ingestion, partial IS used to resolve
+  const firstWord = trimmed.split(/\s+/)[0];
+  if (firstWord && firstWord.length >= 4) {
+    const [partial] = await client
+      .select({ id: exerciseLibraryTable.id })
+      .from(exerciseLibraryTable)
+      .where(ilike(exerciseLibraryTable.name, `%${firstWord}%`))
+      .limit(1);
+    if (partial) return { id: partial.id, matchedBy: "partial" };
+  }
+
+  // 4. Create new entry
+  const defaults = inferLibraryDefaults(movementType, muscleGroups);
+  const [created] = await client
+    .insert(exerciseLibraryTable)
+    .values({
+      name: trimmed,
+      muscleGroup: defaults.muscleGroup,
+      equipment: defaults.equipment,
+      goal: defaults.goal,
+      difficulty: defaults.difficulty,
+    })
+    .returning({ id: exerciseLibraryTable.id });
+
+  return { id: created.id, matchedBy: "created" };
 }
 
 export async function deleteVaultEntriesForExternalWorkout(

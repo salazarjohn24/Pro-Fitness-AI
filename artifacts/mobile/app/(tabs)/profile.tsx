@@ -19,6 +19,7 @@ type FeatherIcon = ComponentProps<typeof Feather>["name"];
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -826,17 +827,52 @@ export default function ProfileScreen() {
 
       {healthKitAvailable && (
         <View style={styles.healthSyncContainer}>
+          {/* Production status row — always visible when HealthKit is present */}
+          <View style={styles.healthStatusRow}>
+            <View style={styles.healthStatusLeft}>
+              <View style={[
+                styles.healthStatusDot,
+                { backgroundColor: healthSyncState.status === "success" ? "#4ADE80" : healthSyncState.status === "failed" ? "#F97316" : Colors.textSubtle },
+              ]} />
+              <Text style={styles.healthStatusLabel}>
+                {healthSyncState.status === "success" ? "Connected"
+                  : healthSyncState.status === "syncing" ? "Syncing…"
+                  : healthSyncState.status === "failed" ? "Sync Failed"
+                  : "Not Connected"}
+              </Text>
+            </View>
+            <View style={styles.healthStatusRight}>
+              {healthSyncState.lastSyncedAt ? (
+                <Text style={styles.healthStatusMeta}>
+                  {formatLastSynced(healthSyncState.lastSyncedAt)}
+                  {healthSyncState.workoutCount != null ? ` · ${healthSyncState.workoutCount}w` : ""}
+                </Text>
+              ) : null}
+              {healthSyncState.lastErrorCode ? (
+                <Text style={styles.healthStatusCode}>{healthSyncState.lastErrorCode}</Text>
+              ) : null}
+            </View>
+          </View>
+
+          {/* Error message */}
           {healthSyncState.status === "failed" && healthSyncState.lastError ? (
             <Text style={styles.healthSyncError}>{healthSyncState.lastError}</Text>
           ) : null}
-          {healthSyncState.lastSyncedAt && healthSyncState.status !== "failed" ? (
-            <Text style={styles.healthSyncMeta}>
-              Last synced: {formatLastSynced(healthSyncState.lastSyncedAt)}
-              {healthSyncState.workoutCount != null
-                ? `  ·  ${healthSyncState.workoutCount} workouts`
-                : ""}
-            </Text>
+
+          {/* Open Settings — shown when system-level failure (NOT_AVAILABLE) */}
+          {healthSyncState.status === "failed" && healthSyncState.lastErrorCode === "NOT_AVAILABLE" ? (
+            <Pressable
+              style={({ pressed }) => [styles.healthOpenSettingsBtn, { opacity: pressed ? 0.7 : 1 }]}
+              onPress={() => {
+                Haptics.selectionAsync();
+                Linking.openSettings();
+              }}
+            >
+              <Feather name="settings" size={13} color={Colors.textSubtle} />
+              <Text style={styles.healthOpenSettingsText}>Open Settings → Health</Text>
+            </Pressable>
           ) : null}
+
           <Pressable
             style={({ pressed }) => [
               styles.healthSyncBtn,
@@ -1683,6 +1719,63 @@ const styles = StyleSheet.create({
   toggleBtnTextActive: { color: "#fff" },
   healthSyncContainer: {
     gap: 8,
+  },
+  healthStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 6,
+    paddingHorizontal: 2,
+  },
+  healthStatusLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  healthStatusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+  },
+  healthStatusLabel: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    color: Colors.text,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  healthStatusRight: {
+    alignItems: "flex-end",
+    gap: 2,
+  },
+  healthStatusMeta: {
+    fontSize: 10,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
+  },
+  healthStatusCode: {
+    fontSize: 9,
+    fontFamily: "Inter_700Bold",
+    color: "#F97316",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  healthOpenSettingsBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.03)",
+  },
+  healthOpenSettingsText: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    color: Colors.textSubtle,
+    letterSpacing: 0.3,
   },
   healthSyncBtn: {
     flexDirection: "row",

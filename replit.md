@@ -102,10 +102,12 @@ bash scripts/pre-release-check.sh
 ```
 Gates: auth config check (prod domain) + API tests + mobile tests. Exit 0 = all pass.
 
-**Test baseline (March 21 2026):**
-- API: 399 tests across 14 files (`artifacts/api-server`)
-- Mobile: 162 tests across 4 files (`artifacts/mobile`)
+**Test baseline (March 22 2026) — buildNumber 20:**
+- API: 419 tests across 15 files (`artifacts/api-server`)
+- Mobile: 175 tests across 4 files (`artifacts/mobile`)
 - Regression suites: `artifacts/api-server/tests/regression.test.ts` (REG-1→REG-5), `artifacts/mobile/lib/__tests__/regression.test.ts` (REG-M1→REG-M7)
+- Phase A additions: 13 HealthKit diagnostic tests (HS-11→HS-14); DiagnosticState + DIAG_STORAGE_KEY in healthSyncUtils; useHealthDiagnostics hook + HealthDiagnosticsPanel (__DEV__ only)
+- Phase B additions: MatchedBy type + matched_by field on ExerciseMatchResult; resolveOrCreateExerciseIdWithMeta; VI-36→VI-42 pure tests; MI-1→MI-7 integration tests; Recent Activity filter pills (All/Internal/External/Apple Health); apple_health icon (heart/pink) + label fix; profile production status row (dot + last sync + error code) + Open Settings button (Linking.openSettings when NOT_AVAILABLE)
 - PM release checklist: `docs/RELEASE_CHECKLIST.md`
 
 ## External Dependencies

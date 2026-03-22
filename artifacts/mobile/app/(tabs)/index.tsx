@@ -92,6 +92,7 @@ export default function StatusScreen() {
   const [reviewOpen, setReviewOpen] = useState(false);
   const [rpeInfoOpen, setRpeInfoOpen] = useState(false);
   const [weeklySessionsInfoOpen, setWeeklySessionsInfoOpen] = useState(false);
+  const [activityFilter, setActivityFilter] = useState<"all" | "internal" | "external" | "apple_health">("all");
   const autoGenerateAttempted = React.useRef(false);
   const [architectDrafts, setArchitectDrafts] = React.useState<WorkoutDraft[]>([]);
 
@@ -711,55 +712,124 @@ export default function StatusScreen() {
           </BentoCard>
         )}
 
-        {(workoutHistory && workoutHistory.length > 0) && (
-          <BentoCard>
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-              <Text style={styles.sectionLabel}>Recent Activity</Text>
-              <Pressable onPress={() => router.push("/external-workouts" as any)}>
-                <Text style={{ fontSize: 11, fontFamily: "Inter_700Bold", color: Colors.textSubtle }}>All →</Text>
-              </Pressable>
-            </View>
-            <View style={styles.recentList}>
-              {workoutHistory.slice(0, 6).map((workout) => {
-                const isRest = (workout as any).workoutType === "rest";
-                const isInternal = workout.type === "internal";
-                const dateStr = new Date(workout.date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-                const iconName: any = isRest ? "moon" : isInternal ? "award" : (workout.source === "ai_scan" ? "cpu" : "globe");
-                const iconColor = isRest ? Colors.recovery : isInternal ? Colors.highlight : Colors.orange;
-                const iconBg = isRest ? styles.recentIconRest : isInternal ? styles.recentIconInApp : styles.recentIconExternal;
-                const srcLabel = isRest ? "Rest" : isInternal ? "In-App" : (workout.source === "ai_scan" ? "AI Scan" : "External");
-                const subText = isRest
-                  ? "Recovery day"
-                  : isInternal
-                  ? `${workout.durationMinutes}m · ${workout.exerciseCount} exercises · ${workout.totalSetsCompleted} sets`
-                  : `${workout.durationMinutes}m${(workout as any).intensity ? ` · RPE ${(workout as any).intensity}` : ""}${workout.stimulusPoints ? ` · ${workout.stimulusPoints} pts` : ""}${workout.exerciseCount > 0 ? ` · ${workout.exerciseCount} exercises` : ""}`;
-                return (
-                  <Pressable
-                    key={`${workout.type}-${workout.id}`}
-                    style={({ pressed }) => [styles.recentItem, { opacity: pressed ? 0.75 : 1 }]}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      router.push(`/workout-detail?type=${workout.type}&id=${workout.id}` as any);
-                    }}
-                  >
-                    <View style={[styles.recentIcon, iconBg]}>
-                      <Feather name={iconName} size={14} color={iconColor} />
-                    </View>
-                    <View style={styles.recentInfo}>
-                      <Text style={styles.recentTitle} numberOfLines={1}>{workout.label}</Text>
-                      <Text style={styles.recentSub} numberOfLines={1}>{subText}</Text>
-                    </View>
-                    <View style={styles.recentRight}>
-                      <Text style={styles.recentDate}>{dateStr}</Text>
-                      <Text style={styles.recentSource}>{srcLabel}</Text>
-                    </View>
-                    <Feather name="chevron-right" size={13} color={Colors.textSubtle} style={{ marginLeft: 4 }} />
-                  </Pressable>
-                );
-              })}
-            </View>
-          </BentoCard>
-        )}
+        {(workoutHistory && workoutHistory.length > 0) && (() => {
+          // ---------------------------------------------------------------------------
+          // Recent Activity filter — All / Internal / External / Apple Health
+          // "External" includes manual + ai_scan. "Apple Health" is source=apple_health.
+          // ---------------------------------------------------------------------------
+          const countAll = workoutHistory.length;
+          const countInternal = workoutHistory.filter(w => w.type === "internal").length;
+          const countExternal = workoutHistory.filter(w => w.type === "external" && w.source !== "apple_health").length;
+          const countAppleHealth = workoutHistory.filter(w => w.source === "apple_health").length;
+
+          const filteredHistory = workoutHistory.filter(w => {
+            if (activityFilter === "internal") return w.type === "internal";
+            if (activityFilter === "external") return w.type === "external" && w.source !== "apple_health";
+            if (activityFilter === "apple_health") return w.source === "apple_health";
+            return true; // "all"
+          });
+
+          type FilterKey = "all" | "internal" | "external" | "apple_health";
+          const filters: Array<{ key: FilterKey; label: string; count: number }> = [
+            { key: "all", label: "All", count: countAll },
+            { key: "internal", label: "Internal", count: countInternal },
+            { key: "external", label: "External", count: countExternal },
+            { key: "apple_health", label: "Apple Health", count: countAppleHealth },
+          ].filter(f => f.count > 0 || f.key === "all");
+
+          return (
+            <BentoCard>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                <Text style={styles.sectionLabel}>Recent Activity</Text>
+                <Pressable onPress={() => router.push("/external-workouts" as any)}>
+                  <Text style={{ fontSize: 11, fontFamily: "Inter_700Bold", color: Colors.textSubtle }}>All →</Text>
+                </Pressable>
+              </View>
+
+              {filters.length > 1 && (
+                <View style={styles.activityFilterRow}>
+                  {filters.map(f => (
+                    <Pressable
+                      key={f.key}
+                      style={[styles.activityFilterPill, activityFilter === f.key && styles.activityFilterPillActive]}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        setActivityFilter(f.key);
+                      }}
+                    >
+                      <Text style={[styles.activityFilterText, activityFilter === f.key && styles.activityFilterTextActive]}>
+                        {f.label} {f.count > 0 ? `(${f.count})` : ""}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+
+              <View style={styles.recentList}>
+                {filteredHistory.slice(0, 6).map((workout) => {
+                  const isRest = (workout as any).workoutType === "rest";
+                  const isInternal = workout.type === "internal";
+                  const isAppleHealth = workout.source === "apple_health";
+                  const dateStr = new Date(workout.date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+                  const iconName: any = isRest ? "moon"
+                    : isInternal ? "award"
+                    : isAppleHealth ? "heart"
+                    : workout.source === "ai_scan" ? "cpu"
+                    : "globe";
+                  const iconColor = isRest ? Colors.recovery
+                    : isInternal ? Colors.highlight
+                    : isAppleHealth ? "#E1306C"
+                    : Colors.orange;
+                  const iconBg = isRest ? styles.recentIconRest
+                    : isInternal ? styles.recentIconInApp
+                    : isAppleHealth ? styles.recentIconAppleHealth
+                    : styles.recentIconExternal;
+                  const srcLabel = isRest ? "Rest"
+                    : isInternal ? "In-App"
+                    : isAppleHealth ? "Apple Health"
+                    : workout.source === "ai_scan" ? "AI Scan"
+                    : "External";
+
+                  const subText = isRest
+                    ? "Recovery day"
+                    : isInternal
+                    ? `${workout.durationMinutes}m · ${workout.exerciseCount} exercises · ${workout.totalSetsCompleted} sets`
+                    : `${workout.durationMinutes}m${(workout as any).intensity ? ` · RPE ${(workout as any).intensity}` : ""}${workout.stimulusPoints ? ` · ${workout.stimulusPoints} pts` : ""}${workout.exerciseCount > 0 ? ` · ${workout.exerciseCount} exercises` : ""}`;
+
+                  return (
+                    <Pressable
+                      key={`${workout.type}-${workout.id}`}
+                      style={({ pressed }) => [styles.recentItem, { opacity: pressed ? 0.75 : 1 }]}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        router.push(`/workout-detail?type=${workout.type}&id=${workout.id}` as any);
+                      }}
+                    >
+                      <View style={[styles.recentIcon, iconBg]}>
+                        <Feather name={iconName} size={14} color={iconColor} />
+                      </View>
+                      <View style={styles.recentInfo}>
+                        <Text style={styles.recentTitle} numberOfLines={1}>{workout.label}</Text>
+                        <Text style={styles.recentSub} numberOfLines={1}>{subText}</Text>
+                      </View>
+                      <View style={styles.recentRight}>
+                        <Text style={styles.recentDate}>{dateStr}</Text>
+                        <Text style={styles.recentSource}>{srcLabel}</Text>
+                      </View>
+                      <Feather name="chevron-right" size={13} color={Colors.textSubtle} style={{ marginLeft: 4 }} />
+                    </Pressable>
+                  );
+                })}
+                {filteredHistory.length === 0 && (
+                  <Text style={{ fontSize: 12, color: Colors.textSubtle, textAlign: "center", paddingVertical: 16, fontFamily: "Inter_400Regular" }}>
+                    No {activityFilter === "apple_health" ? "Apple Health" : activityFilter === "internal" ? "in-app" : activityFilter === "external" ? "external" : ""} workouts yet.
+                  </Text>
+                )}
+              </View>
+            </BentoCard>
+          );
+        })()}
       </ScrollView>
 
       <CheckInModal
@@ -1105,6 +1175,36 @@ const styles = StyleSheet.create({
   },
   recentIconRest: {
     backgroundColor: "rgba(119,156,175,0.1)",
+  },
+  recentIconAppleHealth: {
+    backgroundColor: "rgba(225,48,108,0.1)",
+  },
+  activityFilterRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: 10,
+  },
+  activityFilterPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 100,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "transparent",
+  },
+  activityFilterPillActive: {
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderColor: "rgba(255,255,255,0.25)",
+  },
+  activityFilterText: {
+    fontSize: 10,
+    fontFamily: "Inter_700Bold",
+    color: Colors.textSubtle,
+    letterSpacing: 0.5,
+  },
+  activityFilterTextActive: {
+    color: Colors.text,
   },
   recentInfo: { flex: 1 },
   recentTitle: {

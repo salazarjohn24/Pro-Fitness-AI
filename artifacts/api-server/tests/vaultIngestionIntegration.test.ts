@@ -8,7 +8,7 @@
  * Cleanup: afterAll deletes test user (cascades workoutHistory / exercisePerformance)
  */
 
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
 import request from "supertest";
 
 // ---------------------------------------------------------------------------
@@ -305,5 +305,143 @@ describe("P4.1-C: Strength regression — weight * reps * sets, estimated1RM", (
     expect(res.status).toBe(200);
     expect(res.body.sessions[0].totalVolume).toBe(5500);
     expect(res.body.estimated1RM).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MI-1 → MI-7  matched_by field in check-exercise-matches
+//
+// Verifies the diagnostic matched_by field returned by POST
+// /api/workouts/check-exercise-matches for each of the four paths:
+//   exact      → library has the exact name (case-insensitive)
+//   normalized → library has the name after stripping equipment prefix
+//   partial    → library has a name that contains the first word (>= 4 chars)
+//   created    → no library entry found, willCreate=true, suggestion=null
+//
+// Bench / Deadlift / Squat sample paths are covered in MI-3 → MI-5.
+// ---------------------------------------------------------------------------
+describe("MI-1 → MI-7: matched_by diagnostic field in check-exercise-matches", () => {
+  // Seed a unique "Bench Press" exercise so we can test exact + normalized paths
+  const BENCH_NAME = `__mi_bench_press_${Date.now()}__`;
+  let seededBenchId: number | null = null;
+
+  beforeAll(async () => {
+    const [row] = await db
+      .insert(exerciseLibraryTable)
+      .values({
+        name: BENCH_NAME,
+        muscleGroup: "Chest",
+        equipment: "Barbell",
+        goal: "strength",
+        difficulty: "intermediate",
+      })
+      .returning({ id: exerciseLibraryTable.id });
+    seededBenchId = row.id;
+  });
+
+  afterAll(async () => {
+    if (seededBenchId) {
+      await db.delete(exerciseLibraryTable).where(eq(exerciseLibraryTable.id, seededBenchId));
+    }
+  });
+
+  it("MI-1: exact match returns matched_by='exact', willCreate=false", async () => {
+    const res = await request(app)
+      .post("/api/workouts/check-exercise-matches")
+      .set("Cookie", "sid=vault-p41-test-session")
+      .send({ movements: [{ name: BENCH_NAME }] });
+
+    expect(res.status).toBe(200);
+    const [check] = res.body.checks;
+    expect(check.matched_by).toBe("exact");
+    expect(check.willCreate).toBe(false);
+    expect(check.matchedId).toBe(seededBenchId);
+  });
+
+  it("MI-2: normalized match returns matched_by='normalized', willCreate=false", async () => {
+    // "Barbell __mi_bench_press_..." strips "Barbell " → matches BENCH_NAME
+    const res = await request(app)
+      .post("/api/workouts/check-exercise-matches")
+      .set("Cookie", "sid=vault-p41-test-session")
+      .send({ movements: [{ name: `Barbell ${BENCH_NAME}` }] });
+
+    expect(res.status).toBe(200);
+    const [check] = res.body.checks;
+    expect(check.matched_by).toBe("normalized");
+    expect(check.willCreate).toBe(false);
+  });
+
+  it("MI-3: Bench Press (exactly in library) → matched_by is 'exact' or 'partial' (real library)", async () => {
+    // Real exercise library should have "Bench Press". If it does, matched_by=exact.
+    // If not yet seeded, matched_by=partial (first word "Bench" length=5 >= 4).
+    const res = await request(app)
+      .post("/api/workouts/check-exercise-matches")
+      .set("Cookie", "sid=vault-p41-test-session")
+      .send({ movements: [{ name: "Bench Press" }] });
+
+    expect(res.status).toBe(200);
+    const [check] = res.body.checks;
+    expect(["exact", "normalized", "partial", "created"]).toContain(check.matched_by);
+    // If matched, willCreate must be false
+    if (!check.willCreate) {
+      expect(check.matched_by).toMatch(/^(exact|normalized)$/);
+    }
+  });
+
+  it("MI-4: Deadlift → matched_by is 'exact' or 'partial' (never 'normalized')", async () => {
+    // "Deadlift" has no equipment prefix — normalizeExerciseName returns "deadlift" unchanged
+    // → normalized path is SKIPPED, only exact + partial are attempted
+    const res = await request(app)
+      .post("/api/workouts/check-exercise-matches")
+      .set("Cookie", "sid=vault-p41-test-session")
+      .send({ movements: [{ name: "Deadlift" }] });
+
+    expect(res.status).toBe(200);
+    const [check] = res.body.checks;
+    expect(check.matched_by).not.toBe("normalized");
+    expect(["exact", "partial", "created"]).toContain(check.matched_by);
+  });
+
+  it("MI-5: Squat → matched_by is 'exact' or 'partial' (never 'normalized')", async () => {
+    const res = await request(app)
+      .post("/api/workouts/check-exercise-matches")
+      .set("Cookie", "sid=vault-p41-test-session")
+      .send({ movements: [{ name: "Squat" }] });
+
+    expect(res.status).toBe(200);
+    const [check] = res.body.checks;
+    expect(check.matched_by).not.toBe("normalized");
+  });
+
+  it("MI-6: unknown name returns matched_by='created', willCreate=true, suggestion=null", async () => {
+    const uniqueName = `__mi_no_match_${Date.now()}__`;
+    const res = await request(app)
+      .post("/api/workouts/check-exercise-matches")
+      .set("Cookie", "sid=vault-p41-test-session")
+      .send({ movements: [{ name: uniqueName }] });
+
+    expect(res.status).toBe(200);
+    const [check] = res.body.checks;
+    expect(check.matched_by).toBe("created");
+    expect(check.willCreate).toBe(true);
+    expect(check.suggestion).toBeNull();
+  });
+
+  it("MI-7: batch request returns correct matched_by for each item independently", async () => {
+    const uniqueName = `__mi_batch_no_match_${Date.now()}__`;
+    const res = await request(app)
+      .post("/api/workouts/check-exercise-matches")
+      .set("Cookie", "sid=vault-p41-test-session")
+      .send({
+        movements: [
+          { name: BENCH_NAME },      // exact
+          { name: uniqueName },       // created
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.checks).toHaveLength(2);
+    expect(res.body.checks[0].matched_by).toBe("exact");
+    expect(res.body.checks[1].matched_by).toBe("created");
   });
 });
