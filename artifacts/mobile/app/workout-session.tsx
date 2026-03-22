@@ -953,9 +953,21 @@ export default function WorkoutSessionScreen() {
         </View>
       </Modal>
 
-      <Modal visible={swappingId !== null} transparent animationType="slide">
-        <View style={styles.swapOverlay}>
-          <View style={styles.swapSheet}>
+      <Modal
+        visible={swappingId !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={() => { setSwappingId(null); setSwapAlternatives([]); }}
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <Pressable
+            style={styles.swapOverlay}
+            onPress={() => { setSwappingId(null); setSwapAlternatives([]); }}
+          >
+          <View style={styles.swapSheet} onStartShouldSetResponder={() => true}>
             <View style={styles.swapHandle} />
             <Text style={styles.swapTitle}>SWAP EXERCISE</Text>
             {swapLoading ? (
@@ -965,7 +977,7 @@ export default function WorkoutSessionScreen() {
                 <Text style={styles.swapEmpty}>No alternatives available</Text>
               </View>
             ) : (
-              <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false}>
+              <ScrollView style={{ flexShrink: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
                 {swapAlternatives.map((alt) => (
                   <Pressable
                     key={alt.id}
@@ -988,7 +1000,8 @@ export default function WorkoutSessionScreen() {
               <Text style={styles.swapCancelText}>CANCEL</Text>
             </Pressable>
           </View>
-        </View>
+          </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );

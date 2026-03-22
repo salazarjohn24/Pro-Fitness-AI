@@ -882,9 +882,21 @@ export default function WorkoutArchitectScreen() {
           </Pressable>
         </View>
 
-        <Modal visible={swappingId !== null} transparent animationType="slide">
-          <View style={styles.swapOverlay}>
-            <View style={styles.swapSheet}>
+        <Modal
+          visible={swappingId !== null}
+          transparent
+          animationType="slide"
+          onRequestClose={() => { setSwappingId(null); setSwapAlternatives([]); setSwapSearch(""); setSwapSearchResults([]); }}
+        >
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+          >
+            <Pressable
+              style={styles.swapOverlay}
+              onPress={() => { setSwappingId(null); setSwapAlternatives([]); setSwapSearch(""); setSwapSearchResults([]); }}
+            >
+            <View style={styles.swapSheet} onStartShouldSetResponder={() => true}>
               <View style={styles.swapHandle} />
               <Text style={styles.swapTitle}>SWAP EXERCISE</Text>
 
@@ -909,7 +921,7 @@ export default function WorkoutArchitectScreen() {
               {swapLoading ? (
                 <ActivityIndicator color={Colors.orange} style={{ paddingVertical: 24 }} />
               ) : (
-                <ScrollView style={{ maxHeight: 340 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <ScrollView style={{ flexShrink: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
                   {swapSearch.trim().length > 0 ? (
                     <>
                       {swapSearchLoading ? (
@@ -969,7 +981,8 @@ export default function WorkoutArchitectScreen() {
                 <Text style={styles.swapCancelText}>CANCEL</Text>
               </Pressable>
             </View>
-          </View>
+            </Pressable>
+          </KeyboardAvoidingView>
         </Modal>
 
         <Modal visible={infoExercise !== null} transparent animationType="slide">
