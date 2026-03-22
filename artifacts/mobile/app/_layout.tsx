@@ -10,12 +10,14 @@ import { router, Stack } from "expo-router";
 import * as Notifications from "expo-notifications";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
+import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider } from "@/lib/auth";
 import { initNotifications } from "@/lib/notifications";
+import { checkHealthKitAvailableViaAPI, readDiag } from "@/services/healthKit";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -52,6 +54,26 @@ export default function RootLayout() {
       initNotifications();
     }
   }, [fontsLoaded, fontError]);
+
+  useEffect(() => {
+    if (Platform.OS !== "ios") return;
+    (async () => {
+      try {
+        const hkAvailable = await checkHealthKitAvailableViaAPI();
+        const diag = await readDiag();
+        console.log(
+          "[health-diag-startup]",
+          `healthkit_available=${hkAvailable}`,
+          `entitlement_detected=${hkAvailable}`,
+          `auth_request_attempted=${diag.authRequestAttempted}`,
+          `auth_status=${JSON.stringify(diag.authResult ?? {})}`,
+          `init_error=${diag.initHealthKitError ?? "none"}`,
+        );
+      } catch (e) {
+        console.log("[health-diag-startup] error", String(e));
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener(response => {
