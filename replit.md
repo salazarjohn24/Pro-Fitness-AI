@@ -89,7 +89,7 @@ npx eas-cli@latest submit --platform ios --latest
 
 ### Notes
 - HealthKit, push notification credentials, and provisioning profiles are permanently set up — never need to be touched again
-- Current build number as of March 21 2026: **18** (always auto-increment before any EAS build)
+- Current build number as of March 22 2026: **20** (always auto-increment before any EAS build; next build must use **21**)
 - Bundle ID: `app.replit.profitnessai`
 - EAS Project: `@salazarjohn24/mobile`
 - ASC App ID: `6760667643`
@@ -103,14 +103,16 @@ The `exercise_library` table is populated by `lib/db/src/seed-exercises.ts`.
 pnpm --filter @workspace/db run seed:exercises
 ```
 
-**When to run it:**
-- Fresh environment setup (cloned repo, new Replit workspace)
+**Automatic seeding on startup:** The API server (`artifacts/api-server/src/index.ts`) automatically calls `seedExercises()` on every startup. If the table is empty (e.g. fresh production deployment) it seeds all exercises; if rows already exist it exits in milliseconds. This means production will self-seed on the next deployment restart.
+
+**When to run manually (standalone):**
+- Fresh environment setup (cloned repo, new Replit workspace) before the server starts
 - After a full database reset or `push-force` that drops all rows
-- Onboarding a new deployment where the table is empty
+- To force a re-seed: truncate first (`TRUNCATE exercise_library RESTART IDENTITY CASCADE;`) then run the script
 
-**Idempotency:** The script checks for any existing row before inserting. If the table already has data it exits cleanly — it will never duplicate records. To force a re-seed after a partial failure, truncate the table first (`TRUNCATE exercise_library RESTART IDENTITY CASCADE;`) then run the script again.
+**Idempotency:** The script checks for any existing row before inserting. It will never duplicate records.
 
-**Current state (March 22 2026):** 51 exercises seeded — legs, chest, back, shoulders, arms, core; equipment types: barbell, dumbbell, cable, machine, bodyweight; difficulties: beginner, intermediate, advanced.
+**Current state (March 22 2026):** 49 exercises seeded via `seed-exercises.ts` — legs, chest, back, shoulders, arms, core; equipment types: barbell, dumbbell, cable, machine, bodyweight; difficulties: beginner, intermediate, advanced.
 
 ## Pre-Release Gate (P5 Complete)
 

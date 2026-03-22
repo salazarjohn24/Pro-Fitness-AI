@@ -53,25 +53,38 @@ const exercises = [
   { name: "Arnold Press", muscleGroup: "shoulders", equipment: "dumbbell", goal: "hypertrophy", difficulty: "intermediate", youtubeUrl: "https://www.youtube.com/watch?v=6Z15_WdXmVw", instructions: ["Sit with dumbbells at shoulder height palms facing you", "Press up while rotating palms to face forward", "Full lockout overhead", "Reverse the rotation coming down", "Return to starting position with palms facing you", "Smooth continuous motion throughout"], commonMistakes: ["Not rotating fully", "Going too fast", "Using too heavy weight"], primaryMuscles: ["anterior deltoids", "medial deltoids"], secondaryMuscles: ["triceps"], tertiaryMuscles: ["upper pectorals", "traps"], alternativeIds: [10, 26] },
 ];
 
-async function seed() {
+export async function seedExercises(dbInstance = db): Promise<void> {
   console.log("Seeding exercise library...");
-  
-  const existing = await db.select({ id: exerciseLibraryTable.id }).from(exerciseLibraryTable).limit(1);
+
+  const existing = await dbInstance
+    .select({ id: exerciseLibraryTable.id })
+    .from(exerciseLibraryTable)
+    .limit(1);
   if (existing.length > 0) {
     console.log("Exercise library already seeded, skipping.");
     return;
   }
 
   for (const exercise of exercises) {
-    await db.insert(exerciseLibraryTable).values(exercise);
+    await dbInstance.insert(exerciseLibraryTable).values(exercise);
   }
-  
+
   console.log(`Seeded ${exercises.length} exercises.`);
 }
 
-seed()
-  .then(() => process.exit(0))
-  .catch((err) => {
-    console.error("Seed error:", err);
-    process.exit(1);
-  });
+const _isDirectRun = (() => {
+  try {
+    return import.meta.url === `file://${process.argv[1]}`;
+  } catch {
+    return false;
+  }
+})();
+
+if (_isDirectRun) {
+  seedExercises()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error("Seed error:", err);
+      process.exit(1);
+    });
+}

@@ -1,4 +1,5 @@
 import app from "./app";
+import { seedExercises } from "@workspace/db";
 
 const rawPort = process.env["PORT"];
 
@@ -16,6 +17,10 @@ if (Number.isNaN(port) || port <= 0) {
 
 app.listen(port, () => {
   console.log(`Server listening on port ${port}`);
+
+  seedExercises().catch((err: any) =>
+    console.warn("Startup exercise seed failed (non-fatal):", err.message)
+  );
 
   if (process.env.NODE_ENV === "production" && process.env.PRODUCTION_ORIGIN) {
     const healthUrl = `${process.env.PRODUCTION_ORIGIN}/api/healthz`;
