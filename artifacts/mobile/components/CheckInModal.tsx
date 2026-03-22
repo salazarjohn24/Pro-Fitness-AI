@@ -304,42 +304,45 @@ export function CheckInModal({ visible, onClose, onComplete, initialData, isSubm
           )}
 
           {phase === "notes" && (
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ flexGrow: 1 }}
-            >
-              <View style={styles.questionBlock}>
-                <View style={[styles.questionIcon, { backgroundColor: "#A78BFA20" }]}>
-                  <Feather name="edit-3" size={24} color="#A78BFA" />
-                </View>
-                <Text style={styles.questionLabel}>NOTES</Text>
-                <Text style={styles.questionText}>Anything else?</Text>
-              </View>
-
-              <TextInput
-                style={styles.notesInput}
-                placeholder="Optional: How are you feeling? Any context for today..."
-                placeholderTextColor={Colors.textSubtle}
-                value={notes}
-                onChangeText={setNotes}
-                multiline
-                numberOfLines={3}
-                textAlignVertical="top"
-                blurOnSubmit
-                returnKeyType="done"
-                onSubmitEditing={() => Keyboard.dismiss()}
-              />
-
-              <Pressable
-                onPress={() => Keyboard.dismiss()}
-                style={styles.dismissKeyboardBtn}
+            <>
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ flexGrow: 1 }}
               >
-                <Feather name="chevron-down" size={14} color={Colors.textSubtle} />
-                <Text style={styles.dismissKeyboardText}>Dismiss keyboard</Text>
-              </Pressable>
+                <View style={styles.questionBlock}>
+                  <View style={[styles.questionIcon, { backgroundColor: "#A78BFA20" }]}>
+                    <Feather name="edit-3" size={24} color="#A78BFA" />
+                  </View>
+                  <Text style={styles.questionLabel}>NOTES</Text>
+                  <Text style={styles.questionText}>Anything else?</Text>
+                </View>
 
-              <View style={styles.bodyMapFooter}>
+                <TextInput
+                  style={styles.notesInput}
+                  placeholder="Optional: How are you feeling? Any context for today..."
+                  placeholderTextColor={Colors.textSubtle}
+                  value={notes}
+                  onChangeText={setNotes}
+                  multiline
+                  numberOfLines={3}
+                  textAlignVertical="top"
+                  blurOnSubmit
+                  returnKeyType="done"
+                  onSubmitEditing={() => Keyboard.dismiss()}
+                />
+
+                <Pressable
+                  onPress={() => Keyboard.dismiss()}
+                  style={styles.dismissKeyboardBtn}
+                >
+                  <Feather name="chevron-down" size={14} color={Colors.textSubtle} />
+                  <Text style={styles.dismissKeyboardText}>Dismiss keyboard</Text>
+                </Pressable>
+              </ScrollView>
+
+              {/* Sticky footer — stays above keyboard so COMPLETE is always reachable */}
+              <View style={[styles.bodyMapFooter, { marginTop: 12 }]}>
                 <Pressable onPress={handleBack} style={styles.backBtn}>
                   <Feather name="arrow-left" size={14} color={Colors.textSubtle} />
                   <Text style={styles.backBtnText}>Back</Text>
@@ -353,7 +356,7 @@ export function CheckInModal({ visible, onClose, onComplete, initialData, isSubm
                   <Text style={styles.continueBtnText}>{isSubmitting ? "SAVING..." : "COMPLETE"}</Text>
                 </Pressable>
               </View>
-            </ScrollView>
+            </>
           )}
         </View>
       </KeyboardAvoidingView>

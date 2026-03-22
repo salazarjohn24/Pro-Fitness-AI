@@ -5,6 +5,7 @@ import React, { useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -465,7 +466,10 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-      <View style={styles.backdrop}>
+      <KeyboardAvoidingView
+        style={styles.backdrop}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
         <Pressable style={styles.backdropTouch} onPress={handleClose} />
         <View style={styles.sheet}>
           <View style={styles.handle} />
@@ -876,7 +880,7 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
           )}
 
           {step === "manual" && (
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 520 }}>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 520 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
               <Text style={styles.overline}>MANUAL ENTRY</Text>
               <Text style={styles.title}>Log your{"\n"}<Text style={styles.titleAccent}>workout</Text></Text>
 
@@ -1002,7 +1006,7 @@ export function ActivityImportModal({ visible, onClose, onComplete, onManualSubm
             </ScrollView>
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
 
       <DatePickerSheet
         visible={datePickerOpen}

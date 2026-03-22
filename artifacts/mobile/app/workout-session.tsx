@@ -5,6 +5,8 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
+  KeyboardAvoidingView,
   Linking,
   Modal,
   Platform,
@@ -367,13 +369,20 @@ export default function WorkoutSessionScreen() {
 
   if (showReview) {
     return (
-      <View style={[styles.container, { paddingTop: topPad }]}>
+      <KeyboardAvoidingView
+        style={[styles.container, { paddingTop: topPad }]}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
         <View style={styles.topBar}>
           <View style={{ width: 36 }} />
           <Text style={styles.topBarTitle}>REVIEW SESSION</Text>
           <View style={{ width: 36 }} />
         </View>
-        <ScrollView contentContainerStyle={[styles.questionnaireContainer, { paddingBottom: botPad + 20 }]}>
+        <ScrollView
+          contentContainerStyle={[styles.questionnaireContainer, { paddingBottom: botPad + 20 }]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+        >
           <View style={styles.finishedIcon}>
             <Feather name="check-square" size={32} color={Colors.highlight} />
           </View>
@@ -431,6 +440,8 @@ export default function WorkoutSessionScreen() {
                 placeholderTextColor={Colors.textSubtle}
                 value={newExName}
                 onChangeText={setNewExName}
+                returnKeyType="done"
+                blurOnSubmit
               />
               <View style={styles.addExRow}>
                 <View style={styles.addExField}>
@@ -466,6 +477,9 @@ export default function WorkoutSessionScreen() {
                     value={newExWeight}
                     onChangeText={setNewExWeight}
                     keyboardType="default"
+                    returnKeyType="done"
+                    blurOnSubmit
+                    onSubmitEditing={handleAddExercise}
                   />
                 </View>
               </View>
@@ -493,25 +507,42 @@ export default function WorkoutSessionScreen() {
               placeholderTextColor={Colors.textSubtle}
               multiline
               numberOfLines={4}
+              blurOnSubmit
+              returnKeyType="done"
+              onSubmitEditing={() => Keyboard.dismiss()}
             />
+            <Pressable
+              onPress={() => Keyboard.dismiss()}
+              style={styles.dismissKbBtn}
+            >
+              <Feather name="chevron-down" size={13} color={Colors.textSubtle} />
+              <Text style={styles.dismissKbText}>Dismiss keyboard</Text>
+            </Pressable>
           </View>
 
           <Pressable
             style={({ pressed }) => [styles.doneBtn, { marginTop: 8, opacity: pressed ? 0.9 : 1 }]}
-            onPress={() => { setShowReview(false); setShowQuestionnaire(true); }}
+            onPress={() => { Keyboard.dismiss(); setShowReview(false); setShowQuestionnaire(true); }}
           >
             <Feather name="arrow-right" size={16} color={Colors.bgPrimary} />
             <Text style={styles.doneBtnText}>LOOKS GOOD — CONTINUE</Text>
           </Pressable>
         </ScrollView>
-      </View>
+      </KeyboardAvoidingView>
     );
   }
 
   if (showQuestionnaire) {
     return (
-      <View style={[styles.container, { paddingTop: topPad }]}>
-        <ScrollView contentContainerStyle={[styles.questionnaireContainer, { paddingBottom: botPad + 20 }]}>
+      <KeyboardAvoidingView
+        style={[styles.container, { paddingTop: topPad }]}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <ScrollView
+          contentContainerStyle={[styles.questionnaireContainer, { paddingBottom: botPad + 20 }]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+        >
           <View style={styles.finishedIcon}>
             <Feather name="clipboard" size={32} color={Colors.highlight} />
           </View>
@@ -593,7 +624,17 @@ export default function WorkoutSessionScreen() {
               placeholderTextColor={Colors.textSubtle}
               multiline
               numberOfLines={3}
+              blurOnSubmit
+              returnKeyType="done"
+              onSubmitEditing={() => Keyboard.dismiss()}
             />
+            <Pressable
+              onPress={() => Keyboard.dismiss()}
+              style={styles.dismissKbBtn}
+            >
+              <Feather name="chevron-down" size={13} color={Colors.textSubtle} />
+              <Text style={styles.dismissKbText}>Dismiss keyboard</Text>
+            </Pressable>
           </View>
 
           <Pressable
@@ -604,7 +645,7 @@ export default function WorkoutSessionScreen() {
             <Text style={styles.doneBtnText}>SUBMIT FEEDBACK & FINISH</Text>
           </Pressable>
         </ScrollView>
-      </View>
+      </KeyboardAvoidingView>
     );
   }
 
@@ -729,10 +770,10 @@ export default function WorkoutSessionScreen() {
 
       <View style={styles.progressBlock}>
         <View style={styles.progressRow}>
-          <Text style={styles.workoutTitle}>{workoutData.workoutTitle}</Text>
+          <Text style={styles.workoutTitle} numberOfLines={1}>{workoutData.workoutTitle}</Text>
           <Text style={styles.progressPct}>{pct}%</Text>
         </View>
-        <Text style={styles.workoutSub}>{workoutData.subtitle}</Text>
+        <Text style={styles.workoutSub} numberOfLines={1}>{workoutData.subtitle}</Text>
         <View style={styles.progressTrack}>
           <View style={[styles.progressFill, { width: `${pct}%` }]} />
         </View>
@@ -749,6 +790,8 @@ export default function WorkoutSessionScreen() {
         style={styles.scrollArea}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: botPad + 80 }]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         {categoryOrder.map(cat => {
           const catExercises = groupedExercises[cat];
@@ -812,6 +855,8 @@ export default function WorkoutSessionScreen() {
                           value={log.weight}
                           onChangeText={(t) => updateSetWeight(ex.exerciseId, i, t)}
                           placeholderTextColor={Colors.textSubtle}
+                          returnKeyType="done"
+                          blurOnSubmit
                         />
                         <View style={styles.repsControl}>
                           <Pressable
@@ -830,6 +875,8 @@ export default function WorkoutSessionScreen() {
                             }}
                             keyboardType="numeric"
                             placeholderTextColor={Colors.textSubtle}
+                            returnKeyType="done"
+                            blurOnSubmit
                           />
                           <Pressable
                             onPress={() => updateSetReps(ex.exerciseId, i, log.reps + 1)}
@@ -1017,6 +1064,9 @@ const styles = StyleSheet.create({
     color: Colors.text,
     fontStyle: "italic",
     textTransform: "uppercase",
+    flex: 1,
+    flexShrink: 1,
+    marginRight: 8,
   },
   workoutSub: {
     fontSize: 10,
@@ -1029,6 +1079,7 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_900Black",
     color: Colors.highlight,
     fontStyle: "italic",
+    flexShrink: 0,
   },
   progressTrack: { height: 4, backgroundColor: "#292927", borderRadius: 4, overflow: "hidden", marginTop: 2 },
   progressFill: { height: "100%", backgroundColor: Colors.orange, borderRadius: 4 },
@@ -1524,6 +1575,20 @@ const styles = StyleSheet.create({
     color: Colors.text,
     minHeight: 80,
     textAlignVertical: "top",
+  },
+  dismissKbBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    alignSelf: "flex-end",
+    marginTop: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+  },
+  dismissKbText: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
   },
   aiBadge: {
     flexDirection: "row",
