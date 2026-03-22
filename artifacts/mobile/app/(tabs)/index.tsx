@@ -741,7 +741,7 @@ export default function StatusScreen() {
             <BentoCard>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                 <Text style={styles.sectionLabel}>Recent Activity</Text>
-                <Pressable onPress={() => router.push("/external-workouts" as any)}>
+                <Pressable onPress={() => router.push("/activity-history" as any)}>
                   <Text style={{ fontSize: 11, fontFamily: "Inter_700Bold", color: Colors.textSubtle }}>All →</Text>
                 </Pressable>
               </View>

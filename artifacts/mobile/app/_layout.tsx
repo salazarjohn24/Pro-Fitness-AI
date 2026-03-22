@@ -36,6 +36,7 @@ function RootLayoutNav() {
       <Stack.Screen name="workout-architect" options={{ headerShown: false, animation: "slide_from_bottom" }} />
       <Stack.Screen name="workout-detail" options={{ headerShown: false, animation: "slide_from_right" }} />
       <Stack.Screen name="external-workouts" options={{ headerShown: false, animation: "slide_from_right" }} />
+      <Stack.Screen name="activity-history" options={{ headerShown: false, animation: "slide_from_right" }} />
       <Stack.Screen name="exercise/[id]" options={{ headerShown: false, animation: "slide_from_right" }} />
     </Stack>
   );
