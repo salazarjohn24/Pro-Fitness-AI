@@ -1162,6 +1162,17 @@ export default function ProfileScreen() {
         <Text style={styles.logoutText}>SIGN OUT</Text>
       </Pressable>
 
+      <Pressable
+        onLongPress={() => router.push("/health-debug")}
+        delayLongPress={1500}
+        hitSlop={8}
+        style={{ alignSelf: "center", paddingVertical: 10, paddingHorizontal: 16, marginTop: 4 }}
+      >
+        <Text style={{ color: "#333", fontFamily: "Inter_400Regular", fontSize: 11 }}>
+          v1.0.0 (23)
+        </Text>
+      </Pressable>
+
       <AppTourOverlay visible={showTour} onDone={() => setShowTour(false)} />
 
       <Modal

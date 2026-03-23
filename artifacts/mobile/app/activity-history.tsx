@@ -107,12 +107,14 @@ export default function ActivityHistoryScreen() {
   const countExternal = workouts.filter(w => w.type === "external" && w.source !== "apple_health").length;
   const countAppleHealth = workouts.filter(w => w.source === "apple_health").length;
 
-  const filterDefs: Array<{ key: FilterKey; count: number }> = [
-    { key: "all", count: countAll },
-    { key: "internal", count: countInternal },
-    { key: "external", count: countExternal },
-    { key: "apple_health", count: countAppleHealth },
-  ].filter(f => f.count > 0 || f.key === "all");
+  const filterDefs: Array<{ key: FilterKey; count: number }> = (
+    [
+      { key: "all" as FilterKey, count: countAll },
+      { key: "internal" as FilterKey, count: countInternal },
+      { key: "external" as FilterKey, count: countExternal },
+      { key: "apple_health" as FilterKey, count: countAppleHealth },
+    ] as Array<{ key: FilterKey; count: number }>
+  ).filter(f => f.count > 0 || f.key === "all");
 
   const filtered = filterWorkouts(workouts, activeFilter);
 

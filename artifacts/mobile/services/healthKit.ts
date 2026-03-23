@@ -189,9 +189,10 @@ export function requestHealthKitPermissions(): Promise<boolean> {
 
     const permissions = buildPermissions();
 
-    // FIX-4: mark attempt BEFORE initHealthKit fires
-    await writeDiag({ authRequestAttempted: true, lastSyncAttemptAt: new Date().toISOString() });
-    log("permission", "init_healthkit_start");
+    // FIX-4: mark attempt BEFORE initHealthKit fires; also record exact call timestamp
+    const initCalledAt = new Date().toISOString();
+    await writeDiag({ authRequestAttempted: true, initCalledAt, lastSyncAttemptAt: initCalledAt });
+    log("permission", "init_healthkit_start", { init_called_at: initCalledAt });
 
     try {
       AppleHealthKit.initHealthKit(permissions, async (error: string) => {

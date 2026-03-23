@@ -730,12 +730,14 @@ export default function StatusScreen() {
           });
 
           type FilterKey = "all" | "internal" | "external" | "apple_health";
-          const filters: Array<{ key: FilterKey; label: string; count: number }> = [
-            { key: "all", label: "All", count: countAll },
-            { key: "internal", label: "Internal", count: countInternal },
-            { key: "external", label: "External", count: countExternal },
-            { key: "apple_health", label: "Apple Health", count: countAppleHealth },
-          ].filter(f => f.count > 0 || f.key === "all");
+          const filters: Array<{ key: FilterKey; label: string; count: number }> = (
+            [
+              { key: "all" as FilterKey, label: "All", count: countAll },
+              { key: "internal" as FilterKey, label: "Internal", count: countInternal },
+              { key: "external" as FilterKey, label: "External", count: countExternal },
+              { key: "apple_health" as FilterKey, label: "Apple Health", count: countAppleHealth },
+            ] as Array<{ key: FilterKey; label: string; count: number }>
+          ).filter(f => f.count > 0 || f.key === "all");
 
           return (
             <BentoCard>

@@ -37,6 +37,7 @@ function RootLayoutNav() {
       <Stack.Screen name="workout-detail" options={{ headerShown: false, animation: "slide_from_right" }} />
       <Stack.Screen name="external-workouts" options={{ headerShown: false, animation: "slide_from_right" }} />
       <Stack.Screen name="activity-history" options={{ headerShown: false, animation: "slide_from_right" }} />
+      <Stack.Screen name="health-debug" options={{ headerShown: false, animation: "slide_from_bottom" }} />
       <Stack.Screen name="exercise/[id]" options={{ headerShown: false, animation: "slide_from_right" }} />
     </Stack>
   );
@@ -64,11 +65,19 @@ export default function RootLayout() {
         const diag = await readDiag();
         console.log(
           "[health-diag-startup]",
+          `build=23`,
           `healthkit_available=${hkAvailable}`,
           `entitlement_detected=${hkAvailable}`,
-          `auth_request_attempted=${diag.authRequestAttempted}`,
-          `auth_status=${JSON.stringify(diag.authResult ?? {})}`,
+          `init_called=${diag.initCalledAt !== null}`,
+          `init_called_at=${diag.initCalledAt ?? "never"}`,
           `init_error=${diag.initHealthKitError ?? "none"}`,
+          `auth_request_attempted=${diag.authRequestAttempted}`,
+          `auth_status_workout=${diag.authResult?.Workout ?? "—"}`,
+          `auth_status_steps=${diag.authResult?.Steps ?? "—"}`,
+          `auth_status_energy=${diag.authResult?.ActiveEnergyBurned ?? "—"}`,
+          `last_stage=${diag.lastStageReached ?? "none"}`,
+          `last_error_code=${diag.lastErrorCode ?? "none"}`,
+          `last_sync_at=${diag.lastSyncAttemptAt ?? "never"}`,
         );
       } catch (e) {
         console.log("[health-diag-startup] error", String(e));

@@ -216,6 +216,8 @@ export interface DiagnosticState {
   hkAvailable: boolean | null;
   /** True if initHealthKit was invoked at least once */
   authRequestAttempted: boolean;
+  /** ISO timestamp of the moment initHealthKit was called (null = never called) */
+  initCalledAt: string | null;
   /** Per-category auth status from getAuthStatus() after initHealthKit */
   authResult: Record<AuthCategory, HealthAuthStatus> | null;
   /** Raw error string from initHealthKit callback, null on success */
@@ -231,6 +233,7 @@ export const DIAG_INITIAL: DiagnosticState = {
   hkAvailableChecked: false,
   hkAvailable: null,
   authRequestAttempted: false,
+  initCalledAt: null,
   authResult: null,
   initHealthKitError: null,
   lastStageReached: null,
