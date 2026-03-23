@@ -111,6 +111,7 @@ export default function VaultScreen() {
       style={styles.container}
       contentContainerStyle={[styles.content, { paddingTop: topPad + 20, paddingBottom: botPad + 100 }]}
       showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
     >
       <View style={styles.header}>
         <Text style={styles.dateText}>EXERCISE VAULT</Text>

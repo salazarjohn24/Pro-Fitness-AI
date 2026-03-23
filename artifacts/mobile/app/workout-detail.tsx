@@ -5,6 +5,7 @@ import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -275,7 +276,10 @@ export default function WorkoutDetailScreen() {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: topPad }]}>
+    <KeyboardAvoidingView
+      style={[styles.container, { paddingTop: topPad }]}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
       <View style={styles.topBar}>
         <Pressable
           onPress={handleBackPress}
@@ -300,7 +304,7 @@ export default function WorkoutDetailScreen() {
         )}
       </View>
 
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: botPad + 32 }]} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: botPad + 32 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
 
         {/* Source + Date badge row */}
         <View style={styles.metaRow}>
@@ -570,7 +574,7 @@ export default function WorkoutDetailScreen() {
           </Pressable>
         )}
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

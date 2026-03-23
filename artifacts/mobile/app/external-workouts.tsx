@@ -5,6 +5,7 @@ import React, { useState } from "react";
 import {
   Alert,
   FlatList,
+  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -251,7 +252,10 @@ export default function ExternalWorkoutsScreen() {
 
   if (editingWorkout) {
     return (
-      <View style={[styles.container, { paddingTop: topPad }]}>
+      <KeyboardAvoidingView
+        style={[styles.container, { paddingTop: topPad }]}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
         <View style={styles.topBar}>
           <Pressable onPress={() => setEditingWorkout(null)} style={styles.backBtn}>
             <Feather name="arrow-left" size={20} color={Colors.text} />
@@ -260,7 +264,7 @@ export default function ExternalWorkoutsScreen() {
           <View style={{ width: 40 }} />
         </View>
 
-        <ScrollView style={styles.editScroll} contentContainerStyle={{ paddingBottom: botPad + 40 }} showsVerticalScrollIndicator={false}>
+        <ScrollView style={styles.editScroll} contentContainerStyle={{ paddingBottom: botPad + 40 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
           <View style={styles.formGroup}>
             <Text style={styles.fieldLabel}>WORKOUT NAME</Text>
             <TextInput
@@ -361,7 +365,7 @@ export default function ExternalWorkoutsScreen() {
             <Text style={styles.saveBtnText}>SAVE CHANGES</Text>
           </Pressable>
         </ScrollView>
-      </View>
+      </KeyboardAvoidingView>
     );
   }
 

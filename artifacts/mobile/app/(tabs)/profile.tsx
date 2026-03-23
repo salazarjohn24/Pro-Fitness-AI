@@ -19,6 +19,7 @@ type FeatherIcon = ComponentProps<typeof Feather>["name"];
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Linking,
   Modal,
   Platform,
@@ -372,10 +373,12 @@ export default function ProfileScreen() {
   }
 
   return (
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
     <ScrollView
       style={styles.container}
       contentContainerStyle={[styles.content, { paddingTop: topPad + 20, paddingBottom: botPad + 100 }]}
       showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
     >
       <View style={styles.header}>
         <Text style={styles.sectionLabel}>ATHLETE PROFILE</Text>
@@ -1183,7 +1186,7 @@ export default function ProfileScreen() {
       >
         <View style={styles.feedbackBackdrop}>
           <Pressable style={styles.feedbackBackdropTouch} onPress={() => setFeedbackModalOpen(false)} />
-          <View style={styles.feedbackSheet}>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.feedbackSheet}>
             <View style={styles.feedbackHandle} />
             <View style={styles.feedbackHeader}>
               <Feather name="message-square" size={16} color={Colors.orange} />
@@ -1242,7 +1245,7 @@ export default function ProfileScreen() {
                 </Pressable>
               </>
             )}
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
@@ -1448,6 +1451,7 @@ export default function ProfileScreen() {
         </View>
       </Modal>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
