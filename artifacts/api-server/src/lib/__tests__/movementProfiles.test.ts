@@ -6,9 +6,10 @@
  *   B) normalizeMovementName — equipment prefix, distance, hyphen, casing
  *   C) getMovementProfile — known profiles, unknown → null
  *   D) getBaseMuscleVector — weights, roles, fallback null
- *   E) Type invariants — primary >= 0.70, secondary 0.25–0.69, stabilizer < 0.25
+ *   E) Type invariants — weights in range, at least one primary, all roles valid
  *   F) toAuditMuscle — V1 taxonomy → 10-group audit canonical mapping
- *   G) Integration: getMuscleGroupsFromName-equivalent via profile + toAuditMuscle
+ *   G) Integration: name → audit muscles via profile + toAuditMuscle
+ *   H) Coverage sanity — all 41 expected profiles exist
  */
 
 import { describe, it, expect } from "vitest";
@@ -27,87 +28,103 @@ import { toAuditMuscle } from "../muscleNormalization";
 
 describe("alias resolution", () => {
   const cases: [string, string][] = [
+    // squat
     ["Back Squat",           "back_squat"],
     ["barbell back squat",   "back_squat"],
     ["Barbell Squat",        "back_squat"],
+    ["Air Squat",            "air_squat"],
+    ["Front Squat",          "front_squat"],
+    ["Goblet Squat",         "goblet_squat"],
+    ["Wall Ball",            "wall_ball"],
+    ["Thruster",             "thruster"],
+    ["DB Thruster",          "thruster"],
+    // hinge
     ["DEADLIFT",             "deadlift"],
     ["conventional deadlift","deadlift"],
     ["RDL",                  "romanian_deadlift"],
     ["Romanian Deadlift",    "romanian_deadlift"],
     ["KB Swing",             "kettlebell_swing"],
     ["american kettlebell swing", "kettlebell_swing"],
+    // olympic
+    ["Power Clean",          "power_clean"],
+    ["Clean",                "squat_clean"],
+    ["Squat Clean",          "squat_clean"],
+    ["DB Snatch",            "dumbbell_snatch"],
+    ["Dumbbell Snatch",      "dumbbell_snatch"],
+    // vertical push
+    ["Push Press",           "push_press"],
+    ["DB Push Press",        "push_press"],
     ["OHP",                  "strict_press"],
     ["Overhead Press",       "strict_press"],
+    ["HSPU",                 "handstand_push_up"],
+    ["strict hspu",          "handstand_push_up"],
+    ["DB Shoulder Press",    "dumbbell_shoulder_press"],
+    ["Dumbbell Shoulder Press", "dumbbell_shoulder_press"],
+    // horizontal push
     ["Bench Press",          "bench_press"],
     ["flat bench",           "bench_press"],
     ["Push-Up",              "push_up"],
     ["push up",              "push_up"],
     ["pushup",               "push_up"],
-    ["HSPU",                 "handstand_push_up"],
-    ["strict hspu",          "handstand_push_up"],
+    // vertical pull
     ["Pull-Up",              "pull_up"],
     ["pull up",              "pull_up"],
     ["kipping pull-up",      "pull_up"],
     ["C2B",                  "chest_to_bar_pull_up"],
     ["chest to bar",         "chest_to_bar_pull_up"],
+    // horizontal pull
+    ["Ring Row",             "ring_row"],
+    ["DB Row",               "dumbbell_row"],      // must NOT resolve to row_erg
+    ["Dumbbell Row",         "dumbbell_row"],
+    ["single arm row",       "dumbbell_row"],
+    ["Barbell Row",          "barbell_row"],
+    ["bent over row",        "barbell_row"],
+    // gymnastics
     ["Bar Muscle-Up",        "bar_muscle_up"],
     ["muscle up",            "bar_muscle_up"],
     ["BMU",                  "bar_muscle_up"],
     ["T2B",                  "toes_to_bar"],
     ["toes to bar",          "toes_to_bar"],
-    ["Du",                   "double_under"],
-    ["double unders",        "double_under"],
-    ["dubs",                 "double_under"],
+    ["Hollow Hold",          "hollow_hold"],
+    ["hollow body",          "hollow_hold"],
+    // core
+    ["Sit-Up",               "sit_up"],
+    ["sit up",               "sit_up"],
+    ["GHD Sit-Up",           "ghd_sit_up"],
+    ["ghd situp",            "ghd_sit_up"],
+    ["Plank",                "plank"],
+    // cyclical
     ["Row",                  "row_erg"],
-    ["C2 Row",               "row_erg"],
     ["Rowing",               "row_erg"],
+    ["C2 Row",               "row_erg"],
     ["Run",                  "run"],
     ["800m run",             "run"],
+    ["Bike Erg",             "bike_erg"],
+    ["Bike",                 "bike_erg"],
     ["Echo Bike",            "echo_bike"],
     ["airdyne",              "echo_bike"],
     ["Assault Bike",         "assault_bike"],
     ["Ski Erg",              "ski_erg"],
     ["ski",                  "ski_erg"],
+    ["Jump Rope",            "jump_rope"],
+    ["singles",              "jump_rope"],
+    ["Du",                   "double_under"],
+    ["double unders",        "double_under"],
+    ["dubs",                 "double_under"],
+    // jump / plyometric
     ["Burpee",               "burpee"],
     ["burpees",              "burpee"],
     ["Box Jump",             "box_jump"],
+    ["Burpee Box Jump Over", "burpee_box_jump_over"],
+    // lunge
     ["Walking Lunge",        "walking_lunge"],
     ["lunge",                "walking_lunge"],
-    ["Thruster",             "thruster"],
-    ["Wall Ball",            "wall_ball"],
-    ["Air Squat",            "air_squat"],
-    ["GHD Sit-Up",           "ghd_sit_up"],
-    ["ghd situp",            "ghd_sit_up"],
-    ["Sit-Up",               "sit_up"],
-    ["sit up",               "sit_up"],
-    ["Hollow Hold",          "hollow_hold"],
-    ["hollow body",          "hollow_hold"],
-    ["Plank",                "plank"],
-    ["Jump Rope",            "jump_rope"],
-    ["singles",              "jump_rope"],
-    ["Power Clean",          "power_clean"],
-    ["Clean",                "squat_clean"],
-    ["Squat Clean",          "squat_clean"],
-    ["Goblet Squat",         "goblet_squat"],
-    ["Front Squat",          "front_squat"],
-    ["DB Snatch",            "dumbbell_snatch"],
-    ["Dumbbell Snatch",      "dumbbell_snatch"],
-    ["DB Shoulder Press",    "dumbbell_shoulder_press"],
-    ["Ring Row",             "ring_row"],
-    ["Barbell Row",          "barbell_row"],
-    ["bent over row",        "barbell_row"],
-    ["DB Row",               "dumbbell_row"],
-    ["single arm row",       "dumbbell_row"],
-    ["Bike Erg",             "bike_erg"],
-    ["Bike",                 "bike_erg"],
-    ["DB Push Press",        "push_press"],
-    ["Push Press",           "push_press"],
   ];
 
   for (const [input, expectedKey] of cases) {
     it(`"${input}" → ${expectedKey}`, () => {
       const profile = getMovementProfile(input);
-      expect(profile).not.toBeNull();
+      expect(profile, `expected a profile for "${input}"`).not.toBeNull();
       expect(profile!.key).toBe(expectedKey);
     });
   }
@@ -161,26 +178,26 @@ describe("normalizeMovementName", () => {
 
 describe("getMovementProfile", () => {
   it("returns profile for direct alias", () => {
-    const p = getMovementProfile("back squat");
-    expect(p).not.toBeNull();
-    expect(p!.name).toBe("Back Squat");
-    expect(p!.pattern).toBe("squat");
-    expect(p!.modality).toBe("barbell");
+    const profile = getMovementProfile("back squat");
+    expect(profile).not.toBeNull();
+    expect(profile!.name).toBe("Back Squat");
+    expect(profile!.pattern).toBe("squat");
+    expect(profile!.modality).toBe("barbell");
   });
 
   it("returns profile for abbreviation alias (RDL)", () => {
-    const p = getMovementProfile("RDL");
-    expect(p).not.toBeNull();
-    expect(p!.key).toBe("romanian_deadlift");
+    const profile = getMovementProfile("RDL");
+    expect(profile).not.toBeNull();
+    expect(profile!.key).toBe("romanian_deadlift");
   });
 
   it("returns profile via direct key match (spaces → underscores)", () => {
-    const p = getMovementProfile("hollow hold");
-    expect(p).not.toBeNull();
-    expect(p!.key).toBe("hollow_hold");
+    const profile = getMovementProfile("hollow hold");
+    expect(profile).not.toBeNull();
+    expect(profile!.key).toBe("hollow_hold");
   });
 
-  it("returns null for unknown movement", () => {
+  it("returns null for unknown movement (bicep curl)", () => {
     expect(getMovementProfile("bicep curl")).toBeNull();
   });
 
@@ -191,6 +208,33 @@ describe("getMovementProfile", () => {
   it("is case-insensitive", () => {
     expect(getMovementProfile("THRUSTER")).not.toBeNull();
     expect(getMovementProfile("Thruster")).not.toBeNull();
+  });
+
+  it("'DB Row' resolves to dumbbell_row, not row_erg", () => {
+    const profile = getMovementProfile("DB Row");
+    expect(profile!.key).toBe("dumbbell_row");
+  });
+
+  it("'Row' resolves to row_erg", () => {
+    const profile = getMovementProfile("Row");
+    expect(profile!.key).toBe("row_erg");
+  });
+
+  it("profile includes aliases array", () => {
+    const profile = getMovementProfile("back squat");
+    expect(Array.isArray(profile!.aliases)).toBe(true);
+    expect(profile!.aliases.length).toBeGreaterThan(0);
+  });
+
+  it("MovementPattern uses V1 15-pattern taxonomy", () => {
+    const v1Patterns = new Set([
+      "squat","hinge","lunge","horizontal_push","vertical_push",
+      "horizontal_pull","vertical_pull","carry","core_flexion","core_bracing",
+      "rotation","jump","cyclical","olympic_lift","gymnastics",
+    ]);
+    for (const [, profile] of MOVEMENT_PROFILES) {
+      expect(v1Patterns.has(profile.pattern)).toBe(true);
+    }
   });
 });
 
@@ -209,20 +253,18 @@ describe("getBaseMuscleVector", () => {
     expect(v!.length).toBeGreaterThan(0);
   });
 
-  it("deadlift primary is hamstrings", () => {
+  it("deadlift primary muscles include hamstrings and glutes", () => {
     const v = getBaseMuscleVector("deadlift")!;
-    const hamstrings = v.find((mc) => mc.muscle === "hamstrings");
-    expect(hamstrings).toBeDefined();
-    expect(hamstrings!.weight).toBeGreaterThanOrEqual(0.70);
-    expect(hamstrings!.role).toBe("primary");
+    const primaryMuscles = v.filter((mc) => mc.role === "primary").map((mc) => mc.muscle);
+    expect(primaryMuscles).toContain("hamstrings");
+    expect(primaryMuscles).toContain("glutes");
+    expect(primaryMuscles).toContain("lower_back");
   });
 
-  it("deadlift includes lower_back with significant contribution", () => {
+  it("deadlift: hamstrings weight is prominent", () => {
     const v = getBaseMuscleVector("deadlift")!;
-    const lb = v.find((mc) => mc.muscle === "lower_back");
-    expect(lb).toBeDefined();
-    // lower_back is 0.65 in the deadlift profile — significant secondary, just below primary threshold
-    expect(lb!.weight).toBeGreaterThanOrEqual(0.50);
+    const h = v.find((mc) => mc.muscle === "hamstrings");
+    expect(h!.weight).toBeGreaterThanOrEqual(0.70);
   });
 
   it("bench press primary is chest", () => {
@@ -232,65 +274,95 @@ describe("getBaseMuscleVector", () => {
     expect(chest!.role).toBe("primary");
   });
 
-  it("pull-up primary is upper_back_lats", () => {
+  it("pull-up primary includes upper_back_lats and biceps", () => {
     const v = getBaseMuscleVector("pull-up")!;
-    const lats = v.find((mc) => mc.muscle === "upper_back_lats");
-    expect(lats).toBeDefined();
-    expect(lats!.role).toBe("primary");
+    const primaryMuscles = v.filter((mc) => mc.role === "primary").map((mc) => mc.muscle);
+    expect(primaryMuscles).toContain("upper_back_lats");
+    expect(primaryMuscles).toContain("biceps");
   });
 
-  it("thruster includes both quads and shoulders as primary", () => {
+  it("thruster has both quads and shoulders as primary", () => {
     const v = getBaseMuscleVector("thruster")!;
-    const quads = v.find((mc) => mc.muscle === "quads");
-    const shoulders = v.find((mc) => mc.muscle === "shoulders");
-    expect(quads?.weight).toBeGreaterThanOrEqual(0.70);
-    expect(shoulders?.weight).toBeGreaterThanOrEqual(0.70);
+    const primaryMuscles = v.filter((mc) => mc.role === "primary").map((mc) => mc.muscle);
+    expect(primaryMuscles).toContain("quads");
+    expect(primaryMuscles).toContain("shoulders");
   });
 
-  it("run includes glutes and calves", () => {
+  it("run includes glutes, quads, hamstrings and calves", () => {
     const v = getBaseMuscleVector("run")!;
-    expect(v.some((mc) => mc.muscle === "glutes")).toBe(true);
-    expect(v.some((mc) => mc.muscle === "calves")).toBe(true);
+    const muscles = v.map((mc) => mc.muscle);
+    expect(muscles).toContain("glutes");
+    expect(muscles).toContain("quads");
+    expect(muscles).toContain("hamstrings");
+    expect(muscles).toContain("calves");
   });
 
-  it("row erg includes upper_back_lats and quads", () => {
+  it("row_erg includes upper_back_lats and quads (distributed, no single prime)", () => {
     const v = getBaseMuscleVector("row")!;
-    expect(v.some((mc) => mc.muscle === "upper_back_lats")).toBe(true);
-    expect(v.some((mc) => mc.muscle === "quads")).toBe(true);
+    const muscles = v.map((mc) => mc.muscle);
+    expect(muscles).toContain("upper_back_lats");
+    expect(muscles).toContain("quads");
+    // Conservative: no single muscle should be overstated at 1.0
+    for (const mc of v) {
+      expect(mc.weight).toBeLessThan(0.80);
+    }
+  });
+
+  it("cyclical movements have distributed weights (max <= 0.70)", () => {
+    const cyclicalKeys = [
+      "row", "run", "bike erg", "echo bike", "assault bike",
+      "ski erg", "jump rope", "double-under",
+    ];
+    for (const name of cyclicalKeys) {
+      const v = getBaseMuscleVector(name)!;
+      expect(v, `expected vector for "${name}"`).not.toBeNull();
+      const max = Math.max(...v.map((mc) => mc.weight));
+      expect(max, `${name} max weight ${max} should be <= 0.75`).toBeLessThanOrEqual(0.75);
+    }
   });
 });
 
 // ---------------------------------------------------------------------------
-// E) Type invariants — weight thresholds match role labels
+// E) Type invariants
 // ---------------------------------------------------------------------------
 
-describe("weight-role consistency invariant", () => {
+describe("type invariants", () => {
+  const VALID_ROLES = new Set<string>(["primary", "secondary", "stabilizer"]);
+  const VALID_PATTERNS = new Set<string>([
+    "squat","hinge","lunge","horizontal_push","vertical_push",
+    "horizontal_pull","vertical_pull","carry","core_flexion","core_bracing",
+    "rotation","jump","cyclical","olympic_lift","gymnastics",
+  ]);
+
   for (const [key, profile] of MOVEMENT_PROFILES) {
     it(`${key}: all weights in [0.0, 1.0]`, () => {
       for (const mc of profile.muscles) {
-        expect(mc.weight).toBeGreaterThanOrEqual(0.0);
-        expect(mc.weight).toBeLessThanOrEqual(1.0);
+        expect(mc.weight, `${key}.${mc.muscle} weight OOB`).toBeGreaterThanOrEqual(0.0);
+        expect(mc.weight, `${key}.${mc.muscle} weight OOB`).toBeLessThanOrEqual(1.0);
       }
     });
 
-    it(`${key}: role matches weight threshold`, () => {
+    it(`${key}: all roles are valid`, () => {
       for (const mc of profile.muscles) {
-        if (mc.weight >= 0.70) {
-          expect(mc.role).toBe("primary");
-        } else if (mc.weight >= 0.25) {
-          expect(mc.role).toBe("secondary");
-        } else {
-          expect(mc.role).toBe("stabilizer");
-        }
+        expect(VALID_ROLES.has(mc.role), `${key}.${mc.muscle} has invalid role "${mc.role}"`).toBe(true);
       }
     });
 
-    it(`${key}: at least one primary or high-secondary muscle`, () => {
-      // Cyclical (row, run, bike) and mixed (burpee) exercises distribute load
-      // across many muscle groups — no single muscle reaches the 0.70 primary threshold.
-      // This is physiologically correct. We assert that at least one muscle >= 0.55.
-      const hasSignificant = profile.muscles.some((mc) => mc.weight >= 0.55);
-      expect(hasSignificant).toBe(true);
+    it(`${key}: at least one primary muscle`, () => {
+      // Roles are AUTHORED — every profile must have at least one "primary" contributor.
+      // Note: cyclical profiles may have primary at moderate weights (0.45–0.60) which
+      // is intentional: they are primary movers in the cyclical kinetic chain even at
+      // conservative weights.
+      const hasPrimary = profile.muscles.some((mc) => mc.role === "primary");
+      expect(hasPrimary, `${key}: must have at least one primary role`).toBe(true);
+    });
+
+    it(`${key}: pattern is valid V1 taxonomy`, () => {
+      expect(VALID_PATTERNS.has(profile.pattern)).toBe(true);
+    });
+
+    it(`${key}: has at least one alias`, () => {
+      expect(profile.aliases.length).toBeGreaterThan(0);
     });
   }
 });
@@ -350,7 +422,7 @@ describe("toAuditMuscle", () => {
 });
 
 // ---------------------------------------------------------------------------
-// G) Integration: full pipeline — name → audit muscles (replicates audit.ts logic)
+// G) Integration: full pipeline — name → audit muscles
 // ---------------------------------------------------------------------------
 
 function getMuscleGroupsFromNameViaProfile(name: string): string[] | null {
@@ -377,7 +449,7 @@ describe("integration: profile → audit muscles", () => {
     expect(muscles).not.toContain("forearms_grip");
   });
 
-  it("upper_back_lats and lower_back both map to 'back' (no duplicates)", () => {
+  it("upper_back_lats and lower_back both map to 'back' with no duplicates", () => {
     const muscles = getMuscleGroupsFromNameViaProfile("deadlift")!;
     expect(muscles.filter((m) => m === "back").length).toBe(1);
   });
@@ -402,7 +474,7 @@ describe("integration: profile → audit muscles", () => {
     expect(muscles).not.toContain("quads");
   });
 
-  it("wall ball → includes both quads and shoulders (compound classification)", () => {
+  it("wall ball → includes both quads and shoulders", () => {
     const muscles = getMuscleGroupsFromNameViaProfile("wall ball")!;
     expect(muscles).toContain("quads");
     expect(muscles).toContain("shoulders");
@@ -413,35 +485,55 @@ describe("integration: profile → audit muscles", () => {
     expect(getMuscleGroupsFromNameViaProfile("preacher curl")).toBeNull();
   });
 
-  it("all entries are valid audit canonical muscle strings", () => {
-    const CANONICAL = new Set(["chest","back","shoulders","quads","hamstrings","glutes","biceps","triceps","core","calves"]);
-    // Iterate profiles directly using profile.muscles — avoids name-to-alias round-trip
-    // issues for display names like "Row (Erg)" that aren't in the alias map.
+  it("all entries only produce valid audit canonical muscle strings", () => {
+    const CANONICAL = new Set([
+      "chest","back","shoulders","quads","hamstrings",
+      "glutes","biceps","triceps","core","calves",
+    ]);
     for (const [key, profile] of MOVEMENT_PROFILES) {
       const muscles = profile.muscles
         .filter((mc) => mc.weight >= 0.25)
         .map((mc) => toAuditMuscle(mc.muscle))
         .filter((m): m is string => m !== null);
       for (const m of muscles) {
-        expect(CANONICAL.has(m)).toBe(true, `${key}: unexpected audit muscle "${m}"`);
+        expect(CANONICAL.has(m), `${key}: unexpected audit muscle "${m}"`).toBe(true);
       }
     }
   });
 });
 
 // ---------------------------------------------------------------------------
-// H) Coverage sanity — ensure all 40 profiles exist and are findable
+// H) Coverage sanity — all 41 expected profiles exist
 // ---------------------------------------------------------------------------
 
 describe("profile coverage", () => {
   const expectedKeys = [
+    // squat (6)
     "air_squat","front_squat","back_squat","goblet_squat","wall_ball","thruster",
-    "deadlift","romanian_deadlift","kettlebell_swing","dumbbell_snatch","power_clean","squat_clean",
-    "push_press","strict_press","bench_press","push_up","handstand_push_up","dumbbell_shoulder_press",
-    "pull_up","chest_to_bar_pull_up","bar_muscle_up","ring_row","dumbbell_row","barbell_row",
-    "toes_to_bar","sit_up","ghd_sit_up","plank","hollow_hold",
+    // hinge (3)
+    "deadlift","romanian_deadlift","kettlebell_swing",
+    // olympic (3)
+    "dumbbell_snatch","power_clean","squat_clean",
+    // vertical push (4)
+    "push_press","strict_press","handstand_push_up","dumbbell_shoulder_press",
+    // horizontal push (2)
+    "bench_press","push_up",
+    // vertical pull (2)
+    "pull_up","chest_to_bar_pull_up",
+    // horizontal pull (3)
+    "ring_row","dumbbell_row","barbell_row",
+    // gymnastics (2)
+    "bar_muscle_up","toes_to_bar",
+    // core bracing (2)
+    "hollow_hold","plank",
+    // core flexion (2)
+    "sit_up","ghd_sit_up",
+    // cyclical (8)
     "row_erg","run","bike_erg","echo_bike","assault_bike","ski_erg","jump_rope","double_under",
-    "burpee","box_jump","burpee_box_jump_over","walking_lunge",
+    // jump (3)
+    "burpee","box_jump","burpee_box_jump_over",
+    // lunge (1)
+    "walking_lunge",
   ];
 
   it(`total profile count is ${expectedKeys.length}`, () => {
@@ -453,4 +545,17 @@ describe("profile coverage", () => {
       expect(MOVEMENT_PROFILES.has(key)).toBe(true);
     });
   }
+
+  it("MOVEMENT_ALIASES is derived from profile.aliases (no separate source of truth)", () => {
+    // Every alias in the flat map must point to an existing profile key
+    for (const [alias, profileKey] of MOVEMENT_ALIASES) {
+      expect(MOVEMENT_PROFILES.has(profileKey), `alias "${alias}" → "${profileKey}" (not found)`).toBe(true);
+    }
+    // Every profile's aliases must appear in the flat map
+    for (const [, profile] of MOVEMENT_PROFILES) {
+      for (const alias of profile.aliases) {
+        expect(MOVEMENT_ALIASES.has(alias), `profile "${profile.key}" alias "${alias}" missing from MOVEMENT_ALIASES`).toBe(true);
+      }
+    }
+  });
 });

@@ -1,0 +1,94 @@
+Use the Step 1 delivery I provided as the primary implementation plan, but make the following adjustments before implementing.
+
+We are proceeding with Step 1 only.
+Do not work on Steps 2–4.
+Do not introduce prescribed vs performed architecture, historical rollups, readiness/recovery/fatigue logic, or broader UI redesign.
+
+Implement Step 1 as a server-side movement-level muscle weighting engine with low-risk integration into the current codebase.
+
+Use the existing Step 1 plan as the baseline, including:
+
+new lib/movementProfiles.ts
+additive integration into routes/audit.ts
+preserving keyword fallback
+preserving vaultIngestion.ts, sessionLoad.ts, aiService.ts, and mobile code
+keeping the implementation incremental and V1-friendly
+
+But make these changes to the plan before implementing:
+
+MovementPattern taxonomy
+Do not use the overly collapsed taxonomy from the draft.
+Use this richer V1 taxonomy instead:
+squat
+hinge
+lunge
+horizontal_push
+vertical_push
+horizontal_pull
+vertical_pull
+carry
+core_flexion
+core_bracing
+rotation
+jump
+cyclical
+olympic_lift
+gymnastics
+Muscle roles
+Do not derive role automatically from weight thresholds.
+Each MuscleContribution must explicitly store:
+muscle
+weight
+role
+Role should be authored intentionally, not inferred.
+MovementProfile shape
+Include aliases directly on each MovementProfile:
+key
+name
+aliases
+pattern
+modality
+bias
+muscles
+Keep the module portable
+movementProfiles.ts must remain a pure module:
+no DB dependencies
+no route dependencies
+no server-specific logic
+only types, constants, normalization helpers, lookup helpers
+Conservative handling of cyclical movements
+For row, run, bike erg, echo bike, assault bike, ski erg, jump rope, and double-under:
+use distributed moderate muscle weights
+avoid overstating a single prime mover
+keep the profiles physiologically conservative
+emphasize cyclical/endurance/conditioning bias rather than bodybuilding-style local muscle claims
+Integration behavior
+In routes/audit.ts:
+use movement profile lookup first
+map weighted muscles to audit muscles using toAuditMuscle()
+threshold at weight >= 0.25 for inclusion
+preserve the current keyword fallback exactly as Tier 2
+do not remove old logic yet
+Deliverables
+Return:
+exact files changed
+exact types created
+exact starter movement profiles created
+exact integration points
+any tests added
+any assumptions or deferred items
+Scope guardrails
+Do not add:
+prescribed vs performed models
+historical muscle aggregation
+recency-weighted load
+readiness/recovery/fatigue
+client-side body map logic
+major refactors outside Step 1
+
+If there is a good reason to slightly modify the draft Step 1 plan to better fit the current codebase, do so, but stay strictly within Step 1.
+
+My recommendation
+I would approve this direction with the edits above. The core recommendation is solid, and the main thing I would correct is the taxonomy and explicit-role design. Everything else is strong enough to move forward with. The uploaded Step 1 delivery is a good implementation blueprint.
+
+If you want, next I can turn that into an even shorter “Codex action prompt” version that is optimized for execution instead of review.
