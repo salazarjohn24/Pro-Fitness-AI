@@ -1,0 +1,201 @@
+You are working inside an existing fitness app codebase that already completed a revised Step 1 server-side movement-level muscle weighting engine.
+
+Current Step 1 status
+
+server is healthy
+796/796 tests pass
+movementProfiles.ts exists
+15-pattern taxonomy exists
+explicit muscle roles exist
+aliases are inline on MovementProfile
+cyclical movement profiles are more conservative
+audit.ts uses profile lookup first and keyword fallback second
+
+Goal
+Take the current Step 1 foundation from “strong and ready to progress” to “9.5/10 production-ready foundation” before we move on.
+
+Important scope constraints
+Do NOT move into Steps 2–4.
+Do NOT build prescribed vs performed architecture.
+Do NOT build historical rollups.
+Do NOT build readiness/recovery/fatigue logic.
+Do NOT redesign the UI.
+Do NOT add body map logic.
+Do NOT introduce major schema or product-flow changes outside Step 1 hardening.
+
+What “9.5 readiness” means for Step 1
+We want to strengthen:
+
+physiological credibility
+CrossFit specificity
+real-world validation
+profile coverage quality
+downstream safety / integration confidence
+
+Your task
+Audit the current revised Step 1 implementation and then make only the improvements needed to raise Step 1 readiness as much as possible without moving beyond Step 1.
+
+Focus areas
+
+Real-world workout sanity validation
+Add a fixture-based validation layer using real CrossFit-style movement names and common workout fragments.
+
+Examples to cover:
+
+21-15-9 thrusters and pull-ups
+5 rounds for time: 10 wall balls, 10 toes-to-bar, 200m run
+EMOM 12: 3 power cleans, 5 burpees
+4 rounds: 500m row, 12 deadlifts, 12 handstand push-ups
+AMRAP 20: 20 walking lunges, 15 box jumps, 10 push press
+50 double-unders, 20 calorie bike, 15 sit-ups
+
+For these fixtures, validate that:
+
+movement lookup resolves correctly
+aliases behave correctly
+muscle groups returned are physiologically believable
+cyclical movements remain conservative
+key compound movements are not under-mapped
+Coverage audit of common CrossFit / hybrid movements
+Review the current movement profile list and identify missing high-frequency movements that are likely important for early product credibility.
+
+Add only high-value missing movements if needed.
+Prioritize likely common movements such as:
+
+front rack lunge
+overhead squat
+hang power clean
+hang squat clean
+push jerk
+split jerk
+kettlebell clean
+kettlebell snatch
+chest-supported row only if already relevant in codebase conventions
+hand-release push-up if relevant
+V-up or knee raise if current alias system suggests nearby gaps
+
+Do not add lots of low-value or niche movements.
+Prefer quality over quantity.
+
+Alias quality hardening
+Stress-test alias resolution for realistic CrossFit naming variation:
+plural forms
+hyphens
+abbreviations
+equipment prefixes
+shorthand like TTB, C2B, HSPU, DUs
+“bike”, “echo”, “assault bike”, “bike erg”
+“row”, “rowing”, “erg row”, “500m row”
+“wall balls” vs “wall ball”
+“pullups” vs “pull-ups”
+
+Fix collisions or weak spots if found.
+
+Muscle profile quality review
+Review the current profiles for the most important compound movements and tighten any obvious issues in relative weighting or roles.
+
+Prioritize review of:
+
+deadlift
+thruster
+wall ball
+pull-up
+chest-to-bar pull-up
+bar muscle-up
+power clean
+squat clean
+push press
+handstand push-up
+row erg
+run
+burpee
+burpee box jump over
+double-under
+walking lunge
+toes-to-bar
+
+Be conservative and physiologically believable.
+Do not overfit or pretend to have perfect biomechanics.
+We want better relative truth, not fake precision.
+
+Downstream integration safety
+Review the current audit.ts integration and any related mapping code to ensure:
+profile-based mapping remains Tier 1
+keyword fallback remains intact
+unknown movements still degrade safely
+no existing downstream behavior is silently broken
+audit muscle mapping remains consistent with current consumers
+Test suite improvement
+Expand tests so Step 1 is better defended in practice, not just structurally.
+
+Add tests for:
+
+real workout fixture sanity
+alias collisions and abbreviations
+pluralization cases
+common CrossFit shorthand
+unknown movement fallback behavior
+conservative cyclical behavior
+important compound movement expectations
+regression protection for DB Row vs Row and similar collisions
+
+What not to do
+Do not add exposure scoring from reps/load/time yet.
+Do not aggregate workouts across time.
+Do not change database schema.
+Do not create client-side logic for body maps.
+Do not refactor unrelated systems.
+Do not move into Step 2 or beyond.
+
+Expected output
+Return your response in this format:
+
+Step 1 hardening audit
+what is already strong
+what is still weak
+what specific changes you recommend before moving on
+Exact changes made
+files changed
+files added
+movement profiles added or updated
+aliases added or updated
+tests added
+Readiness impact
+Re-score these categories after your hardening pass:
+architecture readiness
+data model readiness
+physiology credibility
+CrossFit specificity
+integration safety
+test readiness
+overall move-forward readiness
+Remaining non-blocking gaps
+what is still not a 9.5 and why
+what should intentionally wait for Step 2+
+
+Success criteria
+A successful pass should:
+
+materially improve physiology credibility
+materially improve CrossFit naming robustness
+add realistic workout-level validation fixtures
+preserve low-risk integration
+keep the implementation tightly within Step 1
+leave us genuinely more confident moving into the next phase
+
+If you have to choose, prioritize:
+
+real-world validation
+alias robustness
+profile quality for major CrossFit movements
+safe fallback behavior
+
+Why this is the right prompt
+This prompt is aimed at the actual weak spots that kept Step 1 from a 9.5:
+
+not enough real-world workout validation
+possible missing high-frequency movement coverage
+alias robustness still needs battle-testing
+physiology credibility is good but not yet hardened
+
+That is what will most improve confidence before you move on.

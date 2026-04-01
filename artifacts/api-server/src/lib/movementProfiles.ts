@@ -84,7 +84,7 @@ export type StimulusBias =
 /**
  * Muscle role is AUTHORED intentionally per movement — not inferred from weight.
  * A muscle can be a primary driver at 0.50 (e.g. lats in rowing) even though
- * the weight is below the "primary ≥ 0.70" threshold used in earlier designs.
+ * the weight is below a hypothetical "primary ≥ 0.70" threshold.
  */
 export type MuscleRole = "primary" | "secondary" | "stabilizer";
 
@@ -118,17 +118,20 @@ export interface MovementProfile {
 }
 
 // ---------------------------------------------------------------------------
-// Movement Profile Dictionary (41 entries)
+// Movement Profile Dictionary (50 entries)
 // ---------------------------------------------------------------------------
 
 const PROFILES_LIST: MovementProfile[] = [
 
-  // ─── Squat-dominant (6) ──────────────────────────────────────────────────
+  // ─── Squat-dominant (7) ──────────────────────────────────────────────────
 
   {
     key: "air_squat",
     name: "Air Squat",
-    aliases: ["air squat", "airsquat", "bodyweight squat", "bw squat"],
+    aliases: [
+      "air squat", "air squats", "airsquat",
+      "bodyweight squat", "bw squat",
+    ],
     pattern: "squat", modality: "bodyweight", bias: "hypertrophy",
     muscles: [
       { muscle: "quads",     weight: 0.85, role: "primary"    },
@@ -141,21 +144,26 @@ const PROFILES_LIST: MovementProfile[] = [
   {
     key: "front_squat",
     name: "Front Squat",
-    aliases: ["front squat", "barbell front squat"],
+    aliases: [
+      "front squat", "front squats",
+      "barbell front squat", "barbell front squats",
+    ],
     pattern: "squat", modality: "barbell", bias: "strength",
     muscles: [
-      { muscle: "quads",          weight: 0.90, role: "primary"   },
-      { muscle: "glutes",         weight: 0.55, role: "secondary" },
-      { muscle: "core",           weight: 0.35, role: "secondary" },
-      { muscle: "hamstrings",     weight: 0.25, role: "secondary" },
-      { muscle: "upper_back_lats",weight: 0.20, role: "stabilizer"},
+      { muscle: "quads",          weight: 0.90, role: "primary"    },
+      { muscle: "glutes",         weight: 0.55, role: "secondary"  },
+      { muscle: "core",           weight: 0.35, role: "secondary"  },
+      { muscle: "hamstrings",     weight: 0.25, role: "secondary"  },
+      { muscle: "upper_back_lats",weight: 0.20, role: "stabilizer" },
     ],
   },
   {
     key: "back_squat",
     name: "Back Squat",
     aliases: [
-      "back squat", "barbell squat", "barbell back squat",
+      "back squat", "back squats",
+      "barbell squat", "barbell squats",
+      "barbell back squat", "barbell back squats",
       "low bar squat", "high bar squat",
     ],
     pattern: "squat", modality: "barbell", bias: "strength",
@@ -169,10 +177,29 @@ const PROFILES_LIST: MovementProfile[] = [
     ],
   },
   {
+    key: "overhead_squat",
+    name: "Overhead Squat",
+    aliases: [
+      "overhead squat", "overhead squats",
+      "ohs", "barbell overhead squat",
+    ],
+    pattern: "squat", modality: "barbell", bias: "strength",
+    muscles: [
+      { muscle: "quads",          weight: 0.80, role: "primary"    },
+      { muscle: "glutes",         weight: 0.55, role: "secondary"  },
+      { muscle: "shoulders",      weight: 0.55, role: "secondary"  }, // overhead lockout demands
+      { muscle: "core",           weight: 0.50, role: "secondary"  }, // extreme stability required
+      { muscle: "upper_back_lats",weight: 0.40, role: "secondary"  },
+      { muscle: "hamstrings",     weight: 0.25, role: "secondary"  },
+      { muscle: "triceps",        weight: 0.20, role: "stabilizer" },
+    ],
+  },
+  {
     key: "goblet_squat",
     name: "Goblet Squat",
     aliases: [
-      "goblet squat", "kb goblet squat", "kettlebell goblet squat",
+      "goblet squat", "goblet squats",
+      "kb goblet squat", "kettlebell goblet squat",
       "dumbbell goblet squat",
     ],
     pattern: "squat", modality: "kettlebell", bias: "hypertrophy",
@@ -187,29 +214,37 @@ const PROFILES_LIST: MovementProfile[] = [
   {
     key: "wall_ball",
     name: "Wall Ball",
-    aliases: ["wall ball", "wall ball shot", "wallball"],
+    aliases: [
+      "wall ball", "wall balls",
+      "wall ball shot", "wall ball shots", "wallball", "wallballs",
+    ],
     pattern: "squat", modality: "mixed", bias: "conditioning",
     muscles: [
-      { muscle: "quads",    weight: 0.80, role: "primary"   },
-      { muscle: "glutes",   weight: 0.55, role: "primary"   },
-      { muscle: "shoulders",weight: 0.50, role: "primary"   },
-      { muscle: "core",     weight: 0.35, role: "secondary" },
-      { muscle: "hamstrings",weight: 0.25, role: "secondary"},
-      { muscle: "triceps",  weight: 0.20, role: "secondary" },
+      { muscle: "quads",     weight: 0.80, role: "primary"   },
+      { muscle: "glutes",    weight: 0.55, role: "primary"   },
+      { muscle: "shoulders", weight: 0.50, role: "primary"   },
+      { muscle: "core",      weight: 0.35, role: "secondary" },
+      { muscle: "hamstrings",weight: 0.25, role: "secondary" },
+      { muscle: "triceps",   weight: 0.20, role: "secondary" },
     ],
   },
   {
     key: "thruster",
     name: "Thruster",
-    aliases: ["thruster", "barbell thruster", "dumbbell thruster", "db thruster"],
+    aliases: [
+      "thruster", "thrusters",
+      "barbell thruster", "barbell thrusters",
+      "dumbbell thruster", "dumbbell thrusters",
+      "db thruster", "db thrusters",
+    ],
     pattern: "squat", modality: "barbell", bias: "power",
     muscles: [
-      { muscle: "quads",    weight: 0.80, role: "primary"   },
-      { muscle: "shoulders",weight: 0.80, role: "primary"   },
-      { muscle: "glutes",   weight: 0.55, role: "primary"   },
-      { muscle: "triceps",  weight: 0.35, role: "secondary" },
-      { muscle: "core",     weight: 0.35, role: "secondary" },
-      { muscle: "hamstrings",weight: 0.25, role: "secondary"},
+      { muscle: "quads",     weight: 0.80, role: "primary"   },
+      { muscle: "shoulders", weight: 0.80, role: "primary"   },
+      { muscle: "glutes",    weight: 0.55, role: "primary"   },
+      { muscle: "triceps",   weight: 0.35, role: "secondary" },
+      { muscle: "core",      weight: 0.35, role: "secondary" },
+      { muscle: "hamstrings",weight: 0.25, role: "secondary" },
     ],
   },
 
@@ -219,7 +254,9 @@ const PROFILES_LIST: MovementProfile[] = [
     key: "deadlift",
     name: "Deadlift",
     aliases: [
-      "deadlift", "barbell deadlift", "conventional deadlift", "sumo deadlift",
+      "deadlift", "deadlifts",
+      "barbell deadlift", "barbell deadlifts",
+      "conventional deadlift", "sumo deadlift",
     ],
     pattern: "hinge", modality: "barbell", bias: "strength",
     muscles: [
@@ -236,7 +273,9 @@ const PROFILES_LIST: MovementProfile[] = [
     key: "romanian_deadlift",
     name: "Romanian Deadlift",
     aliases: [
-      "romanian deadlift", "rdl", "barbell rdl", "dumbbell rdl", "db rdl",
+      "romanian deadlift", "romanian deadlifts",
+      "rdl", "rdls",
+      "barbell rdl", "dumbbell rdl", "db rdl",
       "stiff leg deadlift", "stiff-leg deadlift",
     ],
     pattern: "hinge", modality: "barbell", bias: "hypertrophy",
@@ -252,7 +291,8 @@ const PROFILES_LIST: MovementProfile[] = [
     key: "kettlebell_swing",
     name: "Kettlebell Swing",
     aliases: [
-      "kettlebell swing", "kb swing",
+      "kettlebell swing", "kettlebell swings",
+      "kb swing", "kb swings",
       "american kettlebell swing", "american kb swing",
       "russian kettlebell swing", "russian kb swing",
     ],
@@ -267,12 +307,16 @@ const PROFILES_LIST: MovementProfile[] = [
     ],
   },
 
-  // ─── Olympic lifts (3) ───────────────────────────────────────────────────
+  // ─── Olympic lifts (7) ───────────────────────────────────────────────────
 
   {
     key: "dumbbell_snatch",
     name: "Dumbbell Snatch",
-    aliases: ["dumbbell snatch", "db snatch", "single arm dumbbell snatch"],
+    aliases: [
+      "dumbbell snatch", "dumbbell snatches",
+      "db snatch", "db snatches",
+      "single arm dumbbell snatch",
+    ],
     pattern: "olympic_lift", modality: "dumbbell", bias: "power",
     muscles: [
       { muscle: "glutes",        weight: 0.70, role: "primary"    },
@@ -285,9 +329,30 @@ const PROFILES_LIST: MovementProfile[] = [
     ],
   },
   {
+    key: "kettlebell_snatch",
+    name: "Kettlebell Snatch",
+    aliases: [
+      "kettlebell snatch", "kettlebell snatches",
+      "kb snatch", "kb snatches",
+    ],
+    pattern: "olympic_lift", modality: "kettlebell", bias: "power",
+    muscles: [
+      { muscle: "glutes",        weight: 0.75, role: "primary"    },
+      { muscle: "hamstrings",    weight: 0.65, role: "primary"    },
+      { muscle: "shoulders",     weight: 0.60, role: "primary"    },
+      { muscle: "quads",         weight: 0.40, role: "secondary"  },
+      { muscle: "lower_back",    weight: 0.35, role: "secondary"  },
+      { muscle: "core",          weight: 0.30, role: "secondary"  },
+      { muscle: "forearms_grip", weight: 0.25, role: "secondary"  },
+    ],
+  },
+  {
     key: "power_clean",
     name: "Power Clean",
-    aliases: ["power clean", "barbell power clean"],
+    aliases: [
+      "power clean", "power cleans",
+      "barbell power clean", "barbell power cleans",
+    ],
     pattern: "olympic_lift", modality: "barbell", bias: "power",
     muscles: [
       { muscle: "glutes",         weight: 0.75, role: "primary"    },
@@ -301,9 +366,32 @@ const PROFILES_LIST: MovementProfile[] = [
     ],
   },
   {
+    key: "hang_power_clean",
+    name: "Hang Power Clean",
+    aliases: [
+      "hang power clean", "hang power cleans",
+      "barbell hang power clean",
+    ],
+    pattern: "olympic_lift", modality: "barbell", bias: "power",
+    muscles: [
+      { muscle: "glutes",         weight: 0.70, role: "primary"    },
+      { muscle: "hamstrings",     weight: 0.65, role: "primary"    },
+      { muscle: "quads",          weight: 0.55, role: "primary"    },
+      { muscle: "upper_back_lats",weight: 0.55, role: "secondary"  },
+      { muscle: "shoulders",      weight: 0.45, role: "secondary"  },
+      { muscle: "lower_back",     weight: 0.25, role: "secondary"  },
+      { muscle: "forearms_grip",  weight: 0.35, role: "secondary"  },
+      { muscle: "core",           weight: 0.20, role: "stabilizer" },
+    ],
+  },
+  {
     key: "squat_clean",
     name: "Squat Clean",
-    aliases: ["squat clean", "clean", "barbell clean", "full clean"],
+    aliases: [
+      "squat clean", "squat cleans",
+      "clean", "cleans",
+      "barbell clean", "full clean",
+    ],
     pattern: "olympic_lift", modality: "barbell", bias: "power",
     muscles: [
       { muscle: "quads",          weight: 0.85, role: "primary"    },
@@ -316,30 +404,85 @@ const PROFILES_LIST: MovementProfile[] = [
       { muscle: "core",           weight: 0.25, role: "stabilizer" },
     ],
   },
+  {
+    key: "hang_squat_clean",
+    name: "Hang Squat Clean",
+    aliases: [
+      "hang squat clean", "hang squat cleans",
+      "hang clean", "hang cleans",
+      "barbell hang clean",
+    ],
+    pattern: "olympic_lift", modality: "barbell", bias: "power",
+    muscles: [
+      { muscle: "quads",          weight: 0.80, role: "primary"    },
+      { muscle: "glutes",         weight: 0.70, role: "primary"    },
+      { muscle: "hamstrings",     weight: 0.55, role: "primary"    },
+      { muscle: "upper_back_lats",weight: 0.55, role: "secondary"  },
+      { muscle: "shoulders",      weight: 0.40, role: "secondary"  },
+      { muscle: "lower_back",     weight: 0.25, role: "secondary"  },
+      { muscle: "forearms_grip",  weight: 0.30, role: "secondary"  },
+      { muscle: "core",           weight: 0.20, role: "stabilizer" },
+    ],
+  },
 
-  // ─── Vertical push (4) ───────────────────────────────────────────────────
+  // ─── Vertical push (6) ───────────────────────────────────────────────────
 
   {
     key: "push_press",
     name: "Push Press",
     aliases: [
-      "push press", "barbell push press", "dumbbell push press", "db push press",
+      "push press", "push presses",
+      "barbell push press", "dumbbell push press", "db push press",
     ],
     pattern: "vertical_push", modality: "barbell", bias: "power",
     muscles: [
-      { muscle: "shoulders",weight: 0.85, role: "primary"    },
-      { muscle: "triceps",  weight: 0.55, role: "secondary"  },
-      { muscle: "quads",    weight: 0.35, role: "secondary"  },
-      { muscle: "glutes",   weight: 0.30, role: "secondary"  },
-      { muscle: "core",     weight: 0.25, role: "secondary"  },
+      { muscle: "shoulders",weight: 0.85, role: "primary"   },
+      { muscle: "triceps",  weight: 0.55, role: "secondary" },
+      { muscle: "quads",    weight: 0.35, role: "secondary" },
+      { muscle: "glutes",   weight: 0.30, role: "secondary" },
+      { muscle: "core",     weight: 0.25, role: "secondary" },
+    ],
+  },
+  {
+    key: "push_jerk",
+    name: "Push Jerk",
+    aliases: [
+      "push jerk", "push jerks",
+      "barbell push jerk",
+    ],
+    pattern: "vertical_push", modality: "barbell", bias: "power",
+    muscles: [
+      { muscle: "shoulders",      weight: 0.85, role: "primary"    },
+      { muscle: "triceps",        weight: 0.55, role: "secondary"  },
+      { muscle: "quads",          weight: 0.45, role: "secondary"  },
+      { muscle: "glutes",         weight: 0.35, role: "secondary"  },
+      { muscle: "core",           weight: 0.30, role: "secondary"  },
+      { muscle: "upper_back_lats",weight: 0.20, role: "stabilizer" },
+    ],
+  },
+  {
+    key: "split_jerk",
+    name: "Split Jerk",
+    aliases: [
+      "split jerk", "split jerks",
+      "barbell split jerk", "jerk", "jerks",
+    ],
+    pattern: "vertical_push", modality: "barbell", bias: "power",
+    muscles: [
+      { muscle: "shoulders",      weight: 0.85, role: "primary"    },
+      { muscle: "triceps",        weight: 0.55, role: "secondary"  },
+      { muscle: "quads",          weight: 0.50, role: "secondary"  },
+      { muscle: "glutes",         weight: 0.35, role: "secondary"  },
+      { muscle: "core",           weight: 0.30, role: "secondary"  },
+      { muscle: "upper_back_lats",weight: 0.20, role: "stabilizer" },
     ],
   },
   {
     key: "strict_press",
     name: "Strict Press",
     aliases: [
-      "strict press", "overhead press", "ohp", "barbell press",
-      "barbell overhead press", "military press",
+      "strict press", "overhead press", "ohp",
+      "barbell press", "barbell overhead press", "military press",
     ],
     pattern: "vertical_push", modality: "barbell", bias: "strength",
     muscles: [
@@ -353,8 +496,9 @@ const PROFILES_LIST: MovementProfile[] = [
     key: "handstand_push_up",
     name: "Handstand Push-Up",
     aliases: [
-      "handstand push-up", "handstand push up", "hspu",
-      "strict hspu", "kipping hspu",
+      "handstand push-up", "handstand push up",
+      "handstand push-ups", "handstand push ups",
+      "hspu", "strict hspu", "kipping hspu",
     ],
     pattern: "vertical_push", modality: "bodyweight", bias: "strength",
     muscles: [
@@ -380,13 +524,14 @@ const PROFILES_LIST: MovementProfile[] = [
     ],
   },
 
-  // ─── Horizontal push (2) ─────────────────────────────────────────────────
+  // ─── Horizontal push (3) ─────────────────────────────────────────────────
 
   {
     key: "bench_press",
     name: "Bench Press",
     aliases: [
-      "bench press", "barbell bench press", "flat bench press",
+      "bench press", "bench presses",
+      "barbell bench press", "flat bench press",
       "flat bench", "chest press",
     ],
     pattern: "horizontal_push", modality: "barbell", bias: "hypertrophy",
@@ -400,13 +545,34 @@ const PROFILES_LIST: MovementProfile[] = [
   {
     key: "push_up",
     name: "Push-Up",
-    aliases: ["push-up", "push up", "pushup", "push ups", "push-ups"],
+    aliases: [
+      "push-up", "push up", "pushup",
+      "push ups", "push-ups", "pushups",
+    ],
     pattern: "horizontal_push", modality: "bodyweight", bias: "hypertrophy",
     muscles: [
       { muscle: "chest",    weight: 0.80, role: "primary"    },
       { muscle: "triceps",  weight: 0.55, role: "secondary"  },
       { muscle: "shoulders",weight: 0.45, role: "secondary"  },
       { muscle: "core",     weight: 0.25, role: "stabilizer" },
+    ],
+  },
+  {
+    key: "hand_release_push_up",
+    name: "Hand-Release Push-Up",
+    aliases: [
+      "hand-release push-up", "hand release push-up",
+      "hand-release push up", "hand release push up",
+      "hand release push ups", "hand-release push-ups",
+      "hrpu",
+    ],
+    pattern: "horizontal_push", modality: "bodyweight", bias: "hypertrophy",
+    muscles: [
+      { muscle: "chest",          weight: 0.80, role: "primary"    },
+      { muscle: "triceps",        weight: 0.55, role: "secondary"  },
+      { muscle: "shoulders",      weight: 0.45, role: "secondary"  },
+      { muscle: "upper_back_lats",weight: 0.25, role: "secondary"  }, // brief retraction at bottom
+      { muscle: "core",           weight: 0.25, role: "stabilizer" },
     ],
   },
 
@@ -416,7 +582,8 @@ const PROFILES_LIST: MovementProfile[] = [
     key: "pull_up",
     name: "Pull-Up",
     aliases: [
-      "pull-up", "pull up", "pullup", "pull-ups", "pull ups",
+      "pull-up", "pull up", "pullup",
+      "pull-ups", "pull ups", "pullups",
       "strict pull-up", "strict pull up",
       "kipping pull-up", "kipping pull up",
       "banded pull-up", "ring pull-up",
@@ -435,8 +602,9 @@ const PROFILES_LIST: MovementProfile[] = [
     name: "Chest-to-Bar Pull-Up",
     aliases: [
       "chest-to-bar pull-up", "chest to bar pull-up",
+      "chest-to-bar pull-ups", "chest to bar pull-ups",
       "chest-to-bar", "chest to bar",
-      "c2b", "c2b pull-up",
+      "c2b", "c2b pull-up", "c2b pull-ups",
     ],
     pattern: "vertical_pull", modality: "bodyweight", bias: "strength",
     muscles: [
@@ -466,7 +634,8 @@ const PROFILES_LIST: MovementProfile[] = [
     key: "dumbbell_row",
     name: "Dumbbell Row",
     aliases: [
-      "dumbbell row", "db row",
+      "dumbbell row", "dumbbell rows",
+      "db row", "db rows",
       "single arm dumbbell row", "single arm row",
     ],
     pattern: "horizontal_pull", modality: "dumbbell", bias: "hypertrophy",
@@ -482,7 +651,9 @@ const PROFILES_LIST: MovementProfile[] = [
     key: "barbell_row",
     name: "Barbell Row",
     aliases: [
-      "barbell row", "bent over row", "barbell bent over row", "pendlay row",
+      "barbell row", "barbell rows",
+      "bent over row", "bent over rows",
+      "barbell bent over row", "pendlay row",
     ],
     pattern: "horizontal_pull", modality: "barbell", bias: "strength",
     muscles: [
@@ -501,7 +672,10 @@ const PROFILES_LIST: MovementProfile[] = [
     name: "Bar Muscle-Up",
     aliases: [
       "bar muscle-up", "bar muscle up",
-      "muscle-up", "muscle up", "bmu",
+      "bar muscle-ups", "bar muscle ups",
+      "muscle-up", "muscle up",
+      "muscle-ups", "muscle ups",
+      "bmu", "bmus",
     ],
     pattern: "gymnastics", modality: "bodyweight", bias: "strength",
     muscles: [
@@ -517,7 +691,11 @@ const PROFILES_LIST: MovementProfile[] = [
   {
     key: "toes_to_bar",
     name: "Toes-to-Bar",
-    aliases: ["toes-to-bar", "toes to bar", "t2b"],
+    aliases: [
+      "toes-to-bar", "toes to bar",
+      "toes-to-bars", "toes to bars",
+      "t2b", "ttb",
+    ],
     pattern: "gymnastics", modality: "bodyweight", bias: "strength",
     muscles: [
       { muscle: "core",           weight: 0.90, role: "primary"    },
@@ -529,7 +707,10 @@ const PROFILES_LIST: MovementProfile[] = [
   {
     key: "hollow_hold",
     name: "Hollow Hold",
-    aliases: ["hollow hold", "hollow body hold", "hollow body"],
+    aliases: [
+      "hollow hold", "hollow holds",
+      "hollow body hold", "hollow body",
+    ],
     pattern: "core_bracing", modality: "bodyweight", bias: "strength",
     muscles: [
       { muscle: "core",     weight: 0.90, role: "primary"    },
@@ -537,16 +718,19 @@ const PROFILES_LIST: MovementProfile[] = [
     ],
   },
 
-  // ─── Core flexion (2) ────────────────────────────────────────────────────
+  // ─── Core flexion (3) ────────────────────────────────────────────────────
 
   {
     key: "sit_up",
     name: "Sit-Up",
-    aliases: ["sit-up", "sit up", "situp", "sit-ups", "sit ups"],
+    aliases: [
+      "sit-up", "sit up", "situp",
+      "sit-ups", "sit ups", "situps",
+    ],
     pattern: "core_flexion", modality: "bodyweight", bias: "hypertrophy",
     muscles: [
-      { muscle: "core",      weight: 0.90, role: "primary"   },
-      { muscle: "hamstrings",weight: 0.20, role: "stabilizer"},
+      { muscle: "core",      weight: 0.90, role: "primary"    },
+      { muscle: "hamstrings",weight: 0.20, role: "stabilizer" },
     ],
   },
   {
@@ -554,6 +738,7 @@ const PROFILES_LIST: MovementProfile[] = [
     name: "GHD Sit-Up",
     aliases: [
       "ghd sit-up", "ghd sit up", "ghd situp",
+      "ghd sit-ups", "ghd sit ups",
       "glute ham developer sit up",
     ],
     pattern: "core_flexion", modality: "machine", bias: "hypertrophy",
@@ -563,13 +748,25 @@ const PROFILES_LIST: MovementProfile[] = [
       { muscle: "glutes",    weight: 0.25, role: "secondary" },
     ],
   },
+  {
+    key: "v_up",
+    name: "V-Up",
+    aliases: [
+      "v-up", "v up", "v-ups", "v ups", "vup", "vups",
+    ],
+    pattern: "core_flexion", modality: "bodyweight", bias: "hypertrophy",
+    muscles: [
+      { muscle: "core",      weight: 0.90, role: "primary"   },
+      { muscle: "hamstrings",weight: 0.25, role: "secondary" }, // hip flexion component
+    ],
+  },
 
   // ─── Core bracing (1) ────────────────────────────────────────────────────
 
   {
     key: "plank",
     name: "Plank",
-    aliases: ["plank", "front plank"],
+    aliases: ["plank", "planks", "front plank"],
     pattern: "core_bracing", modality: "bodyweight", bias: "endurance",
     muscles: [
       { muscle: "core",     weight: 0.90, role: "primary"    },
@@ -590,16 +787,18 @@ const PROFILES_LIST: MovementProfile[] = [
     aliases: [
       "row", "rowing", "erg row", "row erg",
       "concept 2 row", "c2 row", "concept2 row", "rower",
+      "calorie row", "cal row",
+      // distance-prefixed forms (e.g. "500m row") resolve via normalizeMovementName
     ],
     pattern: "cyclical", modality: "erg", bias: "conditioning",
     muscles: [
-      { muscle: "upper_back_lats",weight: 0.50, role: "primary"   },
-      { muscle: "quads",          weight: 0.45, role: "primary"   },
-      { muscle: "hamstrings",     weight: 0.40, role: "secondary" },
-      { muscle: "glutes",         weight: 0.40, role: "secondary" },
-      { muscle: "biceps",         weight: 0.30, role: "secondary" },
-      { muscle: "core",           weight: 0.30, role: "secondary" },
-      { muscle: "forearms_grip",  weight: 0.20, role: "stabilizer"},
+      { muscle: "upper_back_lats",weight: 0.50, role: "primary"    },
+      { muscle: "quads",          weight: 0.45, role: "primary"    },
+      { muscle: "hamstrings",     weight: 0.40, role: "secondary"  },
+      { muscle: "glutes",         weight: 0.40, role: "secondary"  },
+      { muscle: "biceps",         weight: 0.30, role: "secondary"  },
+      { muscle: "core",           weight: 0.30, role: "secondary"  },
+      { muscle: "forearms_grip",  weight: 0.20, role: "stabilizer" },
     ],
   },
   {
@@ -609,63 +808,77 @@ const PROFILES_LIST: MovementProfile[] = [
       "run", "running",
       "run 400m", "400m run", "800m run",
       "1 mile run", "1600m run", "mile run",
+      // distance-prefixed forms (e.g. "200m run") resolve via normalizeMovementName
     ],
     pattern: "cyclical", modality: "bodyweight", bias: "conditioning",
     muscles: [
-      { muscle: "quads",    weight: 0.60, role: "primary"    },
-      { muscle: "glutes",   weight: 0.55, role: "primary"    },
-      { muscle: "hamstrings",weight: 0.55, role: "primary"   },
-      { muscle: "calves",   weight: 0.45, role: "secondary"  },
-      { muscle: "core",     weight: 0.20, role: "stabilizer" },
+      { muscle: "quads",     weight: 0.60, role: "primary"    },
+      { muscle: "glutes",    weight: 0.55, role: "primary"    },
+      { muscle: "hamstrings",weight: 0.55, role: "primary"    },
+      { muscle: "calves",    weight: 0.45, role: "secondary"  },
+      { muscle: "core",      weight: 0.20, role: "stabilizer" },
     ],
   },
   {
     key: "bike_erg",
     name: "Bike Erg",
-    aliases: ["bike erg", "bike", "cycling"],
+    aliases: [
+      "bike erg", "bike", "cycling",
+      "calorie bike", "cal bike",
+    ],
     pattern: "cyclical", modality: "erg", bias: "conditioning",
     muscles: [
-      { muscle: "quads",    weight: 0.65, role: "primary"    },
-      { muscle: "glutes",   weight: 0.45, role: "secondary"  },
-      { muscle: "hamstrings",weight: 0.35, role: "secondary" },
-      { muscle: "calves",   weight: 0.20, role: "stabilizer" },
-      { muscle: "core",     weight: 0.15, role: "stabilizer" },
+      { muscle: "quads",     weight: 0.65, role: "primary"    },
+      { muscle: "glutes",    weight: 0.45, role: "secondary"  },
+      { muscle: "hamstrings",weight: 0.35, role: "secondary"  },
+      { muscle: "calves",    weight: 0.20, role: "stabilizer" },
+      { muscle: "core",      weight: 0.15, role: "stabilizer" },
     ],
   },
   {
     key: "echo_bike",
     name: "Echo Bike",
-    aliases: ["echo bike", "airdyne", "air bike"],
+    aliases: [
+      "echo bike", "echo",
+      "airdyne", "air bike",
+      "echo bike calories", "calorie echo bike", "cal echo bike",
+    ],
     pattern: "cyclical", modality: "erg", bias: "conditioning",
     muscles: [
-      { muscle: "quads",    weight: 0.60, role: "primary"    },
-      { muscle: "glutes",   weight: 0.40, role: "secondary"  },
-      { muscle: "hamstrings",weight: 0.35, role: "secondary" },
-      { muscle: "shoulders",weight: 0.35, role: "secondary"  },
-      { muscle: "chest",    weight: 0.25, role: "secondary"  },
-      { muscle: "calves",   weight: 0.20, role: "stabilizer" },
-      { muscle: "core",     weight: 0.20, role: "stabilizer" },
+      { muscle: "quads",     weight: 0.60, role: "primary"    },
+      { muscle: "glutes",    weight: 0.40, role: "secondary"  },
+      { muscle: "hamstrings",weight: 0.35, role: "secondary"  },
+      { muscle: "shoulders", weight: 0.35, role: "secondary"  },
+      { muscle: "chest",     weight: 0.25, role: "secondary"  },
+      { muscle: "calves",    weight: 0.20, role: "stabilizer" },
+      { muscle: "core",      weight: 0.20, role: "stabilizer" },
     ],
   },
   {
     key: "assault_bike",
     name: "Assault Bike",
-    aliases: ["assault bike", "assault bike erg"],
+    aliases: [
+      "assault bike", "assault bike erg",
+      "assault bike calories", "calorie assault bike",
+    ],
     pattern: "cyclical", modality: "erg", bias: "conditioning",
     muscles: [
-      { muscle: "quads",    weight: 0.60, role: "primary"    },
-      { muscle: "glutes",   weight: 0.40, role: "secondary"  },
-      { muscle: "hamstrings",weight: 0.35, role: "secondary" },
-      { muscle: "shoulders",weight: 0.35, role: "secondary"  },
-      { muscle: "chest",    weight: 0.25, role: "secondary"  },
-      { muscle: "calves",   weight: 0.20, role: "stabilizer" },
-      { muscle: "core",     weight: 0.20, role: "stabilizer" },
+      { muscle: "quads",     weight: 0.60, role: "primary"    },
+      { muscle: "glutes",    weight: 0.40, role: "secondary"  },
+      { muscle: "hamstrings",weight: 0.35, role: "secondary"  },
+      { muscle: "shoulders", weight: 0.35, role: "secondary"  },
+      { muscle: "chest",     weight: 0.25, role: "secondary"  },
+      { muscle: "calves",    weight: 0.20, role: "stabilizer" },
+      { muscle: "core",      weight: 0.20, role: "stabilizer" },
     ],
   },
   {
     key: "ski_erg",
     name: "Ski Erg",
-    aliases: ["ski erg", "ski", "skierg"],
+    aliases: [
+      "ski erg", "ski", "skierg",
+      "calorie ski", "cal ski",
+    ],
     pattern: "cyclical", modality: "erg", bias: "conditioning",
     muscles: [
       { muscle: "upper_back_lats",weight: 0.55, role: "primary"   },
@@ -679,7 +892,10 @@ const PROFILES_LIST: MovementProfile[] = [
   {
     key: "jump_rope",
     name: "Jump Rope",
-    aliases: ["jump rope", "single under", "singles", "single-under"],
+    aliases: [
+      "jump rope", "single under", "singles", "single-under",
+      "single unders", "single-unders",
+    ],
     pattern: "cyclical", modality: "bodyweight", bias: "conditioning",
     muscles: [
       { muscle: "calves",       weight: 0.65, role: "primary"    },
@@ -694,7 +910,8 @@ const PROFILES_LIST: MovementProfile[] = [
     name: "Double-Under",
     aliases: [
       "double-under", "double under",
-      "double-unders", "double unders", "du", "dubs",
+      "double-unders", "double unders",
+      "du", "dubs",
     ],
     pattern: "cyclical", modality: "bodyweight", bias: "conditioning",
     muscles: [
@@ -714,13 +931,13 @@ const PROFILES_LIST: MovementProfile[] = [
     aliases: ["burpee", "burpees"],
     pattern: "jump", modality: "bodyweight", bias: "conditioning",
     muscles: [
-      { muscle: "quads",    weight: 0.60, role: "primary"    },
-      { muscle: "chest",    weight: 0.55, role: "primary"    },
-      { muscle: "glutes",   weight: 0.40, role: "secondary"  },
-      { muscle: "shoulders",weight: 0.45, role: "secondary"  },
-      { muscle: "core",     weight: 0.45, role: "secondary"  },
-      { muscle: "triceps",  weight: 0.35, role: "secondary"  },
-      { muscle: "hamstrings",weight: 0.25, role: "secondary" },
+      { muscle: "quads",     weight: 0.60, role: "primary"    },
+      { muscle: "chest",     weight: 0.55, role: "primary"    },
+      { muscle: "shoulders", weight: 0.45, role: "secondary"  },
+      { muscle: "core",      weight: 0.45, role: "secondary"  },
+      { muscle: "glutes",    weight: 0.40, role: "secondary"  },
+      { muscle: "triceps",   weight: 0.35, role: "secondary"  },
+      { muscle: "hamstrings",weight: 0.25, role: "secondary"  },
     ],
   },
   {
@@ -729,46 +946,69 @@ const PROFILES_LIST: MovementProfile[] = [
     aliases: ["box jump", "box jumps"],
     pattern: "jump", modality: "bodyweight", bias: "power",
     muscles: [
-      { muscle: "quads",    weight: 0.75, role: "primary"    },
-      { muscle: "glutes",   weight: 0.65, role: "primary"    },
-      { muscle: "hamstrings",weight: 0.50, role: "secondary" },
-      { muscle: "calves",   weight: 0.40, role: "secondary"  },
-      { muscle: "core",     weight: 0.25, role: "stabilizer" },
+      { muscle: "quads",     weight: 0.75, role: "primary"    },
+      { muscle: "glutes",    weight: 0.65, role: "primary"    },
+      { muscle: "hamstrings",weight: 0.50, role: "secondary"  },
+      { muscle: "calves",    weight: 0.40, role: "secondary"  },
+      { muscle: "core",      weight: 0.25, role: "stabilizer" },
     ],
   },
   {
     key: "burpee_box_jump_over",
     name: "Burpee Box Jump Over",
-    aliases: ["burpee box jump over", "burpee box jump"],
+    aliases: [
+      "burpee box jump over", "burpee box jump",
+      "burpee box jump overs",
+    ],
     pattern: "jump", modality: "bodyweight", bias: "conditioning",
     muscles: [
-      { muscle: "quads",    weight: 0.65, role: "primary"    },
-      { muscle: "glutes",   weight: 0.60, role: "primary"    },
-      { muscle: "chest",    weight: 0.55, role: "primary"    },
-      { muscle: "hamstrings",weight: 0.45, role: "secondary" },
-      { muscle: "core",     weight: 0.45, role: "secondary"  },
-      { muscle: "shoulders",weight: 0.40, role: "secondary"  },
-      { muscle: "triceps",  weight: 0.30, role: "secondary"  },
-      { muscle: "calves",   weight: 0.25, role: "secondary"  },
+      { muscle: "quads",     weight: 0.65, role: "primary"    },
+      { muscle: "glutes",    weight: 0.60, role: "primary"    },
+      { muscle: "chest",     weight: 0.55, role: "primary"    },
+      { muscle: "hamstrings",weight: 0.45, role: "secondary"  },
+      { muscle: "core",      weight: 0.45, role: "secondary"  },
+      { muscle: "shoulders", weight: 0.40, role: "secondary"  },
+      { muscle: "triceps",   weight: 0.30, role: "secondary"  },
+      { muscle: "calves",    weight: 0.25, role: "secondary"  },
     ],
   },
 
-  // ─── Lunge (1) ───────────────────────────────────────────────────────────
+  // ─── Lunge (2) ───────────────────────────────────────────────────────────
 
   {
     key: "walking_lunge",
     name: "Walking Lunge",
     aliases: [
-      "walking lunge", "walking lunges", "lunge", "lunges",
-      "forward lunge", "reverse lunge",
+      "walking lunge", "walking lunges",
+      "lunge", "lunges",
+      "forward lunge", "forward lunges",
+      "reverse lunge", "reverse lunges",
     ],
     pattern: "lunge", modality: "bodyweight", bias: "hypertrophy",
     muscles: [
-      { muscle: "quads",    weight: 0.80, role: "primary"    },
-      { muscle: "glutes",   weight: 0.65, role: "primary"    },
-      { muscle: "hamstrings",weight: 0.45, role: "secondary" },
-      { muscle: "calves",   weight: 0.25, role: "secondary"  },
-      { muscle: "core",     weight: 0.20, role: "stabilizer" },
+      { muscle: "quads",     weight: 0.80, role: "primary"    },
+      { muscle: "glutes",    weight: 0.65, role: "primary"    },
+      { muscle: "hamstrings",weight: 0.45, role: "secondary"  },
+      { muscle: "calves",    weight: 0.25, role: "secondary"  },
+      { muscle: "core",      weight: 0.20, role: "stabilizer" },
+    ],
+  },
+  {
+    key: "front_rack_lunge",
+    name: "Front Rack Lunge",
+    aliases: [
+      "front rack lunge", "front rack lunges",
+      "barbell front rack lunge", "barbell front rack lunges",
+      "front rack walking lunge",
+    ],
+    pattern: "lunge", modality: "barbell", bias: "strength",
+    muscles: [
+      { muscle: "quads",          weight: 0.80, role: "primary"    },
+      { muscle: "glutes",         weight: 0.65, role: "primary"    },
+      { muscle: "hamstrings",     weight: 0.40, role: "secondary"  },
+      { muscle: "core",           weight: 0.35, role: "secondary"  },
+      { muscle: "upper_back_lats",weight: 0.25, role: "secondary"  }, // rack position demands
+      { muscle: "calves",         weight: 0.20, role: "stabilizer" },
     ],
   },
 ];
@@ -819,7 +1059,7 @@ function liteNormalize(name: string): string {
  * Steps applied in order:
  *  1. Lowercase + collapse whitespace
  *  2. Strip leading equipment prefix (barbell/dumbbell/kb/etc.)
- *  3. Strip leading/trailing distance tokens (400m, 1 mile, etc.)
+ *  3. Strip leading/trailing distance tokens (400m, 1 mile, 20 cal, etc.)
  *  4. Replace hyphens with spaces, collapse repeated spaces
  *
  * This is more aggressive than the equipment-only stripping in
@@ -830,8 +1070,8 @@ export function normalizeMovementName(name: string): string {
     .toLowerCase()
     .trim()
     .replace(/^(barbell|dumbbell|db|kettlebell|kb|cable|machine|ez[\s-]?bar|smith)\s+/i, "")
-    .replace(/^\d+\s?(?:m|km|mile[s]?)\s+/i, "")
-    .replace(/\s+\d+\s?(?:m|km|mile[s]?)$/i, "")
+    .replace(/^\d+\s?(?:m|km|mile[s]?|cal(?:orie[s]?)?)\s+/i, "")
+    .replace(/\s+\d+\s?(?:m|km|mile[s]?|cal(?:orie[s]?)?)$/i, "")
     .replace(/-/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -847,7 +1087,7 @@ export function normalizeMovementName(name: string): string {
  * Resolution order:
  *  1. Lite alias lookup (lowercase + trim + hyphens, NO prefix strip)
  *     — preserves "db row" ≠ "row" equipment-context distinction
- *  2. Full alias lookup (strips equipment prefix, distance tokens)
+ *  2. Full alias lookup (strips equipment prefix, distance tokens, calorie tokens)
  *     — handles "Barbell Back Squat" → "back squat" → back_squat
  *  3. Direct key match (fully-normalized, spaces → underscores)
  *     — handles "hollow hold" → "hollow_hold" without needing an alias entry
@@ -859,7 +1099,7 @@ export function getMovementProfile(name: string): MovementProfile | null {
   const liteKey = MOVEMENT_ALIASES.get(lite);
   if (liteKey) return MOVEMENT_PROFILES.get(liteKey) ?? null;
 
-  // 2. Full alias lookup (equipment prefix stripped)
+  // 2. Full alias lookup (equipment prefix + distance/calorie tokens stripped)
   const full = normalizeMovementName(name);
   const fullKey = MOVEMENT_ALIASES.get(full);
   if (fullKey) return MOVEMENT_PROFILES.get(fullKey) ?? null;
