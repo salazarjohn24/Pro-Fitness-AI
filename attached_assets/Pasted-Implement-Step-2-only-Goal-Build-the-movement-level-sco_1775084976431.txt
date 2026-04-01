@@ -1,0 +1,116 @@
+Implement Step 2 only.
+
+Goal
+Build the movement-level scoring engine that sits directly on top of the existing Step 1 movement profile system.
+
+Step 1 already exists and should remain the foundation:
+
+canonical movement profiles
+aliases
+explicit muscle roles
+15-pattern taxonomy
+conservative cyclical movement handling
+low-risk audit integration
+
+Do not work on Steps 3–4.
+Do not build prescribed vs performed architecture.
+Do not build historical rollups.
+Do not build readiness/recovery/fatigue logic.
+Do not redesign the UI.
+Do not add body map logic.
+
+Step 2 objective
+Given a single performed movement entry, return a weighted muscle-loading result.
+
+The Step 2 engine should:
+
+Resolve the canonical movement profile from Step 1
+Calculate a V1 exposure score using available movement inputs
+Convert the movement profile into a weighted muscle vector
+Return pattern and stimulus summaries alongside the muscle vector
+Stay heuristic, conservative, and physiologically believable
+Be modular and easy to evolve later
+
+Expected new modules
+Please inspect the codebase and implement the cleanest version of the following modules, adjusting filenames only if there is a clearly better fit:
+
+lib/movementScoringTypes.ts
+lib/exposureScoring.ts
+lib/muscleVector.ts
+lib/stimulusVector.ts
+
+Suggested types
+Please define types for something close to:
+
+PerformedMovementInput
+MovementExposureBreakdown
+MuscleVector
+StimulusVector
+MovementScoreResult
+
+Suggested responsibilities
+
+exposureScoring.ts
+Create a V1 heuristic scoring layer for:
+loaded rep-based movements
+bodyweight rep-based movements
+duration-based holds
+cyclical distance/calorie/time-based movements
+
+Use conservative, explainable heuristics.
+Do not pretend to have perfect sports-science precision.
+
+muscleVector.ts
+Build the weighted muscle vector:
+resolve movement profile
+get exposure score
+multiply by base muscle weights
+return per-muscle scores
+stimulusVector.ts
+Generate broad stimulus tendencies from the movement and exposure:
+strength
+hypertrophy
+muscular_endurance
+power
+conditioning
+
+This should remain simple and heuristic for V1.
+
+Important guidance
+
+Keep routes thin
+Do not move business logic into audit.ts
+Do not replace Step 1 fallback behavior
+Do not remove old logic broadly unless clearly safe
+Keep the implementation portable and clean
+Prefer pure functions and testable modules
+
+Scoring guidance
+
+Distinguish involvement from loading
+A movement involving a muscle does not mean it got the same effective stimulus as the prime mover
+Use movement type-aware heuristics
+Keep cyclical movements conservative and distributed
+Keep bodyweight skill movements differentiated by difficulty
+Use available reps/load/duration/distance/calories when present
+Return assumptions/metadata where useful
+
+Expected output
+Return:
+
+current-state audit for Step 2
+exact file/module recommendations
+exact types/interfaces
+implementation for the V1 scoring engine
+tests for common movement categories and edge cases
+what old logic should remain as fallback
+any non-blocking gaps intentionally deferred to Step 3+
+
+Success criteria
+A successful Step 2 result should allow us to score a single performed movement like:
+
+45 thrusters at 95 lb
+20 pull-ups
+500m row
+15 burpees
+and get a believable weighted muscle vector plus broad stimulus interpretation.
