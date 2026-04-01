@@ -4,7 +4,8 @@ import { eq, desc, and, gte, ne } from "drizzle-orm";
 import { exerciseMap } from "../data/exercises";
 import { generateAuditInsight, generateRebalancePlan } from "../services/aiService";
 import { aiRateLimit } from "../middlewares/rateLimitMiddleware";
-import { normalizeMuscle } from "../lib/muscleNormalization";
+import { normalizeMuscle, toAuditMuscle } from "../lib/muscleNormalization";
+import { getBaseMuscleVector } from "../lib/movementProfiles";
 import { isFeatureEnabled } from "../lib/featureFlags.js";
 
 // A4/B10: confidence threshold — mirrors mobile LOW_CONFIDENCE_THRESHOLD (0.65)
@@ -43,6 +44,18 @@ function getMuscleGroupsForExerciseId(exerciseId: string): string[] {
 }
 
 function getMuscleGroupsFromName(name: string): string[] {
+  // Tier 1: profile-based vector (movement must be in MOVEMENT_PROFILES or MOVEMENT_ALIASES).
+  // Include secondary muscles (weight >= 0.25); stabilizers are too minor for audit counting.
+  const vector = getBaseMuscleVector(name);
+  if (vector !== null) {
+    const muscles = vector
+      .filter((mc) => mc.weight >= 0.25)
+      .map((mc) => toAuditMuscle(mc.muscle))
+      .filter((m): m is string => m !== null);
+    return [...new Set(muscles)];
+  }
+
+  // Tier 2: broad keyword fallback — preserved exactly. Do NOT modify this branch.
   const n = name.toLowerCase();
   if (n.includes("bench") || n.includes("chest") || n.includes("push")) return ["chest"];
   if (n.includes("squat") || n.includes("leg") || n.includes("quad")) return ["quads"];

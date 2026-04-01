@@ -130,6 +130,28 @@ Gates: auth config check (prod domain) + API tests + mobile tests. Exit 0 = all 
 - Phase B additions: MatchedBy type + matched_by field on ExerciseMatchResult; resolveOrCreateExerciseIdWithMeta; VI-36→VI-42 pure tests; MI-1→MI-7 integration tests; Recent Activity filter pills (All/Internal/External/Apple Health); apple_health icon (heart/pink) + label fix; profile production status row (dot + last sync + error code) + Open Settings button (Linking.openSettings when NOT_AVAILABLE)
 - PM release checklist: `docs/RELEASE_CHECKLIST.md`
 
+## Movement Profile Engine (Step 1 — April 2026)
+
+A canonical muscle weighting engine that augments (never replaces) the broad keyword stimulus logic.
+
+### Taxonomy
+12-group V1 taxonomy: `chest | shoulders | triceps | biceps | upper_back_lats | lower_back | core | glutes | hamstrings | quads | calves | forearms_grip`
+
+### Key files
+- `artifacts/api-server/src/lib/movementProfiles.ts` — types, 41 profiles, alias map, `normalizeMovementName()`, `getMovementProfile()`, `getBaseMuscleVector()`
+- `artifacts/api-server/src/lib/muscleNormalization.ts` — extended with `toAuditMuscle(mg)` that maps V1 → existing 10-group audit canonical (`upper_back_lats` → `back`, `lower_back` → `back`, `forearms_grip` → null/dropped)
+- `artifacts/api-server/src/routes/audit.ts` — `getMuscleGroupsFromName()` now tries profile vector first (weight ≥ 0.25), falls through to keyword logic on null
+- `artifacts/api-server/src/lib/__tests__/movementProfiles.test.ts` — 704 unit tests; alias resolution, normalization, vector correctness, weight-role invariants, audit mapping, coverage sanity
+
+### Integration behavior
+- Profile recognized → returns primary + secondary muscles (weight ≥ 0.25) mapped to audit canonical
+- `forearms_grip` is silently dropped (not in current `CANONICAL_MUSCLES`)
+- Profile not recognized (e.g. "zottman curl") → returns null → keyword fallback runs exactly as before
+- All existing tests continue to pass
+
+### Deferred to Step 2+
+Prescribed vs. performed architecture, historical rollups/aggregations, readiness/recovery/fatigue scoring, broad UI redesigns.
+
 ## External Dependencies
 
 - **OpenAI**: Integrated via Replit AI Integrations for all AI-powered features (workout generation, parsing, insights, coach notes).

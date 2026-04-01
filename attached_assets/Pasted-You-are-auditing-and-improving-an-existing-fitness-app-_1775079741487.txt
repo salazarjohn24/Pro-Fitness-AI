@@ -1,0 +1,106 @@
+You are auditing and improving an existing fitness app codebase.
+
+IMPORTANT SCOPE LIMIT:
+Work on Step 1 only.
+Do NOT design or implement:
+- prescribed vs performed architecture
+- historical rollups/aggregations
+- readiness/recovery/fatigue scoring
+- broad UI redesigns
+
+GOAL:
+Implement a canonical movement-level muscle weighting engine that augments/replaces broad keyword-based stimulus logic while preserving current workflow architecture.
+
+CONTEXT TO PRESERVE:
+- workout import/review/edit flows
+- set-level movement editing
+- workout format detection
+- exercise resolution/mismatch flow
+- existing session-level load abstractions
+
+STEP 1 DELIVERABLES:
+1) Define fixed V1 muscle taxonomy exactly:
+- chest
+- shoulders
+- triceps
+- biceps
+- upper_back_lats
+- lower_back
+- core
+- glutes
+- hamstrings
+- quads
+- calves
+- forearms_grip
+
+2) Define these types/interfaces:
+- MuscleGroup
+- MovementPattern
+- ModalityType
+- StimulusBias
+- MuscleRole
+- MuscleContribution
+- MovementProfile
+
+3) Add 25–40 starter movement profiles for high-frequency CrossFit + strength movements:
+- squat-dominant: air squat, front squat, back squat, goblet squat, wall ball, thruster
+- hinge-dominant: deadlift, Romanian deadlift, kettlebell swing, dumbbell snatch, power clean, squat clean
+- upper push: push press, strict press, bench press, push-up, handstand push-up, dumbbell shoulder press
+- upper pull: pull-up, chest-to-bar pull-up, bar muscle-up, ring row, dumbbell row, barbell row
+- core/gymnastics: toes-to-bar, sit-up, GHD sit-up, plank, hollow hold
+- cyclical: row, run, bike erg, echo bike, assault bike, ski erg, jump rope, double-under
+- mixed/plyometric: burpee, box jump, burpee box jump over, walking lunge
+
+4) Add alias normalization + lookup:
+- movement alias dictionary
+- normalizeMovementName(name)
+- getMovementProfile(name)
+- getBaseMuscleVector(name)
+
+5) Integrate safely:
+- Use movement profile vector when available
+- Fallback to existing broad stimulus logic when not available
+- Minimal breakage, minimal refactor
+
+MUSCLE WEIGHT GUIDANCE:
+- 0.0 to 1.0
+- primary ~0.70–1.0
+- secondary ~0.25–0.70
+- stabilizer ~0.10–0.30
+- avoid “everything is full-body”
+
+OUTPUT FORMAT (REQUIRED):
+A) Current-state audit (Step 1 only)
+- identify relevant existing files/functions
+- identify current broad stimulus logic to augment/replace
+- identify exercise resolution/mismatch flow to reuse
+
+B) Proposed Step 1 architecture
+- exact file/module locations
+- where shared types should live (server vs shared lib)
+- exact function signatures
+- fallback behavior rules
+
+C) Starter implementation (code or concrete pseudo-code)
+- types/interfaces
+- profile dictionary
+- alias map
+- normalizeMovementName()
+- getMovementProfile()
+- getBaseMuscleVector()
+
+D) Minimal integration plan
+- exact files to touch
+- risk points
+- tests to add for Step 1
+
+E) Keep / Replace / Defer
+- clearly list what stays unchanged
+- what gets replaced/augmented now
+- what is explicitly deferred to Step 2+
+
+SUCCESS CRITERIA:
+- Existing flows still work
+- Profile-based vector used when movement is recognized
+- Fallback path still works for unknown movements
+- Unit tests prove alias resolution + vector correctness + fallback behavior
