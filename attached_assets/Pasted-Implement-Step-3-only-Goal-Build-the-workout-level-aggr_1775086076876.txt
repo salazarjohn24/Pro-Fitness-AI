@@ -1,0 +1,129 @@
+Implement Step 3 only.
+
+Goal
+Build the workout-level aggregation engine that combines Step 2 movement scoring outputs into a full workout fingerprint.
+
+Existing foundation
+Step 1 already exists:
+
+canonical movement profiles
+aliases
+explicit muscle roles
+15-pattern taxonomy
+
+Step 2 already exists:
+
+movementScoringTypes.ts
+exposureScoring.ts
+stimulusVector.ts
+muscleVector.ts
+scoreMovement() entry point
+1,113 passing tests
+
+Do not work on Step 4 or beyond.
+Do not build historical rollups across workouts.
+Do not build readiness/recovery/fatigue logic.
+Do not build prescribed vs performed delta logic.
+Do not redesign UI.
+Do not add body map logic.
+
+Step 3 objective
+Given a full performed workout containing multiple movements, return a workout-level score result that aggregates:
+
+movement-level score results
+workout muscle vector
+workout pattern vector
+workout stimulus vector
+ranked top muscles
+ranked top patterns
+assumptions / fallback metadata
+
+Expected new modules
+Please inspect the codebase and implement the cleanest version of the following, adjusting filenames only if there is a clearly better fit:
+
+lib/workoutScoringTypes.ts
+lib/workoutVector.ts
+lib/workoutSummary.ts
+optional: lib/vectorMath.ts
+
+Suggested types
+Please define types similar to:
+
+PerformedWorkoutInput
+WorkoutScoreResult
+WorkoutMuscleVector
+WorkoutPatternVector
+WorkoutAggregationMetadata
+
+Suggested responsibilities
+
+workoutVector.ts
+Main aggregation entry point.
+accept PerformedWorkoutInput
+call scoreMovement() for each movement
+sum muscle vectors
+sum pattern vectors
+combine stimulus vectors
+preserve movement results
+count fallback/unknown movements
+return aggregated workout result
+workoutSummary.ts
+Generate ranked summaries from aggregate vectors.
+top muscles
+top patterns
+dominant stimulus tendencies
+concise human-usable labels where appropriate
+vectorMath.ts
+Optional pure helpers for:
+vector summation
+ranking
+normalization if needed for summary only
+clamping
+
+Important guidance
+
+keep the aggregation additive and explainable
+do not overengineer physiology interactions yet
+keep raw scores and summary-friendly rankings separate
+preserve movement-level results for traceability
+keep routes thin
+unknown/fallback movements must degrade safely and be visible in metadata
+
+Expected behavior examples
+A workout with:
+
+45 thrusters @ 95 lb
+45 pull-ups
+should aggregate into a believable full-body muscle vector with squat, vertical_push, and vertical_pull prominence.
+
+A workout with:
+
+500m row
+12 deadlifts
+12 handstand push-ups
+should show mixed posterior-chain, upper-body push, and cyclical conditioning contributions.
+
+Tests required
+Add tests for:
+
+simple two-movement aggregation
+mixed-modal workout aggregation
+ranking correctness
+fallback/unknown movement handling
+empty/minimal workout safety
+stimulus aggregation sanity
+deterministic output ordering where relevant
+
+Expected output
+Return:
+
+current-state audit for Step 3
+exact new files/modules
+exact types/interfaces
+implementation of workout aggregation
+tests added
+any old logic that should remain untouched
+non-blocking gaps intentionally deferred to Step 4+
+
+Success criteria
+A successful Step 3 implementation should let us score an entire workout as one coherent fingerprint while preserving movement-level explainability and safe fallback behavior.
