@@ -150,9 +150,11 @@ export interface ExerciseInfo {
   primaryMuscles: string[];
   secondaryMuscles: string[];
   tertiaryMuscles: string[];
+  description: string | null;
   instructions: string[];
   commonMistakes: string[];
   youtubeUrl: string | null;
+  youtubeKeyword?: string;
 }
 
 export async function fetchExerciseInfo(name: string): Promise<ExerciseInfo | null> {

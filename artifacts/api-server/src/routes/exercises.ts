@@ -3,6 +3,8 @@ import { db, exerciseLibraryTable, workoutHistoryTable, userProfilesTable, userF
 import { eq, and, ilike, inArray, desc, ne } from "drizzle-orm";
 import { generateCoachNote } from "../services/aiService";
 import { aiRateLimit } from "../middlewares/rateLimitMiddleware";
+import { EXERCISE_LIBRARY } from "../data/exercises";
+import { lookupExerciseDescription } from "../data/exerciseDescriptions";
 
 const router: IRouter = Router();
 
@@ -58,6 +60,13 @@ router.get("/exercises/favorites", async (req: Request, res: Response) => {
   res.json(exercises);
 });
 
+const WARMUP_COOLDOWN_KEYWORDS = ["warm", "cool", "stretch", "mobility", "activation", "circles", "swings", "inchworm", "cat", "cow", "pigeon", "child", "hip flexor", "hamstring stretch", "quad stretch", "foam roll", "dynamic", "static"];
+
+function isWarmupCooldownName(name: string): boolean {
+  const lower = name.toLowerCase();
+  return WARMUP_COOLDOWN_KEYWORDS.some(kw => lower.includes(kw));
+}
+
 router.get("/exercises/by-name/:name/alternatives", async (req: Request, res: Response) => {
   const name = decodeURIComponent(req.params.name);
   const excludeParam = typeof req.query.exclude === "string" ? req.query.exclude : "";
@@ -94,35 +103,115 @@ router.get("/exercises/by-name/:name/alternatives", async (req: Request, res: Re
     ? results.filter(e => !excludeNames.includes(e.name.toLowerCase()))
     : results;
 
-  res.json(
-    filtered.slice(0, 8).map(e => ({
-      id: String(e.id),
+  if (filtered.length > 0) {
+    return res.json(
+      filtered.slice(0, 8).map(e => ({
+        id: String(e.id),
+        name: e.name,
+        primaryMuscle: (e.primaryMuscles as string[])?.[0] ?? e.muscleGroup,
+        secondaryMuscles: (e.secondaryMuscles as string[]) ?? [],
+        equipment: [e.equipment],
+        category: e.goal,
+        difficulty: e.difficulty,
+        alternatives: [],
+        youtubeKeyword: e.name,
+      }))
+    );
+  }
+
+  const staticEntry = EXERCISE_LIBRARY.find(e => e.name.toLowerCase() === name.toLowerCase());
+  const targetCategory = staticEntry?.category ?? (isWarmupCooldownName(name) ? "warmup" : null);
+  const targetMuscle = staticEntry?.primaryMuscle ?? null;
+
+  let staticAlts = EXERCISE_LIBRARY.filter(e => {
+    if (e.name.toLowerCase() === name.toLowerCase()) return false;
+    if (excludeNames.includes(e.name.toLowerCase())) return false;
+    if (targetCategory && (targetCategory === "warmup" || targetCategory === "cooldown")) {
+      return e.category === "warmup" || e.category === "cooldown";
+    }
+    if (targetMuscle) return e.primaryMuscle === targetMuscle;
+    return e.equipment.includes("bodyweight");
+  }).slice(0, 6);
+
+  if (staticAlts.length === 0 && isWarmupCooldownName(name)) {
+    staticAlts = EXERCISE_LIBRARY.filter(e =>
+      (e.category === "warmup" || e.category === "cooldown") &&
+      e.name.toLowerCase() !== name.toLowerCase() &&
+      !excludeNames.includes(e.name.toLowerCase())
+    ).slice(0, 6);
+  }
+
+  if (staticAlts.length === 0) {
+    staticAlts = EXERCISE_LIBRARY.filter(e =>
+      e.equipment.includes("bodyweight") &&
+      e.name.toLowerCase() !== name.toLowerCase() &&
+      !excludeNames.includes(e.name.toLowerCase())
+    ).slice(0, 6);
+  }
+
+  return res.json(
+    staticAlts.map((e, i) => ({
+      id: `static-${i}`,
       name: e.name,
-      primaryMuscle: (e.primaryMuscles as string[])?.[0] ?? e.muscleGroup,
-      secondaryMuscles: (e.secondaryMuscles as string[]) ?? [],
-      equipment: [e.equipment],
-      category: e.goal,
+      primaryMuscle: e.primaryMuscle,
+      secondaryMuscles: e.secondaryMuscles,
+      equipment: e.equipment,
+      category: e.category,
       difficulty: e.difficulty,
       alternatives: [],
-      youtubeKeyword: e.name,
+      youtubeKeyword: e.youtubeKeyword,
     }))
   );
 });
 
 router.get("/exercises/by-name/:name/describe", async (req: Request, res: Response) => {
   const name = decodeURIComponent(req.params.name);
+  const staticDesc = lookupExerciseDescription(name);
 
-  const [exercise] = await db
+  let exercise = await db
     .select()
     .from(exerciseLibraryTable)
     .where(ilike(exerciseLibraryTable.name, name))
-    .limit(1);
+    .limit(1)
+    .then(r => r[0] ?? null);
 
   if (!exercise) {
+    const words = name.split(" ").filter(w => w.length > 3);
+    if (words.length > 0) {
+      exercise = await db
+        .select()
+        .from(exerciseLibraryTable)
+        .where(ilike(exerciseLibraryTable.name, `%${words[0]}%`))
+        .limit(1)
+        .then(r => r[0] ?? null);
+    }
+  }
+
+  if (!exercise) {
+    const staticEntry = EXERCISE_LIBRARY.find(e => e.name.toLowerCase() === name.toLowerCase());
+    if (staticEntry || staticDesc) {
+      const desc = staticDesc;
+      return res.json({
+        id: 0,
+        name: staticEntry?.name ?? name,
+        muscleGroup: staticEntry?.primaryMuscle ?? staticDesc?.primaryMuscle ?? "general",
+        difficulty: staticEntry?.difficulty ?? staticDesc?.difficulty ?? "beginner",
+        equipment: staticEntry?.equipment?.[0] ?? staticDesc?.equipment ?? "bodyweight",
+        primaryMuscles: staticEntry ? [staticEntry.primaryMuscle] : [],
+        secondaryMuscles: staticEntry?.secondaryMuscles ?? [],
+        tertiaryMuscles: [],
+        description: desc?.description ?? null,
+        instructions: desc?.formCues ?? [],
+        commonMistakes: desc?.commonMistakes ?? [],
+        youtubeUrl: null,
+        youtubeKeyword: staticEntry?.youtubeKeyword ?? desc?.youtubeKeyword ?? name,
+      });
+    }
     res.status(404).json({ error: "Exercise not found" });
     return;
   }
 
+  const desc = staticDesc;
   res.json({
     id: exercise.id,
     name: exercise.name,
@@ -132,9 +221,11 @@ router.get("/exercises/by-name/:name/describe", async (req: Request, res: Respon
     primaryMuscles: (exercise.primaryMuscles as string[]) ?? [],
     secondaryMuscles: (exercise.secondaryMuscles as string[]) ?? [],
     tertiaryMuscles: (exercise.tertiaryMuscles as string[]) ?? [],
-    instructions: (exercise.instructions as string[]) ?? [],
-    commonMistakes: (exercise.commonMistakes as string[]) ?? [],
+    description: desc?.description ?? null,
+    instructions: desc?.formCues ?? (exercise.instructions as string[]) ?? [],
+    commonMistakes: desc?.commonMistakes ?? (exercise.commonMistakes as string[]) ?? [],
     youtubeUrl: exercise.youtubeUrl,
+    youtubeKeyword: desc?.youtubeKeyword ?? exercise.name,
   });
 });
 

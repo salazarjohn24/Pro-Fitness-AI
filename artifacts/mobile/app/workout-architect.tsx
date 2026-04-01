@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -1013,11 +1014,18 @@ export default function WorkoutArchitectScreen() {
                   <Text style={[styles.swapEmpty, { marginTop: 12 }]}>Loading...</Text>
                 </View>
               ) : !infoData ? (
-                <View style={{ paddingVertical: 30, alignItems: "center" }}>
-                  <Text style={styles.swapEmpty}>No details available</Text>
+                <View style={{ paddingVertical: 24, alignItems: "center" }}>
+                  <Feather name="info" size={28} color={Colors.textSubtle} />
+                  <Text style={[styles.swapEmpty, { marginTop: 10 }]}>Details loading — check back in a moment.</Text>
                 </View>
               ) : (
                 <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 4 }}>
+                  {infoData.description && (
+                    <View style={styles.infoSection}>
+                      <Text style={styles.infoSectionTitle}>WHAT IT DOES</Text>
+                      <Text style={styles.infoBodyText}>{infoData.description}</Text>
+                    </View>
+                  )}
                   {infoData.primaryMuscles.length > 0 && (
                     <View style={styles.infoSection}>
                       <Text style={styles.infoSectionTitle}>MUSCLES</Text>
@@ -1029,11 +1037,11 @@ export default function WorkoutArchitectScreen() {
                   )}
                   {infoData.instructions.length > 0 && (
                     <View style={styles.infoSection}>
-                      <Text style={styles.infoSectionTitle}>HOW TO PERFORM</Text>
-                      {infoData.instructions.map((step, idx) => (
+                      <Text style={styles.infoSectionTitle}>KEY FORM CUES</Text>
+                      {infoData.instructions.map((cue, idx) => (
                         <View key={idx} style={styles.infoStep}>
                           <Text style={styles.infoStepNum}>{idx + 1}</Text>
-                          <Text style={styles.infoStepText}>{step}</Text>
+                          <Text style={styles.infoStepText}>{cue}</Text>
                         </View>
                       ))}
                     </View>
@@ -1049,7 +1057,20 @@ export default function WorkoutArchitectScreen() {
                       ))}
                     </View>
                   )}
-                  <View style={{ height: 16 }} />
+                  {(infoData.youtubeUrl || infoData.youtubeKeyword || infoData.name) && (
+                    <Pressable
+                      style={styles.infoVideoBtn}
+                      onPress={() => {
+                        const url = infoData.youtubeUrl ??
+                          `https://www.youtube.com/results?search_query=${encodeURIComponent((infoData.youtubeKeyword ?? infoData.name) + " form")}`;
+                        Linking.openURL(url);
+                      }}
+                    >
+                      <Feather name="play-circle" size={15} color={Colors.orange} />
+                      <Text style={styles.infoVideoBtnText}>WATCH TUTORIAL</Text>
+                    </Pressable>
+                  )}
+                  <View style={{ height: 20 }} />
                 </ScrollView>
               )}
             </View>
@@ -2267,6 +2288,25 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     color: Colors.textMuted,
     lineHeight: 20,
+  },
+  infoVideoBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 16,
+    marginHorizontal: 2,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.orange + "55",
+    backgroundColor: Colors.orange + "12",
+  },
+  infoVideoBtnText: {
+    fontSize: 12,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 1,
+    color: Colors.orange,
   },
   optionalBadgeRow: {
     alignItems: "center",

@@ -108,6 +108,18 @@ export default function ProfileScreen() {
     loadNotifPrefs().then(setNotifPrefs);
   }, []);
 
+  useEffect(() => {
+    if (pendingFrequency !== null && profile?.workoutFrequency === pendingFrequency) {
+      setPendingFrequency(null);
+    }
+  }, [profile?.workoutFrequency, pendingFrequency]);
+
+  useEffect(() => {
+    if (pendingDuration !== null && profile?.preferredWorkoutDuration === pendingDuration) {
+      setPendingDuration(null);
+    }
+  }, [profile?.preferredWorkoutDuration, pendingDuration]);
+
   const handleFeedbackSubmit = async () => {
     const msg = feedbackText.trim();
     if (!msg || feedbackSubmitting) return;
@@ -609,7 +621,6 @@ export default function ProfileScreen() {
                   Haptics.selectionAsync();
                   setPendingFrequency(f);
                   updateProfile({ workoutFrequency: f }, {
-                    onSuccess: () => setPendingFrequency(null),
                     onError: () => setPendingFrequency(null),
                   });
                 }}
@@ -641,7 +652,6 @@ export default function ProfileScreen() {
                   Haptics.selectionAsync();
                   setPendingDuration(mins);
                   updateProfile({ preferredWorkoutDuration: mins }, {
-                    onSuccess: () => setPendingDuration(null),
                     onError: () => setPendingDuration(null),
                   });
                 }}
