@@ -301,8 +301,47 @@ A pure-TypeScript scoring stack in `artifacts/api-server/src/lib/`. All steps ar
 - api-server: **1,409 tests / 22 files** (unchanged)
 - mobile: **397 tests / 11 files** (+41 bodyMapViewModel)
 
+### Apple Health Workout Import Pipeline (April 2026)
+
+Wires `SyncResult.workouts` into the `ExternalWorkout` persistence pipeline so synced Apple Health workouts are saved to the DB and appear in workout history.
+
+**New server endpoint: `POST /api/workouts/health-import`** (`workouts.ts`):
+- Accepts a batch of up to 200 `SyncWorkout` records from the mobile client
+- Server-side dedup via `rawImportText = hkId` (HealthKit UUID) — re-syncing is idempotent
+- `mapHKActivity(activityName)` maps HK activity types to internal `workoutType` + display `label`
+  - Strength: TraditionalStrengthTraining, HIIT, CrossTraining, CoreTraining, Boxing, …
+  - Cardio: Running, Cycling, Walking, Hiking, Tennis, Basketball, …
+  - Recovery: Yoga, Pilates, Stretching, MindAndBody
+  - Unknown → falls back to `("strength", activityName)`
+- Duration converted seconds → minutes (min 1); workoutDate extracted from `startDate`
+- `source: "apple_health"` stored on every imported row; `movements: []`
+- Returns `{ imported: number, skipped: number }`
+- `mapHKActivity` exported for unit testing
+
+**`externalWorkoutAdapter.ts` — Apple Health reason code:**
+- `RawExternalWorkout` now includes `source?: string | null`
+- When `source === "apple_health"` and no movements: `ineligibleReason` is `"apple-health-activity-only"` (distinguishable from the generic "No named movements" path)
+
+**`analysis.ts` — enriched 422 for Apple Health:**
+- When analysis route encounters `"apple-health-activity-only"`, returns 422 with `activitySummary: { label, durationMinutes, workoutType, source, workoutDate }` instead of bare `{ eligible: false, reason }`
+
+**`useExternalWorkoutAnalysis.ts` — new types:**
+- `AppleHealthActivitySummary` and `IneligibleAnalysisResult` exported types
+- 422 response with `activitySummary` is now returned as `IneligibleAnalysisResult` (not null) so the view can render structured Apple Health context
+- Generic ineligible 422 (no activitySummary) still returns null → coarse fallback
+
+**`useHealthSync.ts` — import after sync:**
+- `HealthSyncState` adds `importedCount: number | null`
+- After a successful sync: calls `importHealthWorkoutsToApi(result.workouts)` (awaited, errors non-fatal)
+- On import success (imported > 0): invalidates `["recent-external-workouts"]` and `["profile"]` queries so list auto-refreshes
+- `queryClient` added to `useCallback` dependency array
+
+**Test baseline (April 2026, after Apple Health import pipeline):**
+- api-server: **1,428 tests / 23 files** (+19: 5 AH adapter tests + 14 mapHKActivity tests)
+- mobile: **427 tests / 11 files** (unchanged)
+
 ### Deferred to Step 11+
-Readiness/recovery/fatigue scoring, personalized programming recommendations, prescribed vs. performed delta, advanced anatomy breakdown (more than 4 regions).
+Readiness/recovery/fatigue scoring, personalized programming recommendations, prescribed vs. performed delta, advanced anatomy breakdown (more than 4 regions). Anchored/incremental sync (anchor token storage). Expanded Apple Health permissions (HeartRate, RestingHeartRate). Writing workouts back to Apple Health.
 
 ## External Dependencies
 

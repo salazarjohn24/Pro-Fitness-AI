@@ -297,6 +297,51 @@ describe("importedDataNote", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Apple Health source path (AH-01 – AH-04)
+// ---------------------------------------------------------------------------
+
+describe("Apple Health source='apple_health'", () => {
+  it("AH-01 — returns 'apple-health-activity-only' reason when source is apple_health and no movements", () => {
+    const { quality } = adaptExternalWorkout(
+      make({ source: "apple_health", movements: [], workoutType: "strength" })
+    );
+    expect(quality.isEligible).toBe(false);
+    expect(quality.ineligibleReason).toBe("apple-health-activity-only");
+  });
+
+  it("AH-02 — returns generic reason when source is manual and no movements", () => {
+    const { quality } = adaptExternalWorkout(
+      make({ source: "manual", movements: [], workoutType: "strength" })
+    );
+    expect(quality.isEligible).toBe(false);
+    expect(quality.ineligibleReason).not.toBe("apple-health-activity-only");
+    expect(quality.ineligibleReason).toMatch(/named movements/i);
+  });
+
+  it("AH-03 — returns generic reason when source is omitted and no movements", () => {
+    const { quality } = adaptExternalWorkout(make({ movements: [] }));
+    expect(quality.ineligibleReason).not.toBe("apple-health-activity-only");
+  });
+
+  it("AH-04 — apple_health workout WITH named movements scores normally", () => {
+    const { quality } = adaptExternalWorkout(
+      make({ source: "apple_health", movements: [{ name: "Running" }], workoutType: "cardio" })
+    );
+    expect(quality.isEligible).toBe(true);
+    expect(quality.ineligibleReason).toBeNull();
+  });
+
+  it("AH-05 — rest day with apple_health source uses rest-day path (not apple-health path)", () => {
+    const { quality } = adaptExternalWorkout(
+      make({ source: "apple_health", workoutType: "rest", movements: [] })
+    );
+    expect(quality.isEligible).toBe(false);
+    expect(quality.ineligibleReason).toMatch(/rest day/i);
+    expect(quality.ineligibleReason).not.toBe("apple-health-activity-only");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // isEligibleForScoring guard
 // ---------------------------------------------------------------------------
 

@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, externalWorkoutsTable, workoutSessionsTable } from "@workspace/db";
-import { desc, eq, and, gte, ne } from "drizzle-orm";
+import { desc, eq, and, gte, ne, inArray } from "drizzle-orm";
 import {
   WORKOUT_FORMAT_VALUES,
   validateParserConfidence,
@@ -471,6 +471,161 @@ router.post("/workouts/check-exercise-matches", async (req: Request, res: Respon
 
   const checks = await checkExerciseMatches(validMovements);
   res.json({ checks });
+});
+
+// ---------------------------------------------------------------------------
+// POST /workouts/health-import  (Apple Health batch import)
+// ---------------------------------------------------------------------------
+
+/**
+ * Map an Apple Health activityName to our internal workoutType + a clean
+ * display label.  Falls back to ("strength", activityName) for unknown types.
+ *
+ * Exported for unit testing.
+ */
+export function mapHKActivity(activityName: string): { workoutType: string; label: string } {
+  const map: Record<string, { workoutType: string; label: string }> = {
+    TraditionalStrengthTraining:    { workoutType: "strength",  label: "Strength Training" },
+    FunctionalStrengthTraining:     { workoutType: "strength",  label: "Functional Strength" },
+    CrossTraining:                  { workoutType: "strength",  label: "Cross Training" },
+    HighIntensityIntervalTraining:  { workoutType: "strength",  label: "HIIT" },
+    CoreTraining:                   { workoutType: "strength",  label: "Core Training" },
+    Boxing:                         { workoutType: "strength",  label: "Boxing" },
+    Wrestling:                      { workoutType: "strength",  label: "Wrestling" },
+    MartialArts:                    { workoutType: "strength",  label: "Martial Arts" },
+    Gymnastics:                     { workoutType: "strength",  label: "Gymnastics" },
+    Running:                        { workoutType: "cardio",    label: "Running" },
+    Cycling:                        { workoutType: "cardio",    label: "Cycling" },
+    Swimming:                       { workoutType: "cardio",    label: "Swimming" },
+    Walking:                        { workoutType: "cardio",    label: "Walking" },
+    Rowing:                         { workoutType: "cardio",    label: "Rowing" },
+    Elliptical:                     { workoutType: "cardio",    label: "Elliptical" },
+    StairClimbing:                  { workoutType: "cardio",    label: "Stair Climbing" },
+    Hiking:                         { workoutType: "cardio",    label: "Hiking" },
+    Tennis:                         { workoutType: "cardio",    label: "Tennis" },
+    Basketball:                     { workoutType: "cardio",    label: "Basketball" },
+    Soccer:                         { workoutType: "cardio",    label: "Soccer" },
+    Yoga:                           { workoutType: "recovery",  label: "Yoga" },
+    Pilates:                        { workoutType: "recovery",  label: "Pilates" },
+    Stretching:                     { workoutType: "recovery",  label: "Stretching" },
+    MindAndBody:                    { workoutType: "recovery",  label: "Mind & Body" },
+    Other:                          { workoutType: "strength",  label: "Workout" },
+  };
+  return map[activityName] ?? { workoutType: "strength", label: activityName };
+}
+
+interface HKWorkoutPayload {
+  id: string;
+  activityName: string;
+  activityId: number;
+  calories: number;
+  distance: number;
+  /** Duration in seconds */
+  duration: number;
+  startDate: string;
+  endDate: string;
+  sourceName: string;
+}
+
+/**
+ * Batch import Apple Health workouts.
+ *
+ * Accepts up to 200 SyncWorkout records.  Each workout is keyed by its
+ * HealthKit UUID (stored in rawImportText) so re-syncing is idempotent.
+ *
+ * Response:  { imported: number, skipped: number }
+ */
+router.post("/workouts/health-import", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const { workouts } = req.body as { workouts?: unknown };
+
+  if (!Array.isArray(workouts) || workouts.length === 0) {
+    res.json({ imported: 0, skipped: 0 });
+    return;
+  }
+
+  if (workouts.length > 200) {
+    res.status(400).json({ error: "Batch too large. Maximum 200 workouts per import." });
+    return;
+  }
+
+  try {
+    const validWorkouts = (workouts as HKWorkoutPayload[]).filter(
+      (w) => typeof w?.id === "string" && w.id.length > 0 && typeof w.activityName === "string"
+    );
+
+    if (validWorkouts.length === 0) {
+      res.json({ imported: 0, skipped: workouts.length });
+      return;
+    }
+
+    const hkIds = validWorkouts.map((w) => w.id);
+
+    const existing = await db
+      .select({ rawImportText: externalWorkoutsTable.rawImportText })
+      .from(externalWorkoutsTable)
+      .where(
+        and(
+          eq(externalWorkoutsTable.userId, req.user.id),
+          eq(externalWorkoutsTable.source, "apple_health"),
+          inArray(externalWorkoutsTable.rawImportText, hkIds)
+        )
+      );
+
+    const alreadyImported = new Set(
+      existing.map((r) => r.rawImportText).filter((v): v is string => typeof v === "string")
+    );
+
+    const toInsert = validWorkouts.filter((w) => !alreadyImported.has(w.id));
+
+    if (toInsert.length === 0) {
+      res.json({ imported: 0, skipped: workouts.length });
+      return;
+    }
+
+    const rows = toInsert.map((w) => {
+      const { workoutType, label } = mapHKActivity(w.activityName);
+      const durationMinutes = Math.max(1, Math.round(w.duration / 60));
+      const workoutDate = typeof w.startDate === "string" ? w.startDate.split("T")[0] : null;
+      return {
+        userId:          req.user.id,
+        label,
+        duration:        durationMinutes,
+        workoutType,
+        source:          "apple_health" as const,
+        intensity:       null,
+        muscleGroups:    [] as string[],
+        stimulusPoints:  null,
+        workoutDate:     workoutDate ?? null,
+        movements:       [] as unknown[],
+        isMetcon:        false,
+        metconFormat:    null,
+        parserConfidence: null,
+        parserWarnings:  [] as string[],
+        workoutFormat:   null,
+        wasUserEdited:   false,
+        editedFields:    [] as string[],
+        lastEditedAt:    null,
+        editSource:      null,
+        rawImportText:   w.id,
+      };
+    });
+
+    await db.insert(externalWorkoutsTable).values(rows);
+
+    console.log(
+      `[health-import] userId=${req.user.id} imported=${rows.length} skipped=${workouts.length - rows.length}`
+    );
+
+    res.json({ imported: rows.length, skipped: workouts.length - rows.length });
+  } catch (err) {
+    console.error("[health-import] error:", err);
+    res.status(500).json({ error: "Failed to import Apple Health workouts" });
+  }
 });
 
 export default router;

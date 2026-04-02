@@ -1,0 +1,121 @@
+Implement the next Apple Health integration step only.
+
+Goal
+Take the newly available structured Apple Health workout data and route it safely into our workout analysis / import pipeline so Apple Health workouts can contribute more meaningfully to the existing training-analysis system.
+
+Current state
+The Apple Health hardening pass is complete:
+
+isPlatformIOS() now replaces the misleading availability abstraction
+workout reads now use the workout-native query path
+structured workout metadata is available in SyncResult.workouts
+config mismatches were cleaned up
+auth mapping is safer
+retry logging is improved
+
+Structured workout metadata now available includes:
+
+activityName
+activityId
+calories
+distance
+duration
+startDate
+endDate
+sourceName
+
+Important scope constraints
+Do NOT redesign the HealthKit architecture.
+Do NOT add readiness/recovery logic.
+Do NOT expand HealthKit permissions yet.
+Do NOT build recommendations.
+Do NOT rewrite the existing analysis engine.
+Do NOT overbuild Apple Health parsing beyond what the current structured metadata supports.
+
+Objective
+Use the newly available Apple Health workout metadata to improve product usefulness by:
+
+mapping Apple Health workouts into the external/imported workout analysis path where appropriate
+preserving safe fallback behavior when the metadata is too sparse
+keeping internal, external, and Apple Health workout analysis contracts as consistent as practical
+
+High-priority tasks
+
+Audit the current ingestion path
+Inspect where SyncResult.workouts currently stops and where external/imported workouts enter the analysis pipeline.
+Identify the cleanest bridge point.
+Add an Apple Health import adapter
+Create the minimum adapter layer needed to convert structured Apple Health workout records into the best available analysis input shape.
+
+This may include:
+
+mapping Apple Health workout metadata into external workout records or a parallel analysis input type
+deciding eligibility rules for premium analysis vs coarse fallback
+preserving source metadata and trust cues
+Improve Apple Health analysis eligibility
+Use the available workout metadata to determine:
+when an Apple Health workout is scoreable enough for premium analysis
+when it should only show partial/coarse information
+
+Do not fake precision when only broad workout metadata exists.
+
+Keep response and UI behavior coherent
+Where practical, keep Apple Health analysis behavior aligned with:
+internal workout analysis
+external workout analysis
+
+If Apple Health workouts still need a more limited experience, make that explicit and trustworthy.
+
+Preserve safe degradation
+If Apple Health data is insufficient for premium analysis:
+keep fallback behavior
+keep source labeling
+avoid misleading confidence
+
+Suggested implementation areas
+Please inspect the repo and work in the cleanest places, but likely areas include:
+
+services/healthKit.ts
+any sync persistence or import pipeline code
+external workout adapter / scoring adapter code
+analysis routes
+any Apple Health source handling in workout-detail/history code
+relevant hooks/view models if UI behavior must change
+
+Expected output
+Return your response in this structure:
+
+Apple Health integration audit for this step
+where the current pipeline stops today
+what bridge point you chose and why
+Exact changes made
+files changed
+files added
+how Apple Health workout metadata is now used
+what analysis contract changes were needed, if any
+Apple Health analysis behavior
+when Apple Health workouts get premium analysis
+when they fall back
+what trust/data-quality notes appear
+how this differs from internal and existing external workouts
+Tests added
+Add tests for:
+Apple Health workout adaptation
+scoreability / eligibility behavior
+fallback behavior
+source metadata preservation
+deterministic output
+any UI/view-model behavior affected by the change
+Remaining non-blocking gaps
+List only what is intentionally deferred after this step:
+anchored sync persistence
+expanded permissions
+HR/sleep/weight usage
+readiness/recovery
+recommendations
+
+Success criteria
+A successful pass should make Apple Health workout data materially more useful to the existing analysis system without overstating certainty or destabilizing current flows.
+
+My recommendation
+This is the best next move because it builds directly on the hardening work you just completed and closes one of the biggest remaining gaps between “HealthKit ingestion exists” and “HealthKit data actually helps the product.”

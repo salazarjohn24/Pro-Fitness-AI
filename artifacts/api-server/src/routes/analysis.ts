@@ -178,10 +178,25 @@ router.get("/workouts/external/:id/analysis", async (req: Request, res: Response
         workoutId,
         quality.ineligibleReason ?? "unknown"
       );
-      res.status(422).json({
-        eligible: false,
-        reason: quality.ineligibleReason ?? "Not enough data to score this workout.",
-      });
+
+      if (quality.ineligibleReason === "apple-health-activity-only") {
+        res.status(422).json({
+          eligible: false,
+          reason: "This Apple Health workout contains activity-level data only — individual exercises were not recorded.",
+          activitySummary: {
+            label:           workout.label,
+            durationMinutes: workout.duration,
+            workoutType:     workout.workoutType,
+            source:          workout.source,
+            workoutDate:     workout.workoutDate ?? null,
+          },
+        });
+      } else {
+        res.status(422).json({
+          eligible: false,
+          reason: quality.ineligibleReason ?? "Not enough data to score this workout.",
+        });
+      }
       return;
     }
 

@@ -12,11 +12,14 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   syncWithAppleHealth,
   isPlatformIOS,
+  type SyncWorkout,
 } from "@/services/healthKit";
 import type { HealthErrorCode } from "@/lib/healthSyncUtils";
+import { getApiBase, getAuthHeaders, getFetchOptions } from "@/hooks/apiHelpers";
 
 export { formatLastSynced } from "@/lib/healthSyncUtils";
 
@@ -39,6 +42,11 @@ export interface HealthSyncState {
   steps: number | null;
   activeCalories: number | null;
   workoutCount: number | null;
+  /**
+   * Number of Apple Health workouts persisted to the database on the most
+   * recent successful sync.  Null until the first successful sync+import.
+   */
+  importedCount: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -55,7 +63,37 @@ const INITIAL_STATE: HealthSyncState = {
   steps: null,
   activeCalories: null,
   workoutCount: null,
+  importedCount: null,
 };
+
+// ---------------------------------------------------------------------------
+// Apple Health workout import helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Send a batch of SyncWorkout records to the server for persistence.
+ *
+ * The server deduplicates by HealthKit UUID so this is safe to call on every
+ * sync — already-imported workouts are silently skipped.
+ *
+ * Returns { imported, skipped } or null when the request fails (non-fatal).
+ */
+async function importHealthWorkoutsToApi(
+  workouts: SyncWorkout[]
+): Promise<{ imported: number; skipped: number } | null> {
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${getApiBase()}/api/workouts/health-import`, {
+      ...getFetchOptions(headers),
+      method: "POST",
+      body: JSON.stringify({ workouts }),
+    });
+    if (!res.ok) return null;
+    return res.json() as Promise<{ imported: number; skipped: number }>;
+  } catch {
+    return null;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Hook
@@ -65,6 +103,7 @@ export function useHealthSync() {
   const [state, setState] = useState<HealthSyncState>(INITIAL_STATE);
   const isAvailable = isPlatformIOS();
   const syncingRef = useRef(false);
+  const queryClient = useQueryClient();
 
   // Restore persisted state on mount
   useEffect(() => {
@@ -118,6 +157,18 @@ export function useHealthSync() {
       const result = await syncWithAppleHealth();
 
       if (result.success) {
+        // Persist Apple Health workouts to the database (best-effort, non-blocking
+        // to the overall sync success status).
+        let importedCount: number | null = null;
+        if (result.workouts && result.workouts.length > 0) {
+          const importResult = await importHealthWorkoutsToApi(result.workouts);
+          importedCount = importResult?.imported ?? null;
+          if (importResult && importResult.imported > 0) {
+            queryClient.invalidateQueries({ queryKey: ["recent-external-workouts"] });
+            queryClient.invalidateQueries({ queryKey: ["profile"] });
+          }
+        }
+
         const next: HealthSyncState = {
           status: "success",
           lastSyncedAt: new Date().toISOString(),
@@ -126,6 +177,7 @@ export function useHealthSync() {
           steps: result.steps ?? null,
           activeCalories: result.activeCalories ?? null,
           workoutCount: result.workoutCount ?? null,
+          importedCount,
         };
         setState(next);
         await persist(next);
@@ -153,7 +205,7 @@ export function useHealthSync() {
     } finally {
       syncingRef.current = false;
     }
-  }, [state, persist]);
+  }, [state, persist, queryClient]);
 
   return {
     state,

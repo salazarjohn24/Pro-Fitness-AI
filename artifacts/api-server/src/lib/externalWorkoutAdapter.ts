@@ -32,6 +32,11 @@ export interface RawExternalWorkout {
   movements?: unknown;
   duration?: number | null;
   stimulusPoints?: number | null;
+  /**
+   * Import source identifier.  "apple_health" is used to distinguish activity-
+   * level Apple Health imports (no named movements) from other ineligible cases.
+   */
+  source?: string | null;
 }
 
 // One movement as stored in the DB
@@ -125,13 +130,16 @@ export function adaptExternalWorkout(raw: RawExternalWorkout): AdaptedExternalWo
   );
 
   if (namedMovements.length === 0) {
+    const isAppleHealth = raw.source === "apple_health";
     return {
       input:   { movements: [] },
       quality: {
         totalMovements:  0,
         hasSetData:       false,
         isEligible:       false,
-        ineligibleReason: "No named movements found. Cannot score this workout.",
+        ineligibleReason: isAppleHealth
+          ? "apple-health-activity-only"
+          : "No named movements found. Cannot score this workout.",
       },
     };
   }

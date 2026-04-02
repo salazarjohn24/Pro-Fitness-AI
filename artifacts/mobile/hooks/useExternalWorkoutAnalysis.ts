@@ -30,8 +30,31 @@ export interface ExternalWorkoutAnalysisResult extends WorkoutScoreResultJSON {
   importedDataNote: string | null;
 }
 
+/**
+ * Structured summary returned for Apple Health imports that cannot be scored
+ * because they contain activity-level data only (no individual exercises).
+ */
+export interface AppleHealthActivitySummary {
+  label: string;
+  durationMinutes: number;
+  workoutType: string;
+  source: string;
+  workoutDate: string | null;
+}
+
+/**
+ * The 422 response shape when an external workout is ineligible for scoring.
+ * When source is "apple_health", activitySummary is populated with structured
+ * metadata so the view can surface richer context to the user.
+ */
+export interface IneligibleAnalysisResult {
+  eligible: false;
+  reason: string;
+  activitySummary?: AppleHealthActivitySummary;
+}
+
 export function useExternalWorkoutAnalysis(workoutId: number | null) {
-  return useQuery<ExternalWorkoutAnalysisResult | null>({
+  return useQuery<ExternalWorkoutAnalysisResult | IneligibleAnalysisResult | null>({
     queryKey: ["externalWorkoutAnalysis", workoutId],
     queryFn:  async () => {
       if (workoutId == null) return null;
@@ -42,8 +65,15 @@ export function useExternalWorkoutAnalysis(workoutId: number | null) {
         getFetchOptions(headers)
       );
 
-      // Ineligible or not found → graceful null (not an error)
-      if (res.status === 404 || res.status === 422) return null;
+      if (res.status === 404) return null;
+
+      if (res.status === 422) {
+        const body = await res.json().catch(() => null);
+        if (body?.activitySummary) {
+          return body as IneligibleAnalysisResult;
+        }
+        return null;
+      }
 
       if (!res.ok) {
         throw new Error(`External workout analysis failed: ${res.status}`);
