@@ -15,6 +15,28 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Colors } from "@/constants/colors";
 import { useWorkoutHistory, type UnifiedWorkout } from "@/hooks/useWorkout";
+import { useTrainingAnalysis, type TrainingRangePreset } from "@/hooks/useTrainingAnalysis";
+import {
+  buildHistoryAnalysisViewModel,
+  type InsightCard,
+} from "@/lib/viewModels/historyAnalysisViewModel";
+
+// ---------------------------------------------------------------------------
+// Severity → Color (for insight cards)
+// ---------------------------------------------------------------------------
+
+type InsightSeverity = "info" | "low" | "moderate" | "high";
+
+function severityColor(s: InsightSeverity): string {
+  if (s === "high")     return Colors.orange;
+  if (s === "moderate") return Colors.highlight;
+  if (s === "low")      return Colors.recovery;
+  return Colors.textSubtle;
+}
+
+// ---------------------------------------------------------------------------
+// Filter types
+// ---------------------------------------------------------------------------
 
 type FilterKey = "all" | "internal" | "external" | "apple_health";
 
@@ -31,6 +53,10 @@ function filterWorkouts(workouts: UnifiedWorkout[], key: FilterKey): UnifiedWork
   if (key === "apple_health") return workouts.filter(w => w.source === "apple_health");
   return workouts;
 }
+
+// ---------------------------------------------------------------------------
+// WorkoutRow (unchanged)
+// ---------------------------------------------------------------------------
 
 function WorkoutRow({ workout }: { workout: UnifiedWorkout }) {
   const isRest = workout.workoutType === "rest";
@@ -94,13 +120,163 @@ function WorkoutRow({ workout }: { workout: UnifiedWorkout }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// InsightCardRow — renders a single insight card
+// ---------------------------------------------------------------------------
+
+function InsightCardRow({ card }: { card: InsightCard }) {
+  const color = severityColor(card.severity);
+  return (
+    <View style={[overviewStyles.insightCard, { borderLeftColor: color + "60" }]} testID={`insight-card-${card.type}`}>
+      <View style={[overviewStyles.insightDot, { backgroundColor: color }]} />
+      <Text style={overviewStyles.insightText}>{card.text}</Text>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// TrainingOverviewPanel — the history analysis header
+// ---------------------------------------------------------------------------
+
+const RANGE_OPTIONS: Array<{ label: string; value: TrainingRangePreset }> = [
+  { label: "7d",  value: 7  },
+  { label: "30d", value: 30 },
+  { label: "90d", value: 90 },
+];
+
+function TrainingOverviewPanel({
+  range,
+  onRangeChange,
+}: {
+  range: TrainingRangePreset;
+  onRangeChange: (r: TrainingRangePreset) => void;
+}) {
+  const { data: analysisData, isLoading } = useTrainingAnalysis(range);
+  const vm = buildHistoryAnalysisViewModel(
+    analysisData?.rollup ?? null,
+    analysisData?.insights ?? null,
+  );
+
+  return (
+    <View style={overviewStyles.wrapper} testID="training-overview-panel">
+      {/* Section header + range pills */}
+      <View style={overviewStyles.headerRow}>
+        <Text style={overviewStyles.sectionLabel}>TRAINING OVERVIEW</Text>
+        <View style={overviewStyles.rangePills}>
+          {RANGE_OPTIONS.map(opt => (
+            <Pressable
+              key={opt.value}
+              style={[overviewStyles.rangePill, range === opt.value && overviewStyles.rangePillActive]}
+              onPress={() => {
+                Haptics.selectionAsync();
+                onRangeChange(opt.value);
+              }}
+              testID={`range-pill-${opt.value}`}
+            >
+              <Text style={[overviewStyles.rangePillText, range === opt.value && overviewStyles.rangePillTextActive]}>
+                {opt.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      {/* Content card */}
+      <View style={overviewStyles.card}>
+        {isLoading ? (
+          <View style={overviewStyles.loadingRow} testID="overview-loading">
+            <ActivityIndicator size="small" color={Colors.textSubtle} />
+            <Text style={overviewStyles.loadingText}>Loading overview…</Text>
+          </View>
+        ) : vm.workoutCount === 0 ? (
+          <View testID="overview-empty">
+            <Text style={overviewStyles.emptyHeadline}>No workout data for {vm.rangeLabel || "this range"}</Text>
+            <Text style={overviewStyles.emptyHint}>Log or import workouts to see your training overview here.</Text>
+          </View>
+        ) : (
+          <View testID="overview-content">
+            {/* Headline */}
+            <Text style={overviewStyles.headline} testID="overview-headline">{vm.headline}</Text>
+
+            {/* Top muscles */}
+            {vm.topMuscles.length > 0 && (
+              <View style={overviewStyles.section}>
+                <Text style={overviewStyles.subLabel}>TOP MUSCLES</Text>
+                <View style={overviewStyles.muscleRow}>
+                  {vm.topMuscles.slice(0, 5).map(m => (
+                    <View key={m.key} style={overviewStyles.muscleChip} testID={`overview-muscle-${m.key}`}>
+                      {m.isElevatedRecently && (
+                        <Feather name="trending-up" size={9} color={Colors.recovery} style={{ marginRight: 3 }} />
+                      )}
+                      {m.isReducedRecently && (
+                        <Feather name="trending-down" size={9} color={Colors.orange} style={{ marginRight: 3 }} />
+                      )}
+                      <Text style={overviewStyles.muscleChipText}>{m.label}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* Insight cards (max 3, excluding data quality) */}
+            {vm.insightCards.length > 0 && (
+              <View style={overviewStyles.section} testID="overview-insights">
+                <Text style={overviewStyles.subLabel}>OBSERVATIONS</Text>
+                {vm.insightCards.slice(0, 3).map((card, idx) => (
+                  <InsightCardRow key={`${card.type}-${card.subject}-${idx}`} card={card} />
+                ))}
+              </View>
+            )}
+
+            {/* Summary observations (when no insight cards or as supplement) */}
+            {vm.insightCards.length === 0 && vm.summaryObservations.length > 0 && (
+              <View style={overviewStyles.section}>
+                <Text style={overviewStyles.subLabel}>SUMMARY</Text>
+                {vm.summaryObservations.slice(0, 2).map((obs, i) => (
+                  <Text key={i} style={overviewStyles.observationText}>{obs}</Text>
+                ))}
+              </View>
+            )}
+
+            {/* Data quality note */}
+            {vm.dataQualityNote != null && (
+              <View style={overviewStyles.qualityNote} testID="overview-quality-note">
+                <Feather name="info" size={11} color={Colors.textSubtle} />
+                <Text style={overviewStyles.qualityNoteText}>{vm.dataQualityNote}</Text>
+              </View>
+            )}
+
+            {/* Low-data trust note */}
+            {!vm.hasEnoughData && vm.workoutCount > 0 && (
+              <View style={overviewStyles.qualityNote} testID="overview-low-data">
+                <Feather name="info" size={11} color={Colors.textSubtle} />
+                <Text style={overviewStyles.qualityNoteText}>
+                  Based on {vm.workoutCount} workout. Add more sessions to see richer trends.
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+      </View>
+
+      {/* List divider */}
+      <Text style={overviewStyles.listSectionLabel}>WORKOUTS</Text>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main screen
+// ---------------------------------------------------------------------------
+
 export default function ActivityHistoryScreen() {
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const botPad = Platform.OS === "web" ? 34 : insets.bottom;
 
-  const { data: workouts = [], isLoading } = useWorkoutHistory(90);
+  const { data: workouts = [], isLoading: historyLoading } = useWorkoutHistory(90);
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
+  const [overviewRange, setOverviewRange] = useState<TrainingRangePreset>(30);
 
   const countAll = workouts.length;
   const countInternal = workouts.filter(w => w.type === "internal").length;
@@ -118,20 +294,12 @@ export default function ActivityHistoryScreen() {
 
   const filtered = filterWorkouts(workouts, activeFilter);
 
-  return (
-    <View style={[styles.container, { paddingTop: topPad }]}>
-      <View style={styles.topBar}>
-        <Pressable
-          style={styles.backBtn}
-          onPress={() => router.back()}
-          hitSlop={8}
-        >
-          <Feather name="arrow-left" size={18} color={Colors.text} />
-        </Pressable>
-        <Text style={styles.topBarTitle}>ACTIVITY HISTORY</Text>
-        <View style={{ width: 36 }} />
-      </View>
+  const listHeader = (
+    <View>
+      {/* Training overview panel */}
+      <TrainingOverviewPanel range={overviewRange} onRangeChange={setOverviewRange} />
 
+      {/* Filter pills (above the workout list) */}
       {filterDefs.length > 1 && (
         <View style={styles.filterRow}>
           {filterDefs.map(f => (
@@ -150,27 +318,220 @@ export default function ActivityHistoryScreen() {
           ))}
         </View>
       )}
+    </View>
+  );
 
-      {isLoading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator color={Colors.orange} />
-        </View>
-      ) : filtered.length === 0 ? (
-        <View style={styles.centered}>
-          <Text style={styles.empty}>No workouts found.</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={filtered}
-          keyExtractor={w => `${w.type}-${w.id}`}
-          renderItem={({ item }) => <WorkoutRow workout={item} />}
-          contentContainerStyle={[styles.list, { paddingBottom: botPad + 24 }]}
-          showsVerticalScrollIndicator={false}
-        />
-      )}
+  const listEmpty = historyLoading ? (
+    <View style={styles.centered}>
+      <ActivityIndicator color={Colors.orange} />
+    </View>
+  ) : (
+    <View style={styles.centered}>
+      <Text style={styles.empty}>No workouts found.</Text>
+    </View>
+  );
+
+  return (
+    <View style={[styles.container, { paddingTop: topPad }]}>
+      <View style={styles.topBar}>
+        <Pressable
+          style={styles.backBtn}
+          onPress={() => router.back()}
+          hitSlop={8}
+        >
+          <Feather name="arrow-left" size={18} color={Colors.text} />
+        </Pressable>
+        <Text style={styles.topBarTitle}>ACTIVITY HISTORY</Text>
+        <View style={{ width: 36 }} />
+      </View>
+
+      <FlatList
+        data={filtered}
+        keyExtractor={w => `${w.type}-${w.id}`}
+        renderItem={({ item }) => <WorkoutRow workout={item} />}
+        ListHeaderComponent={listHeader}
+        ListEmptyComponent={listEmpty}
+        contentContainerStyle={[styles.list, { paddingBottom: botPad + 24 }]}
+        showsVerticalScrollIndicator={false}
+      />
     </View>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Training overview styles
+// ---------------------------------------------------------------------------
+
+const overviewStyles = StyleSheet.create({
+  wrapper: {
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  sectionLabel: {
+    fontSize: 9,
+    fontFamily: "Inter_900Black",
+    color: Colors.textSubtle,
+    letterSpacing: 1.5,
+  },
+  rangePills: {
+    flexDirection: "row",
+    gap: 4,
+  },
+  rangePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 100,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.bgCard,
+  },
+  rangePillActive: {
+    backgroundColor: Colors.highlight + "20",
+    borderColor: Colors.highlight + "50",
+  },
+  rangePillText: {
+    fontSize: 10,
+    fontFamily: "Inter_700Bold",
+    color: Colors.textSubtle,
+  },
+  rangePillTextActive: {
+    color: Colors.highlight,
+  },
+  card: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 14,
+    marginBottom: 16,
+  },
+  loadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 8,
+    justifyContent: "center",
+  },
+  loadingText: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
+  },
+  emptyHeadline: {
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+    color: Colors.textMuted,
+    marginBottom: 4,
+  },
+  emptyHint: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
+    lineHeight: 16,
+  },
+  headline: {
+    fontSize: 15,
+    fontFamily: "Inter_900Black",
+    color: Colors.text,
+    fontStyle: "italic",
+    marginBottom: 12,
+    lineHeight: 20,
+  },
+  section: {
+    marginBottom: 12,
+    gap: 6,
+  },
+  subLabel: {
+    fontSize: 9,
+    fontFamily: "Inter_900Black",
+    color: Colors.textSubtle,
+    letterSpacing: 1.5,
+    marginBottom: 4,
+  },
+  muscleRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  muscleChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.highlight + "30",
+    backgroundColor: Colors.highlight + "08",
+  },
+  muscleChipText: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    color: Colors.highlight,
+  },
+  insightCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    borderLeftWidth: 3,
+    paddingLeft: 10,
+    paddingVertical: 6,
+    marginBottom: 6,
+  },
+  insightDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    marginTop: 5,
+    flexShrink: 0,
+  },
+  insightText: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textMuted,
+    lineHeight: 17,
+  },
+  observationText: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textMuted,
+    lineHeight: 17,
+    marginBottom: 4,
+  },
+  qualityNote: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 7,
+    paddingTop: 10,
+    marginTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  qualityNoteText: {
+    flex: 1,
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
+    lineHeight: 16,
+  },
+  listSectionLabel: {
+    fontSize: 9,
+    fontFamily: "Inter_900Black",
+    color: Colors.textSubtle,
+    letterSpacing: 1.5,
+    marginBottom: 8,
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Screen styles (unchanged from original)
+// ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
   container: {
@@ -205,7 +566,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 6,
-    paddingHorizontal: 20,
     paddingBottom: 12,
   },
   filterPill: {
@@ -233,9 +593,9 @@ const styles = StyleSheet.create({
     paddingTop: 4,
   },
   centered: {
-    flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    paddingVertical: 40,
   },
   empty: {
     fontSize: 13,

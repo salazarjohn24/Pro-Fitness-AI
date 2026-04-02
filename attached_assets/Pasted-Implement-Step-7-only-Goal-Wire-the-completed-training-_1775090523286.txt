@@ -1,0 +1,91 @@
+Implement Step 7 only.
+
+Goal
+Wire the completed training-analysis stack into the actual app screens so users can see:
+
+workout/session analysis
+historical training analysis
+insight cards
+data quality / low-data notes
+
+Existing foundation
+Step 6 already exists:
+
+backend analysis endpoints
+hooks/useWorkoutAnalysis.ts
+hooks/useTrainingAnalysis.ts
+workoutAnalysisViewModel.ts
+historyAnalysisViewModel.ts
+trainingDisplay.ts
+
+Do not work on Step 8 or beyond.
+Do not build readiness/recovery/fatigue scoring.
+Do not build prescribed vs performed delta logic.
+Do not add body-map rendering unless it is trivial.
+Do not redesign the whole app.
+
+Step 7 objective
+Integrate the existing Step 6 analysis outputs into the real mobile UI surfaces.
+
+High-priority surfaces
+
+workout/session detail screen
+activity history / progress / training analysis screen
+insight cards / summary sections
+
+Implementation guidance
+
+Workout detail screen
+Use useWorkoutAnalysis(sessionId) and buildWorkoutAnalysisViewModel().
+Render:
+analysis headline
+top muscles
+top patterns
+dominant stimulus
+data quality note if present
+safe empty/loading/error states
+History screen
+Use useTrainingAnalysis(range) and buildHistoryAnalysisViewModel().
+Render:
+range headline
+top muscles
+recent shifts
+insight cards
+summary observations
+data quality note
+safe empty/loading/error states
+Coexistence cleanup
+Audit any existing coarse workout summary logic or simplistic training-summary UI.
+Where the new analysis is present, hide or de-emphasize the old coarse summary to avoid duplicate/conflicting signals.
+
+Important guidance
+
+keep core scoring logic untouched
+use the existing hooks and view models rather than duplicating logic in components
+keep presentation simple and trustworthy
+handle fallback-heavy and low-data states explicitly
+prefer a few strong summary blocks over dense visual complexity
+
+Tests required
+Add UI integration tests for:
+
+workout detail analysis rendering
+history analysis rendering
+insight cards rendering
+loading/error/empty states
+fallback/data-quality note visibility
+coexistence behavior with older summary logic
+
+Expected output
+Return:
+
+current-state audit for Step 7
+exact files/screens changed
+how workout analysis was integrated
+how history analysis was integrated
+what old UI logic remains and why
+tests added
+non-blocking gaps intentionally deferred to Step 8+
+
+Success criteria
+A successful Step 7 implementation should let a user open a workout and clearly see what it emphasized, then open a history/progress surface and clearly see what has been emphasized or less emphasized over time, with insight cards and trust cues.

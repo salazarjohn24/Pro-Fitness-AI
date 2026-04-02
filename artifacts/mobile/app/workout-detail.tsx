@@ -19,6 +19,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Colors } from "@/constants/colors";
 import { useRecentExternalWorkouts, useUpdateExternalWorkout, type ExternalWorkout } from "@/hooks/useProfile";
 import { useSessionDetail, useUpdateSessionExercises, useDeleteSession } from "@/hooks/useWorkout";
+import { useWorkoutAnalysis } from "@/hooks/useWorkoutAnalysis";
+import { buildWorkoutAnalysisViewModel, type WorkoutAnalysisDisplayModel } from "@/lib/viewModels/workoutAnalysisViewModel";
+
+// ---------------------------------------------------------------------------
+// Formatters
+// ---------------------------------------------------------------------------
 
 function formatDuration(minutes: number): string {
   if (minutes < 60) return `${minutes}m`;
@@ -53,7 +59,13 @@ function sourceColor(source: string): string {
   return Colors.orange;
 }
 
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
 const SCORE_LABELS: Record<number, string> = { 1: "Very Low", 2: "Low", 3: "Moderate", 4: "High", 5: "Very High" };
+
+// Kept for external workouts (coarse muscleGroups field)
 const MUSCLE_COLOR: Record<string, string> = {
   Chest: Colors.orange,
   Back: Colors.recovery,
@@ -66,6 +78,82 @@ const MUSCLE_COLOR: Record<string, string> = {
   Core: Colors.recovery,
   Calves: "#aaa",
 };
+
+// ---------------------------------------------------------------------------
+// WorkoutAnalysisPanel — renders the Step 3–6 analysis for an internal session
+// ---------------------------------------------------------------------------
+
+function WorkoutAnalysisPanel({ vm }: { vm: WorkoutAnalysisDisplayModel }) {
+  return (
+    <View style={analysisStyles.card} testID="workout-analysis-panel">
+      {/* Headline */}
+      <Text style={analysisStyles.headline} testID="analysis-headline">{vm.headline}</Text>
+
+      {/* Top muscles */}
+      {vm.topMuscles.length > 0 && (
+        <View style={analysisStyles.row}>
+          <Text style={analysisStyles.subLabel}>MUSCLES</Text>
+          <View style={analysisStyles.chipRow}>
+            {vm.topMuscles.slice(0, 5).map((m) => (
+              <View key={m.key} style={analysisStyles.chip} testID={`muscle-chip-${m.key}`}>
+                <Text style={analysisStyles.chipText}>{m.label}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+
+      {/* Top patterns */}
+      {vm.topPatterns.length > 0 && (
+        <View style={analysisStyles.row}>
+          <Text style={analysisStyles.subLabel}>PATTERNS</Text>
+          <View style={analysisStyles.chipRow}>
+            {vm.topPatterns.slice(0, 3).map((p) => (
+              <View key={p.key} style={[analysisStyles.chip, analysisStyles.chipPattern]} testID={`pattern-chip-${p.key}`}>
+                <Text style={[analysisStyles.chipText, { color: Colors.recovery }]}>{p.label}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+
+      {/* Dominant stimulus */}
+      {vm.dominantStimulus.key && (
+        <View style={analysisStyles.row}>
+          <Text style={analysisStyles.subLabel}>STIMULUS</Text>
+          <View style={[analysisStyles.chip, analysisStyles.chipStimulus]} testID="stimulus-chip">
+            <Text style={[analysisStyles.chipText, { color: Colors.orange }]}>{vm.dominantStimulus.label}</Text>
+          </View>
+        </View>
+      )}
+
+      {/* Data quality note */}
+      {vm.dataQualityNote != null && (
+        <View style={analysisStyles.qualityNote} testID="analysis-quality-note">
+          <Feather name="info" size={11} color={Colors.textSubtle} />
+          <Text style={analysisStyles.qualityNoteText}>{vm.dataQualityNote}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AnalysisSkeleton — shown while analysis is loading
+// ---------------------------------------------------------------------------
+
+function AnalysisSkeleton() {
+  return (
+    <View style={[analysisStyles.card, analysisStyles.skeleton]} testID="analysis-skeleton">
+      <ActivityIndicator size="small" color={Colors.textSubtle} />
+      <Text style={analysisStyles.skeletonText}>Analysing workout…</Text>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main screen
+// ---------------------------------------------------------------------------
 
 export default function WorkoutDetailScreen() {
   const insets = useSafeAreaInsets();
@@ -81,6 +169,12 @@ export default function WorkoutDetailScreen() {
   const { mutate: updateSession, isPending: isSaving } = useUpdateSessionExercises();
   const { mutate: updateExternal, isPending: isSavingExternal } = useUpdateExternalWorkout();
   const { mutate: deleteSession, isPending: isDeleting } = useDeleteSession();
+
+  // Step 6 analysis — only for in-app sessions
+  const { data: analysisData, isLoading: analysisLoading } = useWorkoutAnalysis(
+    type === "internal" ? id : null
+  );
+  const analysisVm = buildWorkoutAnalysisViewModel(analysisData ?? null);
 
   const [isEditMode, setIsEditMode] = useState(false);
   const [editExercises, setEditExercises] = useState<typeof session extends undefined ? never : NonNullable<typeof session>["exercises"] | null>(null);
@@ -135,6 +229,7 @@ export default function WorkoutDetailScreen() {
   const totalSets = exercises.reduce((acc: number, ex: any) => acc + ex.sets.length, 0);
   const pct = totalSets > 0 ? Math.round((completedSets / totalSets) * 100) : 0;
 
+  // Used as fallback when analysis is unavailable/empty for internal sessions
   const muscleGroupsInternal = Array.from(new Set(
     exercises.flatMap((ex: any) => [ex.primaryMuscle, ...(ex.secondaryMuscles ?? [])].filter(Boolean))
   )) as string[];
@@ -376,10 +471,31 @@ export default function WorkoutDetailScreen() {
           )}
         </View>
 
-        {/* Muscle group chips */}
-        {(type === "internal" ? muscleGroupsInternal : (external?.muscleGroups ?? [])).length > 0 && (
+        {/* ===== ANALYSIS SECTION ===== */}
+        {type === "internal" && (
+          <>
+            {analysisLoading ? (
+              <AnalysisSkeleton />
+            ) : analysisVm.hasAnalysis ? (
+              <WorkoutAnalysisPanel vm={analysisVm} />
+            ) : muscleGroupsInternal.length > 0 ? (
+              /* Fallback: coarse exercise.primaryMuscle chips when analysis unavailable */
+              <View style={styles.muscleRow}>
+                {muscleGroupsInternal.map((m: string) => (
+                  <View key={m} style={[styles.muscleChip, { borderColor: (MUSCLE_COLOR[m] ?? Colors.textSubtle) + "50" }]}>
+                    <View style={[styles.muscleDot, { backgroundColor: MUSCLE_COLOR[m] ?? Colors.textSubtle }]} />
+                    <Text style={styles.muscleChipText}>{m}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+          </>
+        )}
+
+        {/* External workouts: coarse muscle chips (no analysis endpoint for external) */}
+        {type === "external" && (external?.muscleGroups ?? []).length > 0 && (
           <View style={styles.muscleRow}>
-            {(type === "internal" ? muscleGroupsInternal : (external?.muscleGroups ?? [])).map((m: string) => (
+            {(external!.muscleGroups ?? []).map((m: string) => (
               <View key={m} style={[styles.muscleChip, { borderColor: (MUSCLE_COLOR[m] ?? Colors.textSubtle) + "50" }]}>
                 <View style={[styles.muscleDot, { backgroundColor: MUSCLE_COLOR[m] ?? Colors.textSubtle }]} />
                 <Text style={styles.muscleChipText}>{m}</Text>
@@ -577,6 +693,96 @@ export default function WorkoutDetailScreen() {
     </KeyboardAvoidingView>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Analysis panel styles (kept separate for clarity)
+// ---------------------------------------------------------------------------
+
+const analysisStyles = StyleSheet.create({
+  card: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 14,
+    marginBottom: 16,
+    gap: 10,
+  },
+  skeleton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 16,
+    justifyContent: "center",
+  },
+  skeletonText: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
+  },
+  headline: {
+    fontSize: 15,
+    fontFamily: "Inter_900Black",
+    color: Colors.text,
+    fontStyle: "italic",
+    letterSpacing: 0.3,
+  },
+  row: {
+    gap: 6,
+  },
+  subLabel: {
+    fontSize: 9,
+    fontFamily: "Inter_900Black",
+    color: Colors.textSubtle,
+    letterSpacing: 1.5,
+  },
+  chipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  chip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.highlight + "30",
+    backgroundColor: Colors.highlight + "0A",
+  },
+  chipPattern: {
+    borderColor: Colors.recovery + "30",
+    backgroundColor: Colors.recovery + "0A",
+  },
+  chipStimulus: {
+    alignSelf: "flex-start",
+    borderColor: Colors.orange + "30",
+    backgroundColor: Colors.orange + "0A",
+  },
+  chipText: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    color: Colors.highlight,
+  },
+  qualityNote: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 7,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  qualityNoteText: {
+    flex: 1,
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSubtle,
+    lineHeight: 16,
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Screen styles (unchanged from original)
+// ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
   container: {

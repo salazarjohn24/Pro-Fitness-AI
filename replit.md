@@ -189,8 +189,20 @@ A pure-TypeScript scoring stack in `artifacts/api-server/src/lib/`. All steps ar
 - api-server: **1,376 tests / 21 files** (Steps 1–6 including weightParser)
 - mobile: **255 tests / 7 files** (trainingDisplay, workoutAnalysisViewModel, historyAnalysisViewModel)
 
-### Deferred to Step 7+
-Readiness/recovery/fatigue scoring, personalized recommendations, prescribed vs. performed delta, body-map rendering, UI screens consuming the view models.
+### Step 7 — UI wiring (April 2026)
+
+**`artifacts/mobile/app/workout-detail.tsx`** — internal sessions now show a `WorkoutAnalysisPanel` (headline, engine-scored muscle chips, pattern chips, stimulus badge, data quality note) in place of the coarse `primaryMuscle` chips. External workouts keep their existing coarse `muscleGroups` chips unchanged. Fallback to coarse chips if analysis is empty. Loading skeleton shown while analysis fetches.
+
+**`artifacts/mobile/app/activity-history.tsx`** — a `TrainingOverviewPanel` is added as `FlatList` ListHeaderComponent (scrolls with the list). Includes a range picker (7d / 30d / 90d), headline, top-muscle chips with recency shift arrows (↑/↓), insight cards (max 3), summary observations, data quality note, and a low-data trust cue for sparse ranges. Existing workout list rows and `stimulusPoints` subtitle are unchanged.
+
+**`lib/__tests__/step7Integration.test.ts`** — 43 new tests covering: workout analysis panel render/fallback/loading/error, history overview states, insight card structure and text-safety contract, recent shift flags, severity values, coexistence decisions, and determinism.
+
+**Test baseline (April 2026, after Step 7):**
+- api-server: **1,376 tests / 21 files**
+- mobile: **298 tests / 8 files**
+
+### Deferred to Step 8+
+Readiness/recovery/fatigue scoring, personalized recommendations, prescribed vs. performed delta, body-map rendering.
 
 ## External Dependencies
 
