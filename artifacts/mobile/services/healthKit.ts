@@ -29,6 +29,21 @@
  *           before calling initHealthKit so diagnostics can confirm it fired.
  *   FIX-5: Per-category auth status (getAuthStatus) was never called. Now called
  *           after successful initHealthKit to surface per-permission grant state.
+ *
+ * Hardening pass (Phase B):
+ *   HARDEN-1: Renamed isHealthKitAvailable() → isPlatformIOS(). The old name
+ *             implied authoritative HealthKit availability but only checked
+ *             Platform.OS. The async checkHealthKitAvailableViaAPI() remains the
+ *             real availability gate. A deprecated alias preserves API surface.
+ *   HARDEN-2: Replaced getSamples({ type: "Workout" } as any) with the typed
+ *             getAnchoredWorkouts() API. Provides structured workout records:
+ *             activityName, activityId, calories, distance, duration, device, etc.
+ *   HARDEN-3: getAuthStatus index mapping now driven by AUTH_READ_PERMISSION_KEYS
+ *             from healthSyncUtils — no more hardcoded [0][1][2] positional
+ *             assumptions. Adding a permission to the array automatically updates
+ *             both buildPermissions() and the status mapping.
+ *   HARDEN-4: onRetry callbacks now receive the triggering error (3rd argument)
+ *             and log error_type / error_code alongside retry metadata.
  */
 
 import { Platform } from "react-native";
@@ -37,6 +52,9 @@ import AppleHealthKit, {
   HealthKitPermissions,
   HealthValue,
   HealthInputOptions,
+  HKWorkoutQueriedSampleType,
+  AnchoredQueryResults,
+  HKErrorResponse,
 } from "react-native-health";
 
 import {
@@ -46,15 +64,18 @@ import {
   DIAG_STORAGE_KEY,
   DIAG_INITIAL,
   dedupeWorkouts,
+  dedupeHKWorkouts,
   localDayStart,
   log,
   logError,
   withRetry,
   withTimeout,
+  AUTH_READ_PERMISSION_KEYS,
   type DiagnosticState,
   type AuthCategory,
   type HealthAuthStatus,
   type HKSample,
+  type HKWorkoutSample,
   type HealthErrorCode,
 } from "@/lib/healthSyncUtils";
 
@@ -64,17 +85,24 @@ import {
 
 const READ_TIMEOUT_MS = 10_000;
 const SYNC_TIMEOUT_MS = 45_000;
-const RETRY_OPTS = {
-  maxAttempts: 3,
-  baseDelayMs: 500,
-  label: "",
-  onRetry: (attempt: number, delayMs: number) =>
-    log("read", "retry_backoff", { attempt, delay_ms: delayMs, retry_count: attempt }),
-} as const;
 
 // ---------------------------------------------------------------------------
 // Exported types
 // ---------------------------------------------------------------------------
+
+/** Structured workout record extracted from a HealthKit getAnchoredWorkouts result. */
+export interface SyncWorkout {
+  id: string;
+  activityName: string;
+  activityId: number;
+  calories: number;
+  distance: number;
+  /** Duration in seconds. */
+  duration: number;
+  startDate: string;
+  endDate: string;
+  sourceName: string;
+}
 
 export interface SyncResult {
   success: boolean;
@@ -82,6 +110,8 @@ export interface SyncResult {
   steps?: number;
   activeCalories?: number;
   workoutCount?: number;
+  /** Structured workout records, available when workouts read succeeds. */
+  workouts?: SyncWorkout[];
   errorCode?: HealthErrorCode;
   userMessage?: string;
 }
@@ -120,18 +150,42 @@ export { readDiag };
  * These are guaranteed identical values (HealthPermission enum) but do NOT
  * require the native module to be initialized when this function runs, preventing
  * the silent null-return bug where initHealthKit was never called.
+ *
+ * HARDEN-3: read array is now derived from AUTH_READ_PERMISSION_KEYS (single source
+ * of truth). This keeps buildPermissions() and getAuthStatusByCategory() in sync
+ * automatically when new permission categories are added.
  */
 function buildPermissions(): HealthKitPermissions {
   return {
     permissions: {
-      read: [
-        "Workout" as any,
-        "Steps" as any,
-        "ActiveEnergyBurned" as any,
-      ],
+      read: [...AUTH_READ_PERMISSION_KEYS] as any[],
       write: [],
     },
   };
+}
+
+/**
+ * HARDEN-1: Authoritative platform check — returns true only when running on iOS.
+ *
+ * This is a fast, synchronous, platform-level check. It does NOT verify that
+ * HealthKit is actually available on this specific device (entitlement active,
+ * no MDM restriction, not an iPad without the capability).
+ *
+ * For the authoritative availability check, use checkHealthKitAvailableViaAPI().
+ */
+export function isPlatformIOS(): boolean {
+  return Platform.OS === "ios";
+}
+
+/**
+ * @deprecated Use isPlatformIOS() for the synchronous platform check.
+ *             For authoritative HealthKit availability, use checkHealthKitAvailableViaAPI().
+ *
+ * Retained as a deprecated alias to avoid breaking any existing callers outside
+ * of this module. Will be removed in a future cleanup pass.
+ */
+export function isHealthKitAvailable(): boolean {
+  return isPlatformIOS();
 }
 
 /**
@@ -142,7 +196,7 @@ function buildPermissions(): HealthKitPermissions {
  */
 export function checkHealthKitAvailableViaAPI(): Promise<boolean> {
   return new Promise((resolve) => {
-    if (Platform.OS !== "ios") {
+    if (!isPlatformIOS()) {
       writeDiag({ hkAvailableChecked: true, hkAvailable: false });
       resolve(false);
       return;
@@ -163,14 +217,6 @@ export function checkHealthKitAvailableViaAPI(): Promise<boolean> {
 }
 
 /**
- * Fast platform check (synchronous). Use checkHealthKitAvailableViaAPI() for
- * the authoritative async check.
- */
-export function isHealthKitAvailable(): boolean {
-  return Platform.OS === "ios";
-}
-
-/**
  * FIX-2 + FIX-4: Request HealthKit permissions with full diagnostic tracking.
  *
  * - Marks authRequestAttempted = true in storage BEFORE calling initHealthKit,
@@ -182,7 +228,7 @@ export function isHealthKitAvailable(): boolean {
  */
 export function requestHealthKitPermissions(): Promise<boolean> {
   return new Promise(async (resolve) => {
-    if (!isHealthKitAvailable()) {
+    if (!isPlatformIOS()) {
       resolve(false);
       return;
     }
@@ -235,17 +281,24 @@ export function requestHealthKitPermissions(): Promise<boolean> {
 }
 
 /**
- * FIX-5: Get per-category authorization status using getAuthStatus().
- * Returns { Workout, Steps, ActiveEnergyBurned } each as NotDetermined / SharingDenied / SharingAuthorized.
+ * FIX-5 + HARDEN-3: Get per-category authorization status using getAuthStatus().
+ *
+ * HARDEN-3: The mapping from the read status array → AuthCategory is now driven by
+ * AUTH_READ_PERMISSION_KEYS (same array used in buildPermissions()), not hardcoded
+ * positional indices. When a new permission is added to AUTH_READ_PERMISSION_KEYS,
+ * the mapping here updates automatically.
+ *
+ * iOS PRIVACY NOTE: iOS does not reliably report read-permission grant status to
+ * apps (privacy protection). getAuthStatus may return SharingAuthorized for reads
+ * that the user actually denied. Only write-permission status is definitively
+ * accurate. Treat read auth status as a heuristic, not a guarantee.
  */
 function getAuthStatusByCategory(
   permissions: HealthKitPermissions
 ): Promise<Record<AuthCategory, HealthAuthStatus>> {
-  const unknown: Record<AuthCategory, HealthAuthStatus> = {
-    Workout: "NotDetermined",
-    Steps: "NotDetermined",
-    ActiveEnergyBurned: "NotDetermined",
-  };
+  const unknown = Object.fromEntries(
+    AUTH_READ_PERMISSION_KEYS.map((cat) => [cat, "NotDetermined" as HealthAuthStatus])
+  ) as Record<AuthCategory, HealthAuthStatus>;
 
   return new Promise((resolve) => {
     try {
@@ -257,14 +310,14 @@ function getAuthStatusByCategory(
         const codeToStatus = (code: number): HealthAuthStatus =>
           code === 2 ? "SharingAuthorized" : code === 1 ? "SharingDenied" : "NotDetermined";
 
-        // read statuses come back in the same order as permissions.read array:
-        // [Workout, Steps, ActiveEnergyBurned]
+        // HARDEN-3: Map read statuses by iterating AUTH_READ_PERMISSION_KEYS.
+        // Positional order matches buildPermissions().permissions.read exactly.
         const read: number[] = results.permissions.read;
-        resolve({
-          Workout: codeToStatus(read[0] ?? 0),
-          Steps: codeToStatus(read[1] ?? 0),
-          ActiveEnergyBurned: codeToStatus(read[2] ?? 0),
+        const result = { ...unknown };
+        AUTH_READ_PERMISSION_KEYS.forEach((cat, i) => {
+          result[cat] = codeToStatus(read[i] ?? 0);
         });
+        resolve(result);
       });
     } catch {
       resolve(unknown);
@@ -326,21 +379,36 @@ function getActiveEnergyBurned(
   });
 }
 
-function getWorkouts(startDate: Date, endDate: Date): Promise<HealthValue[]> {
+/**
+ * HARDEN-2: Reads workouts via getAnchoredWorkouts() — the typed, workout-native
+ * HealthKit API — instead of getSamples({ type: "Workout" } as any).
+ *
+ * getAnchoredWorkouts returns HKWorkoutQueriedSampleType[], which provides:
+ *   activityName, activityId, calories, distance, duration, start, end,
+ *   device, sourceName, sourceId, tracked, metadata, workoutEvents.
+ *
+ * This replaces the previous untyped path that used a getSamples cast to `any`
+ * and discarded all workout metadata. The richer data is captured in SyncResult.workouts.
+ *
+ * No anchor token is used here (returns all workouts in the date window). Anchored
+ * incremental sync is a planned follow-up that requires anchor storage — see
+ * deferred items in the hardening audit.
+ */
+function getWorkoutSamples(startDate: Date, endDate: Date): Promise<HKWorkoutQueriedSampleType[]> {
   return new Promise((resolve, reject) => {
     const options: HealthInputOptions = {
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString(),
     };
     try {
-      AppleHealthKit.getSamples(
-        { ...options, type: "Workout" } as any,
-        (error: string, results: HealthValue[]) => {
-          if (error) {
-            reject(new HealthSyncError(HEALTH_ERROR.READ_FAILED, error));
+      AppleHealthKit.getAnchoredWorkouts(
+        options,
+        (error: HKErrorResponse, results: AnchoredQueryResults) => {
+          if (error?.message) {
+            reject(new HealthSyncError(HEALTH_ERROR.READ_FAILED, error.message));
             return;
           }
-          resolve(results);
+          resolve(results?.data ?? []);
         },
       );
     } catch (e) {
@@ -390,8 +458,6 @@ async function doSync(): Promise<SyncResult> {
 
   if (!granted) {
     // FIX-2: initHealthKit failure → NOT_AVAILABLE, not PERMISSION_DENIED.
-    // The user-safe message directs them to check Settings > Health entitlement,
-    // not to "grant permissions" (which is incorrect when initHealthKit failed).
     const msg = HEALTH_USER_MESSAGES.NOT_AVAILABLE;
     logError("permission", HEALTH_ERROR.NOT_AVAILABLE, msg, undefined, { timeout_status: "ok" });
     await writeDiag({ lastErrorCode: HEALTH_ERROR.NOT_AVAILABLE, lastErrorMsg: msg });
@@ -420,16 +486,27 @@ async function doSync(): Promise<SyncResult> {
   let caloriesRetryCount = 0;
   let workoutsRetryCount = 0;
 
+  // HARDEN-4: onRetry callbacks now accept the triggering error (3rd arg) and
+  // log error_type / error_code for richer retry diagnostics.
   const [stepsResult, caloriesResult, workoutsResult] =
     await Promise.allSettled([
       withRetry(
         () =>
           withTimeout(getStepCount(startDate, endDate), READ_TIMEOUT_MS, "steps"),
         {
-          ...RETRY_OPTS, label: "steps",
-          onRetry: (attempt, delayMs) => {
+          maxAttempts: 3,
+          baseDelayMs: 500,
+          label: "steps",
+          onRetry: (attempt, delayMs, err) => {
             stepsRetryCount = attempt;
-            log("read", "retry_backoff", { metric: "steps", attempt, delay_ms: delayMs, retry_count: attempt });
+            log("read", "retry_backoff", {
+              metric: "steps",
+              attempt,
+              delay_ms: delayMs,
+              retry_count: attempt,
+              error_type: err instanceof Error ? err.constructor.name : typeof err,
+              error_code: err instanceof HealthSyncError ? err.code : undefined,
+            });
           },
         },
       ),
@@ -437,21 +514,39 @@ async function doSync(): Promise<SyncResult> {
         () =>
           withTimeout(getActiveEnergyBurned(startDate, endDate), READ_TIMEOUT_MS, "calories"),
         {
-          ...RETRY_OPTS, label: "calories",
-          onRetry: (attempt, delayMs) => {
+          maxAttempts: 3,
+          baseDelayMs: 500,
+          label: "calories",
+          onRetry: (attempt, delayMs, err) => {
             caloriesRetryCount = attempt;
-            log("read", "retry_backoff", { metric: "calories", attempt, delay_ms: delayMs, retry_count: attempt });
+            log("read", "retry_backoff", {
+              metric: "calories",
+              attempt,
+              delay_ms: delayMs,
+              retry_count: attempt,
+              error_type: err instanceof Error ? err.constructor.name : typeof err,
+              error_code: err instanceof HealthSyncError ? err.code : undefined,
+            });
           },
         },
       ),
       withRetry(
         () =>
-          withTimeout(getWorkouts(startDate, endDate), READ_TIMEOUT_MS, "workouts"),
+          withTimeout(getWorkoutSamples(startDate, endDate), READ_TIMEOUT_MS, "workouts"),
         {
-          ...RETRY_OPTS, label: "workouts",
-          onRetry: (attempt, delayMs) => {
+          maxAttempts: 3,
+          baseDelayMs: 500,
+          label: "workouts",
+          onRetry: (attempt, delayMs, err) => {
             workoutsRetryCount = attempt;
-            log("read", "retry_backoff", { metric: "workouts", attempt, delay_ms: delayMs, retry_count: attempt });
+            log("read", "retry_backoff", {
+              metric: "workouts",
+              attempt,
+              delay_ms: delayMs,
+              retry_count: attempt,
+              error_type: err instanceof Error ? err.constructor.name : typeof err,
+              error_code: err instanceof HealthSyncError ? err.code : undefined,
+            });
           },
         },
       ),
@@ -506,7 +601,7 @@ async function doSync(): Promise<SyncResult> {
     stepsResult.status === "fulfilled" ? stepsResult.value : [];
   const rawCalories =
     caloriesResult.status === "fulfilled" ? caloriesResult.value : [];
-  const rawWorkouts =
+  const rawWorkouts: HKWorkoutQueriedSampleType[] =
     workoutsResult.status === "fulfilled" ? workoutsResult.value : [];
 
   log("transform", "start", { raw_workouts: rawWorkouts.length });
@@ -515,13 +610,28 @@ async function doSync(): Promise<SyncResult> {
   const totalCalories = rawCalories.reduce((sum, c) => sum + (c.value ?? 0), 0);
 
   // ── Stage: dedupe ────────────────────────────────────────────────────────
+  // HARDEN-2: dedupeHKWorkouts is used instead of the generic dedupeWorkouts,
+  // correctly keying on id and using start::end (not startDate::endDate) as fallback.
   await writeDiag({ lastStageReached: "dedupe" });
   log("dedupe", "start", { workouts: rawWorkouts.length });
-  const uniqueWorkouts = dedupeWorkouts(rawWorkouts as HKSample[]);
+  const uniqueWorkouts = dedupeHKWorkouts(rawWorkouts as HKWorkoutSample[]);
   log("dedupe", "complete", {
     unique: uniqueWorkouts.length,
     dupes_removed: rawWorkouts.length - uniqueWorkouts.length,
   });
+
+  // Build structured SyncWorkout records from the richer workout data.
+  const syncWorkouts: SyncWorkout[] = uniqueWorkouts.map((w) => ({
+    id: w.id,
+    activityName: w.activityName,
+    activityId: w.activityId,
+    calories: w.calories,
+    distance: w.distance,
+    duration: w.duration,
+    startDate: w.start,
+    endDate: w.end,
+    sourceName: w.sourceName,
+  }));
 
   log("transform", "complete", {
     steps: Math.round(totalSteps),
@@ -549,6 +659,7 @@ async function doSync(): Promise<SyncResult> {
     steps: Math.round(totalSteps),
     activeCalories: Math.round(totalCalories),
     workoutCount: uniqueWorkouts.length,
+    workouts: syncWorkouts,
   };
 }
 
@@ -574,7 +685,7 @@ export async function syncWithAppleHealth(): Promise<SyncResult> {
 }
 
 // ---------------------------------------------------------------------------
-// Requirement 3: Entitlement / config verification checklist
+// Entitlement / config verification checklist
 // Run from dev console or diagnostics panel to verify HealthKit setup.
 // ---------------------------------------------------------------------------
 
@@ -587,7 +698,7 @@ export async function runHealthEntitlementChecklist(): Promise<{
   // Check 1: Platform
   checks.push({
     label: "Platform is iOS",
-    pass: Platform.OS === "ios",
+    pass: isPlatformIOS(),
     detail: `Platform.OS = "${Platform.OS}"`,
   });
 
@@ -606,10 +717,11 @@ export async function runHealthEntitlementChecklist(): Promise<{
   // At runtime, we verify the permission build succeeded by checking the permissions object.
   const perms = buildPermissions();
   const permReadLength = perms.permissions.read.length;
+  const expectedCount = AUTH_READ_PERMISSION_KEYS.length;
   checks.push({
-    label: "HealthKit permissions object builds correctly (3 read categories)",
-    pass: permReadLength === 3,
-    detail: `permissions.read.length = ${permReadLength} (expected 3: Workout, Steps, ActiveEnergyBurned)`,
+    label: `HealthKit permissions object builds correctly (${expectedCount} read categories)`,
+    pass: permReadLength === expectedCount,
+    detail: `permissions.read.length = ${permReadLength} (expected ${expectedCount}: ${AUTH_READ_PERMISSION_KEYS.join(", ")})`,
   });
 
   // Check 4: Diagnostic state
@@ -639,7 +751,5 @@ export async function runHealthEntitlementChecklist(): Promise<{
   }
 
   const allPass = checks.every((c) => c.pass);
-  console.log(`[health-entitlement-checklist] ${allPass ? "ALL PASS" : "FAILURES DETECTED"}`);
-
   return { checks, allPass };
 }

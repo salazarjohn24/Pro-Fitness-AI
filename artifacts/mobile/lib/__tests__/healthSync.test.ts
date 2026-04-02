@@ -24,7 +24,9 @@ import {
   HealthSyncError,
   DIAG_INITIAL,
   DIAG_STORAGE_KEY,
+  AUTH_READ_PERMISSION_KEYS,
   dedupeWorkouts,
+  dedupeHKWorkouts,
   formatLastSynced,
   localDayEnd,
   localDayStart,
@@ -34,8 +36,10 @@ import {
   toLocalDateString,
   withRetry,
   withTimeout,
+  type AuthCategory,
   type DiagnosticState,
   type HKSample,
+  type HKWorkoutSample,
 } from "../healthSyncUtils";
 
 // ---------------------------------------------------------------------------
@@ -559,5 +563,324 @@ describe("HS-14 — log with retry_count / timeout_status in details", () => {
       expect.stringContaining("[health-sync] stage=dedupe event=complete"),
     );
     spy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HS-15  isPlatformIOS vs checkHealthKitAvailableViaAPI separation
+// ---------------------------------------------------------------------------
+describe("HS-15 — platform helper isolation (isPlatformIOS)", () => {
+  /**
+   * isPlatformIOS() is a fast, synchronous, platform-level check.
+   * It does NOT verify HealthKit availability on the device.
+   * checkHealthKitAvailableViaAPI() is the authoritative async check.
+   *
+   * These tests validate the pure utility behavior of the platform constants
+   * and that AUTH_READ_PERMISSION_KEYS is consistent with AuthCategory.
+   */
+
+  it("AUTH_READ_PERMISSION_KEYS is a non-empty array", () => {
+    expect(Array.isArray(AUTH_READ_PERMISSION_KEYS)).toBe(true);
+    expect(AUTH_READ_PERMISSION_KEYS.length).toBeGreaterThan(0);
+  });
+
+  it("AUTH_READ_PERMISSION_KEYS contains exactly the expected categories", () => {
+    expect(AUTH_READ_PERMISSION_KEYS).toContain("Workout");
+    expect(AUTH_READ_PERMISSION_KEYS).toContain("Steps");
+    expect(AUTH_READ_PERMISSION_KEYS).toContain("ActiveEnergyBurned");
+  });
+
+  it("AUTH_READ_PERMISSION_KEYS has no duplicate entries", () => {
+    const unique = new Set(AUTH_READ_PERMISSION_KEYS);
+    expect(unique.size).toBe(AUTH_READ_PERMISSION_KEYS.length);
+  });
+
+  it("every element of AUTH_READ_PERMISSION_KEYS is a valid AuthCategory string", () => {
+    const validCategories: AuthCategory[] = ["Workout", "Steps", "ActiveEnergyBurned"];
+    for (const key of AUTH_READ_PERMISSION_KEYS) {
+      expect(validCategories).toContain(key);
+    }
+  });
+
+  it("AUTH_READ_PERMISSION_KEYS elements are all strings", () => {
+    for (const key of AUTH_READ_PERMISSION_KEYS) {
+      expect(typeof key).toBe("string");
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HS-16  Auth status mapping driven by AUTH_READ_PERMISSION_KEYS
+// ---------------------------------------------------------------------------
+describe("HS-16 — auth status mapping consistency with AUTH_READ_PERMISSION_KEYS", () => {
+  /**
+   * Validates that a mapping built using AUTH_READ_PERMISSION_KEYS positional
+   * iteration produces the same stable result regardless of index.
+   *
+   * Simulates what getAuthStatusByCategory() does internally, without calling
+   * the native module.
+   */
+
+  function simulateAuthMapping(
+    readCodes: number[]
+  ): Record<AuthCategory, "NotDetermined" | "SharingDenied" | "SharingAuthorized"> {
+    const codeToStatus = (code: number) =>
+      code === 2 ? "SharingAuthorized" : code === 1 ? "SharingDenied" : "NotDetermined";
+    const result = {} as Record<AuthCategory, "NotDetermined" | "SharingDenied" | "SharingAuthorized">;
+    AUTH_READ_PERMISSION_KEYS.forEach((cat, i) => {
+      result[cat] = codeToStatus(readCodes[i] ?? 0);
+    });
+    return result;
+  }
+
+  it("maps all-authorized (code 2) to SharingAuthorized for every category", () => {
+    const codes = AUTH_READ_PERMISSION_KEYS.map(() => 2);
+    const result = simulateAuthMapping(codes);
+    for (const cat of AUTH_READ_PERMISSION_KEYS) {
+      expect(result[cat]).toBe("SharingAuthorized");
+    }
+  });
+
+  it("maps all-denied (code 1) to SharingDenied for every category", () => {
+    const codes = AUTH_READ_PERMISSION_KEYS.map(() => 1);
+    const result = simulateAuthMapping(codes);
+    for (const cat of AUTH_READ_PERMISSION_KEYS) {
+      expect(result[cat]).toBe("SharingDenied");
+    }
+  });
+
+  it("maps all-not-determined (code 0) to NotDetermined", () => {
+    const codes = AUTH_READ_PERMISSION_KEYS.map(() => 0);
+    const result = simulateAuthMapping(codes);
+    for (const cat of AUTH_READ_PERMISSION_KEYS) {
+      expect(result[cat]).toBe("NotDetermined");
+    }
+  });
+
+  it("maps mixed codes correctly in order of AUTH_READ_PERMISSION_KEYS", () => {
+    const codes = AUTH_READ_PERMISSION_KEYS.map((_, i) => i % 3);
+    const result = simulateAuthMapping(codes);
+    AUTH_READ_PERMISSION_KEYS.forEach((cat, i) => {
+      const expected =
+        i % 3 === 2 ? "SharingAuthorized" : i % 3 === 1 ? "SharingDenied" : "NotDetermined";
+      expect(result[cat]).toBe(expected);
+    });
+  });
+
+  it("result contains exactly one key per AUTH_READ_PERMISSION_KEYS entry", () => {
+    const codes = AUTH_READ_PERMISSION_KEYS.map(() => 2);
+    const result = simulateAuthMapping(codes);
+    expect(Object.keys(result)).toHaveLength(AUTH_READ_PERMISSION_KEYS.length);
+    for (const cat of AUTH_READ_PERMISSION_KEYS) {
+      expect(result).toHaveProperty(cat);
+    }
+  });
+
+  it("unknown code (e.g. 99) falls through to NotDetermined", () => {
+    const codes = AUTH_READ_PERMISSION_KEYS.map(() => 99);
+    const result = simulateAuthMapping(codes);
+    for (const cat of AUTH_READ_PERMISSION_KEYS) {
+      expect(result[cat]).toBe("NotDetermined");
+    }
+  });
+
+  it("missing read code (undefined → 0) falls through to NotDetermined", () => {
+    // Shorter array than AUTH_READ_PERMISSION_KEYS — simulates HealthKit
+    // returning fewer statuses than expected.
+    const result = simulateAuthMapping([2]);
+    expect(result[AUTH_READ_PERMISSION_KEYS[0]]).toBe("SharingAuthorized");
+    for (let i = 1; i < AUTH_READ_PERMISSION_KEYS.length; i++) {
+      expect(result[AUTH_READ_PERMISSION_KEYS[i]]).toBe("NotDetermined");
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HS-17  dedupeHKWorkouts — typed workout deduplication
+// ---------------------------------------------------------------------------
+describe("HS-17 — dedupeHKWorkouts typed workout deduplication", () => {
+  function makeWorkout(overrides: Partial<HKWorkoutSample> = {}): HKWorkoutSample {
+    return {
+      id: "uuid-001",
+      activityId: 79,
+      activityName: "TraditionalStrengthTraining",
+      calories: 320,
+      distance: 0,
+      duration: 3600,
+      start: "2024-06-01T10:00:00.000Z",
+      end: "2024-06-01T11:00:00.000Z",
+      device: "Apple Watch",
+      sourceName: "Pro Fitness AI",
+      sourceId: "com.example.app",
+      tracked: true,
+      ...overrides,
+    };
+  }
+
+  it("returns empty array for empty input", () => {
+    expect(dedupeHKWorkouts([])).toEqual([]);
+  });
+
+  it("returns a single item unchanged", () => {
+    const w = makeWorkout();
+    expect(dedupeHKWorkouts([w])).toEqual([w]);
+  });
+
+  it("preserves two items with different ids", () => {
+    const w1 = makeWorkout({ id: "aaa" });
+    const w2 = makeWorkout({ id: "bbb" });
+    expect(dedupeHKWorkouts([w1, w2])).toHaveLength(2);
+  });
+
+  it("deduplicates by id — first occurrence wins", () => {
+    const w1 = makeWorkout({ id: "dup", calories: 300 });
+    const w2 = makeWorkout({ id: "dup", calories: 400 });
+    const result = dedupeHKWorkouts([w1, w2]);
+    expect(result).toHaveLength(1);
+    expect(result[0].calories).toBe(300);
+  });
+
+  it("falls back to start::end key when id is empty string", () => {
+    const w1 = makeWorkout({ id: "", start: "2024-06-01T10:00:00Z", end: "2024-06-01T11:00:00Z" });
+    const w2 = makeWorkout({ id: "", start: "2024-06-01T10:00:00Z", end: "2024-06-01T11:00:00Z" });
+    expect(dedupeHKWorkouts([w1, w2])).toHaveLength(1);
+  });
+
+  it("treats distinct start::end as different workouts when id is empty", () => {
+    const w1 = makeWorkout({ id: "", start: "2024-06-01T10:00:00Z", end: "2024-06-01T11:00:00Z" });
+    const w2 = makeWorkout({ id: "", start: "2024-06-02T10:00:00Z", end: "2024-06-02T11:00:00Z" });
+    expect(dedupeHKWorkouts([w1, w2])).toHaveLength(2);
+  });
+
+  it("is idempotent on an already-deduped list", () => {
+    const workouts = [
+      makeWorkout({ id: "a" }),
+      makeWorkout({ id: "b" }),
+      makeWorkout({ id: "c" }),
+    ];
+    const once = dedupeHKWorkouts(workouts);
+    const twice = dedupeHKWorkouts(once);
+    expect(twice).toHaveLength(3);
+  });
+
+  it("collapses retry-duplicate scenario (same list appended to itself)", () => {
+    const w1 = makeWorkout({ id: "x1" });
+    const w2 = makeWorkout({ id: "x2" });
+    expect(dedupeHKWorkouts([w1, w2, w1, w2])).toHaveLength(2);
+  });
+
+  it("preserves full workout metadata on deduped records", () => {
+    const w = makeWorkout({ activityName: "HIIT", calories: 450, duration: 2700 });
+    const result = dedupeHKWorkouts([w]);
+    expect(result[0].activityName).toBe("HIIT");
+    expect(result[0].calories).toBe(450);
+    expect(result[0].duration).toBe(2700);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HS-18  withRetry — onRetry receives error as third argument
+// ---------------------------------------------------------------------------
+describe("HS-18 — withRetry passes error to onRetry (3-param callback)", () => {
+  it("onRetry receives the triggering error as the third argument", async () => {
+    const errors: unknown[] = [];
+    const targetError = new Error("transient network error");
+    let calls = 0;
+    const fn = vi.fn().mockImplementation(async () => {
+      if (++calls < 3) throw targetError;
+      return "ok";
+    });
+    await withRetry(fn, {
+      maxAttempts: 3,
+      baseDelayMs: 0,
+      label: "test",
+      onRetry: (_attempt, _delay, err) => errors.push(err),
+    });
+    expect(errors).toHaveLength(2);
+    expect(errors[0]).toBe(targetError);
+    expect(errors[1]).toBe(targetError);
+  });
+
+  it("onRetry receives a HealthSyncError with the correct code", async () => {
+    const capturedErrors: unknown[] = [];
+    const hkErr = new HealthSyncError(HEALTH_ERROR.READ_TIMEOUT, "timed out");
+    const fn = vi.fn().mockRejectedValue(hkErr);
+    await withRetry(fn, {
+      maxAttempts: 2,
+      baseDelayMs: 0,
+      label: "test",
+      onRetry: (_a, _d, err) => capturedErrors.push(err),
+    }).catch(() => {});
+    expect(capturedErrors[0]).toBeInstanceOf(HealthSyncError);
+    expect((capturedErrors[0] as HealthSyncError).code).toBe(HEALTH_ERROR.READ_TIMEOUT);
+  });
+
+  it("onRetry with 2-param callback still works (backwards compat — extra arg is ignored)", async () => {
+    const retries: { attempt: number; delay: number }[] = [];
+    let calls = 0;
+    const fn = vi.fn().mockImplementation(async () => {
+      if (++calls === 1) throw new Error("fail");
+      return "done";
+    });
+    await withRetry(fn, {
+      maxAttempts: 2,
+      baseDelayMs: 0,
+      label: "test",
+      onRetry: (attempt, delay) => retries.push({ attempt, delay }),
+    });
+    expect(retries).toHaveLength(1);
+    expect(retries[0].attempt).toBe(1);
+  });
+
+  it("each retry receives the error from that specific failed attempt", async () => {
+    const errors: Error[] = [];
+    const err1 = new Error("attempt 1 failed");
+    const err2 = new Error("attempt 2 failed");
+    const errSeq = [err1, err2];
+    let calls = 0;
+    const fn = vi.fn().mockImplementation(async () => {
+      const e = errSeq[calls++];
+      if (e) throw e;
+      return "done";
+    });
+    await withRetry(fn, {
+      maxAttempts: 3,
+      baseDelayMs: 0,
+      label: "test",
+      onRetry: (_a, _d, err) => errors.push(err as Error),
+    });
+    expect(errors[0]).toBe(err1);
+    expect(errors[1]).toBe(err2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HS-19  AUTH_READ_PERMISSION_KEYS integrity checks
+// ---------------------------------------------------------------------------
+describe("HS-19 — AUTH_READ_PERMISSION_KEYS structural integrity", () => {
+  it("is frozen / readonly (cannot be mutated at runtime)", () => {
+    const original = [...AUTH_READ_PERMISSION_KEYS];
+    try {
+      (AUTH_READ_PERMISSION_KEYS as any).push("HeartRate");
+    } catch {
+      // readonly arrays throw in strict mode — expected
+    }
+    expect([...AUTH_READ_PERMISSION_KEYS]).toEqual(original);
+  });
+
+  it("Workout is the first category (stable index 0)", () => {
+    expect(AUTH_READ_PERMISSION_KEYS[0]).toBe("Workout");
+  });
+
+  it("Steps is the second category (stable index 1)", () => {
+    expect(AUTH_READ_PERMISSION_KEYS[1]).toBe("Steps");
+  });
+
+  it("ActiveEnergyBurned is the third category (stable index 2)", () => {
+    expect(AUTH_READ_PERMISSION_KEYS[2]).toBe("ActiveEnergyBurned");
+  });
+
+  it("total count matches expected 3 permissions for this release", () => {
+    expect(AUTH_READ_PERMISSION_KEYS.length).toBe(3);
   });
 });

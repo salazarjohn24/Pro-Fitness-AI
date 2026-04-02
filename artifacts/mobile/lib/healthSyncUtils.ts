@@ -102,6 +102,8 @@ export interface RetryOptions {
  * Retries `fn` up to `maxAttempts` times with exponential backoff.
  * Delay sequence: baseDelayMs, 2×baseDelayMs, 4×baseDelayMs, …
  * Throws the last error if all attempts fail.
+ * `onRetry` receives (attempt, delayMs, err) — the triggering error is
+ * included so callers can log its type/code alongside the retry metadata.
  */
 export async function withRetry<T>(
   fn: () => Promise<T>,
@@ -173,6 +175,30 @@ export function localDayEnd(date: Date): Date {
 }
 
 // ---------------------------------------------------------------------------
+// Permission constants — single source of truth for read permission order
+// ---------------------------------------------------------------------------
+
+/**
+ * Ordered list of HealthKit read permission categories requested by this app.
+ *
+ * ORDER MATTERS: getAuthStatus returns an array parallel to this list.
+ * When you add a new category here, also add it to AuthCategory and update
+ * the DiagnosticState.authResult type accordingly.
+ *
+ * buildPermissions() and getAuthStatusByCategory() both consume this array,
+ * so the mapping stays in sync automatically when the list grows.
+ */
+export type AuthCategory = "Workout" | "Steps" | "ActiveEnergyBurned";
+
+export const AUTH_READ_PERMISSION_KEYS: ReadonlyArray<AuthCategory> = Object.freeze([
+  "Workout",
+  "Steps",
+  "ActiveEnergyBurned",
+] as const);
+
+export type HealthAuthStatus = "NotDetermined" | "SharingDenied" | "SharingAuthorized";
+
+// ---------------------------------------------------------------------------
 // Deduplication
 // ---------------------------------------------------------------------------
 
@@ -200,14 +226,44 @@ export function dedupeWorkouts(workouts: HKSample[]): HKSample[] {
   return Array.from(seen.values());
 }
 
+/**
+ * Typed variant of dedupeWorkouts for HKWorkoutSample records returned by
+ * getAnchoredWorkouts(). Uses `id` as primary key; falls back to `start::end`
+ * (the field names from HKWorkoutQueriedSampleType, which differ from the
+ * generic HKSample that uses startDate/endDate).
+ *
+ * First occurrence wins (stable order preserved).
+ */
+export interface HKWorkoutSample {
+  id: string;
+  activityId: number;
+  activityName: string;
+  calories: number;
+  distance: number;
+  duration: number;
+  start: string;
+  end: string;
+  device: string;
+  sourceName: string;
+  sourceId: string;
+  tracked: boolean;
+  metadata?: unknown;
+}
+
+export function dedupeHKWorkouts(workouts: HKWorkoutSample[]): HKWorkoutSample[] {
+  const seen = new Map<string, HKWorkoutSample>();
+  for (const w of workouts) {
+    const key = w.id ? w.id : `${w.start}::${w.end}`;
+    if (!seen.has(key)) seen.set(key, w);
+  }
+  return Array.from(seen.values());
+}
+
 // ---------------------------------------------------------------------------
 // Diagnostic state — persisted to AsyncStorage for the diagnostics panel
 // ---------------------------------------------------------------------------
 
 export const DIAG_STORAGE_KEY = "@health_diag_v1";
-
-export type AuthCategory = "Workout" | "Steps" | "ActiveEnergyBurned";
-export type HealthAuthStatus = "NotDetermined" | "SharingDenied" | "SharingAuthorized";
 
 export interface DiagnosticState {
   /** True if AppleHealthKit.isAvailable() was called and result received */
@@ -218,7 +274,10 @@ export interface DiagnosticState {
   authRequestAttempted: boolean;
   /** ISO timestamp of the moment initHealthKit was called (null = never called) */
   initCalledAt: string | null;
-  /** Per-category auth status from getAuthStatus() after initHealthKit */
+  /** Per-category auth status from getAuthStatus() after initHealthKit.
+   *  NOTE: iOS read-permission status is privacy-limited — the OS may return
+   *  SharingAuthorized for reads even when the user denied that category.
+   *  Only write-permission status is definitively accurate on iOS. */
   authResult: Record<AuthCategory, HealthAuthStatus> | null;
   /** Raw error string from initHealthKit callback, null on success */
   initHealthKitError: string | null;

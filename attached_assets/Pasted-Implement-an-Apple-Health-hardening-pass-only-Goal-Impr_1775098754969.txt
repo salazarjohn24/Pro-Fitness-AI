@@ -1,0 +1,118 @@
+Implement an Apple Health hardening pass only.
+
+Goal
+Improve our current Apple Health integration based on the completed audit.
+Do not replace the existing implementation.
+Keep the current architecture and make targeted, high-value fixes only.
+
+Current audit conclusions
+We are keeping the current implementation and improving it.
+The audit identified these highest-priority issues:
+
+isHealthKitAvailable() is misleading because it only checks Platform.OS
+getWorkouts() is using getSamples({ type: "Workout" } as any) instead of the correct workout-native query path
+NSHealthUpdateUsageDescription and com.apple.developer.healthkit.background-delivery are overstated or mismatched relative to current behavior
+getAuthStatus read-permission mapping is fragile because it depends on hardcoded positional indices
+retry logging drops the actual error context
+the current HealthKit integration is otherwise good and should be improved, not rewritten
+
+Important scope constraints
+Do NOT redesign the Apple Health architecture.
+Do NOT add readiness/recovery logic.
+Do NOT build new product features on top of HealthKit yet.
+Do NOT wire HealthKit into recommendations or body-map features.
+Do NOT expand scope beyond the hardening items below unless clearly necessary.
+
+Implement these changes
+
+Availability abstraction hardening
+Find isHealthKitAvailable() and rename/refactor it so it no longer implies authoritative HealthKit availability when it only checks platform.
+Preferred outcome:
+a clearly named platform-level helper, such as isIOSPlatform() or similar
+a separate authoritative async/device-level HealthKit availability check remains the real source of truth
+update any callers, especially useHealthSync.ts, so the UI does not over-trust the platform-only helper
+Correct workout query method
+Replace the current workout read path that uses generic samples for workouts with the proper workout-native query method from react-native-health.
+Goal:
+stop using getSamples({ type: "Workout" } as any) for workout imports
+use the best supported workout-specific query method from the library
+preserve existing dedupe and sync behavior as much as possible
+capture richer workout metadata if available:
+workout activity type
+duration
+total energy burned
+total distance
+device/source info if practical
+App/config mismatch cleanup
+Audit and fix the current Apple Health config mismatch:
+if we are not writing to Apple Health, remove or correct NSHealthUpdateUsageDescription
+if we are not using background delivery observers, remove or correct com.apple.developer.healthkit.background-delivery
+Only keep capabilities and usage descriptions that match real current behavior.
+Future-safe auth status mapping
+Refactor getAuthStatus handling so it is no longer fragile if the permission list expands.
+Goal:
+eliminate or reduce hardcoded [0] [1] [2] assumptions
+tie mapping explicitly to the permission request ordering or use a safer named mapping approach
+preserve current behavior for existing permissions
+Retry logging improvement
+Update retry logging so the retry callbacks include the triggering error context where useful.
+Goal:
+keep existing retry behavior
+improve logs/diagnostics with error-aware retry messages
+Keep diagnostics trustworthy
+If helpful, add or improve a small diagnostic note explaining that HealthKit read auth status can be privacy-limited / ambiguous and may not always reflect true granted reads with perfect clarity.
+Only do this if it fits naturally with the current diagnostics UX.
+
+Expected output
+Return your response in this structure:
+
+Apple Health hardening audit
+what was changed
+what was intentionally left alone
+Exact files changed
+backend/service files
+config files
+hook files
+diagnostic files if applicable
+Workout query upgrade
+what changed from generic workout samples to workout-native reads
+what new metadata is now available
+Availability and auth hardening
+how the misleading availability abstraction was fixed
+how auth status mapping was made safer
+Config cleanup
+what HealthKit config or usage-description changes were made
+why
+Tests added
+Add tests for:
+platform helper vs authoritative availability behavior
+workout query path behavior
+auth-status mapping stability
+retry logging behavior if practical
+any config-related assertions if applicable
+Remaining non-blocking gaps
+List only what is intentionally deferred after this hardening pass:
+anchored/incremental sync
+expanded permissions
+richer HealthKit data types
+writing workouts to Apple Health
+product features built on top of Apple Health
+
+Success criteria
+A successful pass should:
+
+eliminate the misleading HealthKit availability abstraction
+use the correct workout-native HealthKit query path
+remove App Store/config mismatch risk
+make permission/auth handling safer for future expansion
+preserve the good parts of the current implementation
+
+My recommendation
+Do this hardening pass first.
+Then, only after it is stable, consider a second pass for:
+
+anchored sync
+expanded permissions
+richer data types like HR, sleep, weight
+
+That is the right order.

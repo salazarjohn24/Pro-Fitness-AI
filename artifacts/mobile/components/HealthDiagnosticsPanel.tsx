@@ -108,6 +108,11 @@ export function HealthDiagnosticsPanel() {
                   color={STATUS_COLOR[diag.authResult![cat]]}
                 />
               ))}
+              <View style={styles.privacyNote}>
+                <Text style={styles.privacyNoteText}>
+                  ⚠ iOS read-permission status is privacy-limited. SharingAuthorized may appear even when the user denied a category. Only write-permission status is definitively accurate.
+                </Text>
+              </View>
             </>
           ) : (
             <Row label="Auth by category" value="not yet fetched" color="#888" />
@@ -278,6 +283,17 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#94a3b8",
     marginTop: 1,
+  },
+  privacyNote: {
+    backgroundColor: "rgba(245,158,11,0.08)",
+    borderRadius: 5,
+    padding: 7,
+    marginTop: 6,
+  },
+  privacyNoteText: {
+    fontSize: 10,
+    color: "#f59e0b",
+    lineHeight: 15,
   },
   actions: {
     flexDirection: "row",

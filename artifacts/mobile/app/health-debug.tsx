@@ -269,6 +269,11 @@ export default function HealthDebugScreen() {
                   : null
               }
             />
+            <Text style={styles.privacyNote}>
+              ⚠ iOS read-permission status is privacy-limited. SharingAuthorized{"\n"}
+              can appear even when the user denied the category — only write-permission{"\n"}
+              status is definitively accurate on iOS.
+            </Text>
           </>
         )}
 
@@ -429,6 +434,18 @@ const styles = StyleSheet.create({
   actionBtnText: { color: Colors.text, fontFamily: "Inter_700Bold", fontSize: 12, letterSpacing: 0.5 },
   actionBtnTextDark: { color: "#000", fontFamily: "Inter_700Bold", fontSize: 12, letterSpacing: 0.5 },
   actionBtnTextDanger: { color: "#F87171", fontFamily: "Inter_700Bold", fontSize: 12, letterSpacing: 0.5 },
+  privacyNote: {
+    color: "#8B6914",
+    fontFamily: "Inter_400Regular",
+    fontSize: 10,
+    marginTop: 10,
+    lineHeight: 16,
+    backgroundColor: "#1A1500",
+    borderRadius: 6,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: "#2A2000",
+  },
   note: {
     color: "#444",
     fontFamily: "Inter_400Regular",

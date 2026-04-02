@@ -14,7 +14,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   syncWithAppleHealth,
-  isHealthKitAvailable,
+  isPlatformIOS,
 } from "@/services/healthKit";
 import type { HealthErrorCode } from "@/lib/healthSyncUtils";
 
@@ -63,7 +63,7 @@ const INITIAL_STATE: HealthSyncState = {
 
 export function useHealthSync() {
   const [state, setState] = useState<HealthSyncState>(INITIAL_STATE);
-  const isAvailable = isHealthKitAvailable();
+  const isAvailable = isPlatformIOS();
   const syncingRef = useRef(false);
 
   // Restore persisted state on mount
