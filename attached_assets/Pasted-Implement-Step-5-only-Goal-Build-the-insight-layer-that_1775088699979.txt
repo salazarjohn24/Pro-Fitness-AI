@@ -1,0 +1,138 @@
+Implement Step 5 only.
+
+Goal
+Build the insight layer that converts Step 4 historical rollups into structured, human-readable training insights.
+
+Existing foundation
+Step 1 exists:
+
+canonical movement profiles
+aliases
+explicit muscle roles
+15-pattern taxonomy
+
+Step 2 exists:
+
+movement-level scoring
+
+Step 3 exists:
+
+workout-level aggregation
+
+Step 4 exists:
+
+historical rollups with cumulative and recency-weighted vectors
+historical summaries
+recent vs cumulative ranking behavior
+time-range filtering
+deterministic referenceDate support
+
+Do not work on Step 6 or beyond.
+Do not build readiness/recovery/fatigue scoring.
+Do not build prescribed vs performed delta logic.
+Do not add workout recommendations or prescriptive programming.
+Do not redesign the UI.
+Do not add body map rendering.
+
+Step 5 objective
+Given a HistoricalRollupResult, return a structured insight result that highlights:
+
+recently elevated muscles/patterns
+recently reduced muscles/patterns
+underrepresented muscles/patterns
+dominant movement bias
+dominant stimulus bias
+simple balance observations
+safe, human-readable summary text
+
+Expected new modules
+Please inspect the codebase and implement the cleanest version of the following, adjusting filenames only if there is a clearly better fit:
+
+lib/insightTypes.ts
+lib/historyInsights.ts
+optional: lib/insightRules.ts
+optional: lib/insightText.ts
+
+Suggested types
+Please define types similar to:
+
+InsightType
+InsightSeverity
+HistoryInsight
+InsightSummary
+InsightGenerationResult
+
+Suggested responsibilities
+
+historyInsights.ts
+Main entry point.
+Consume HistoricalRollupResult and generate structured insights based on:
+recent vs cumulative rank shifts
+recent vs cumulative proportion changes
+underrepresented muscles/patterns
+dominant stimulus tendencies
+simple training balance relationships
+insightRules.ts
+Optional helper to keep thresholds and rule logic clean.
+insightText.ts
+Optional helper to separate user-facing text generation from raw insight detection.
+
+Important guidance
+
+keep insights relative, not absolute
+avoid overclaiming physiology or recovery state
+do not prescribe future workouts
+use safe language like:
+“has been elevated recently”
+“has been less emphasized”
+“training has leaned toward”
+be conservative when data quality is weak or fallback usage is high
+keep outputs deterministic and explainable
+
+Suggested V1 insight categories
+
+recently_elevated_muscle
+recently_reduced_muscle
+underrepresented_muscle
+underrepresented_pattern
+dominant_pattern_bias
+dominant_stimulus_bias
+balance_observation
+data_quality_note
+
+Tests required
+Add tests for:
+
+elevated/reduced detection
+underrepresented detection
+dominant bias detection
+empty-history safety
+fallback-heavy history safety
+deterministic output ordering
+safe wording / non-overclaiming copy
+mixed-history scenarios such as squat-dominant blocks, cyclical-heavy blocks, and push-light histories
+
+Expected output
+Return:
+
+current-state audit for Step 5
+exact new files/modules
+exact types/interfaces
+implementation of the insight layer
+tests added
+what old logic remains untouched
+non-blocking gaps intentionally deferred to Step 6+
+
+Success criteria
+A successful Step 5 implementation should let us say things like:
+
+“Shoulder loading has been elevated recently relative to the selected range.”
+“Horizontal pushing has been less emphasized than most other patterns in this timeframe.”
+“Recent training has leaned conditioning-forward relative to strength-focused work.”
+“Lower-body loading remains more represented than upper-body pushing over the selected range.”
+
+without overclaiming readiness, recovery, or programming prescriptions.
+
+My recommendation
+Step 5 should stop at insights.
+Do not let it drift into recommendations or readiness scoring yet.
