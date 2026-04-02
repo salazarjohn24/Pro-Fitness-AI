@@ -1,0 +1,127 @@
+Audit our current Apple Health integration against the uploaded react-native-health reference repo and tell us exactly what should be improved.
+
+Context
+We already have Apple Health integration in our app. We are not starting from zero.
+We want a practical audit, not a generic explanation of HealthKit.
+
+We want you to compare:
+
+our current app code
+the uploaded react-native-health reference repo / zip
+
+Goal
+Identify:
+
+what we already implemented well
+what the reference repo suggests we are missing
+what likely bugs / weak spots / misleading abstractions still exist in our current code
+what concrete improvements we should make next
+
+Audit scope
+Please review our current Apple Health implementation, especially:
+
+services/healthKit.ts
+any Expo / plugin / entitlements / app.json setup
+hooks/useHealthSync.ts
+hooks/useHealthDiagnostics.ts
+health-debug.tsx
+HealthDiagnosticsPanel
+any Apple Health-related UI, filters, or workout source handling
+any constants / permission builders / availability checks
+
+Then compare that against the uploaded react-native-health repo:
+
+docs/Installation.md
+docs/Expo.md
+docs/permissions.md
+docs/initHealthKit.md
+docs/getAuthStatus.md
+docs/getAnchoredWorkouts.md
+docs/getWorkoutSamples.md
+docs/getSamples.md
+docs/getDailyStepCountSamples.md
+docs/getActiveEnergyBurned.md
+native iOS files such as:
+RCTAppleHealthKit+Queries.m
+RCTAppleHealthKit+TypesAndPermissions.m
+RCTAppleHealthKit+Methods_Workout.m
+RCTAppleHealthKit+Methods_Fitness.m
+
+What we want from the audit
+
+Current-state strengths
+Tell us what our app already does well relative to the reference repo.
+Examples:
+availability checks
+permission flow
+diagnostics
+sync-state UX
+error handling
+entitlements/plugin setup
+auth-status handling
+Missing capabilities
+Tell us what the reference repo supports that our app is not yet using meaningfully.
+Examples:
+richer HealthKit permissions
+anchored workout queries
+workout-specific reads
+heart rate / HRV / sleep / weight / distance types
+background delivery / observer patterns if relevant
+Likely living bugs / weak abstractions
+Please identify concrete things in our current code that are likely to cause bugs, confusion, or future misuse.
+Be very specific.
+Examples of the kind of thing we care about:
+a helper name that implies more certainty than it actually has
+platform-only availability checks being too weak
+permission scopes being too narrow for likely future reads
+service files that are doing too much
+mismatch between Expo/plugin setup and what the reference repo expects
+silently fragile fallback behavior
+misleading user-facing wording
+Setup audit
+Compare our current app setup against what the reference repo/docs expect for:
+Expo plugin usage
+entitlements
+Info.plist usage descriptions
+HealthKit capability setup
+anything else required for iOS runtime success
+
+Call out anything suspicious, missing, redundant, or likely to break in release builds.
+
+Recommended next improvements
+Give us a prioritized list of the highest-value improvements we should make.
+Separate them into:
+must fix
+should improve
+nice to have
+Final recommendation
+Answer clearly:
+should we keep our current implementation and improve it
+or should we replace major parts with patterns from the reference repo
+
+Important guidance
+
+do not recommend replacing everything unless there is a very strong reason
+be practical and product-aware
+prioritize real-world reliability over theoretical cleanliness
+focus on the Apple Health integration layer itself, not unrelated app areas
+be concrete and code-aware, not high-level
+
+Expected output format
+Please return:
+
+Summary verdict
+What our app already does well
+What the reference repo shows we are missing
+Likely bugs / weak spots in our current code
+Setup/config audit findings
+Prioritized improvement plan
+Keep vs replace recommendation
+
+If possible, include:
+
+exact file names in our app where issues live
+exact file/docs in the reference repo that support your conclusion
+
+Key question to answer explicitly
+Are we using the best HealthKit query patterns for workout imports, and are there any misleading or risky abstractions in our current code that we should fix before expanding Apple Health further?
