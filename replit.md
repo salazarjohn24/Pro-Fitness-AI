@@ -221,7 +221,44 @@ A pure-TypeScript scoring stack in `artifacts/api-server/src/lib/`. All steps ar
 - api-server: **1,409 tests / 22 files** (+33 externalWorkoutAdapter)
 - mobile: **314 tests / 9 files** (+16 step8Integration)
 
-### Deferred to Step 9+
+### Step 9 — MVP hardening pass (April 2026)
+
+**Coexistence cleanup:**
+- `stimulusPoints` stat suppressed when `extAnalysisVm.hasAnalysis=true` — eliminates coarse/premium stimulus contradiction for external workouts
+- Coexistence rules documented in a `COEXISTENCE RULES` comment block in `workout-detail.tsx`
+- `mv.muscleGroups` null guard tightened in movement card JSX
+
+**Trust/data-quality wording improvements:**
+- `workoutAnalysisViewModel.ts` `dataQualityNote`: wording changed from "weren't in the library" → "used generic patterns — muscle targets are estimated." (avoids implying user action, accurately describes what happened)
+- `historyAnalysisViewModel.ts` `dataQualityNote`: wording changed from "weren't recognised" → "used generic patterns — muscle detail may be approximate."
+- `activity-history.tsx` low-data note: fixed pluralization bug ("1 workout" vs "X workouts")
+
+**New exported fields:**
+- `WorkoutAnalysisDisplayModel.analysisConfidence: "high" | "medium" | "low"` — derived from fallback ratio; gives the screen a single testable signal for trust-level decisions
+- `HistoryAnalysisDisplayModel.dataConfidence: "high" | "medium" | "low"` — parallel field for history overview
+- `QUALITY_NOTE_HIGH_THRESHOLD`, `QUALITY_NOTE_LOW_THRESHOLD` exported from workout VM
+- `HISTORY_MIN_WORKOUTS_FOR_DATA`, `HISTORY_QUALITY_NOTE_HIGH_THRESHOLD`, `HISTORY_QUALITY_NOTE_LOW_THRESHOLD` exported from history VM
+
+**Telemetry (structured `console.info` logging in `analysis.ts`):**
+- `[analysis] session=N movements=N fallback=N`
+- `[analysis] external=N eligible=true|false movements=N fallback=N hasSetData=bool`
+- `[analysis] history days=N sessions=N external=N total=N fallback_workouts=N fallback_rate=X.XX`
+
+**Tests (`step9Integration.test.ts`, +42 mobile tests):**
+- analysisConfidence computation and boundaries
+- dataQualityNote wording assertions (new language)
+- stimulusPoints coexistence rule
+- importNote deduplication rule
+- dataConfidence computation
+- hasEnoughData threshold
+- Contract stability (all pre-Step-9 fields still present)
+- Determinism
+
+**Test baseline (April 2026, after Step 9):**
+- api-server: **1,409 tests / 22 files** (unchanged)
+- mobile: **356 tests / 10 files** (+42 step9Integration)
+
+### Deferred to Step 10+
 Readiness/recovery/fatigue scoring, personalized recommendations, prescribed vs. performed delta, body-map rendering.
 
 ## External Dependencies

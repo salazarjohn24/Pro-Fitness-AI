@@ -288,7 +288,7 @@ describe("buildHistoryAnalysisViewModel: data quality note", () => {
     });
     const m = buildHistoryAnalysisViewModel(rollup, makeInsights());
     expect(m.dataQualityNote).not.toBeNull();
-    expect(m.dataQualityNote).toContain("high proportion");
+    expect(m.dataQualityNote).toContain("generic patterns");
   });
 
   it("softer inline note when rate 0.25–<0.5 (1 out of 4 workouts)", () => {

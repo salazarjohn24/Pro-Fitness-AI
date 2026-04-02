@@ -486,7 +486,11 @@ export default function WorkoutDetailScreen() {
                   <View style={styles.statDivider} />
                 </>
               )}
-              {external?.stimulusPoints != null && (
+              {/* Suppress stimulusPoints when premium analysis is present:
+                  the analysis panel shows a scored stimulus chip that is
+                  more accurate, and showing both would send contradictory
+                  signals. Retain only when premium analysis is unavailable. */}
+              {external?.stimulusPoints != null && !extAnalysisVm.hasAnalysis && (
                 <View style={styles.statBox}>
                   <Text style={[styles.statVal, { color: Colors.highlight }]}>{external.stimulusPoints}</Text>
                   <Text style={styles.statLabel}>Stim Pts</Text>
@@ -517,7 +521,24 @@ export default function WorkoutDetailScreen() {
           </>
         )}
 
-        {/* External workouts: full analysis panel when eligible, coarse chips as fallback */}
+        {/*
+         * ===== COEXISTENCE RULES (Step 9) =====
+         * When extAnalysisVm.hasAnalysis === true (premium panel shown):
+         *   - WorkoutAnalysisPanel shown → engine-scored muscle/pattern/stimulus chips
+         *   - stimulusPoints stat suppressed (see stat block above)
+         *   - coarse muscleGroups chips NOT rendered (superseded by panel)
+         *   - per-movement mv.muscleGroups + mv.fatiguePercent retained in movement
+         *     cards below (per-movement detail, different granularity level — OK)
+         *
+         * When extAnalysisVm.hasAnalysis === false (premium panel unavailable):
+         *   - coarse muscleGroups chips shown (data is still useful context)
+         *   - stimulusPoints stat shown (no contradiction)
+         *
+         * importNote display rule:
+         *   - Shown when importedDataNote is non-null AND vm.dataQualityNote is null.
+         *   - Suppressed when dataQualityNote is present (both notes address data quality;
+         *     the fallback-movement note is more specific and supersedes the import note).
+         */}
         {type === "external" && (
           extAnalysisVm.hasAnalysis ? (
             <WorkoutAnalysisPanel vm={extAnalysisVm} importNote={extImportNote} />
@@ -675,8 +696,8 @@ export default function WorkoutDetailScreen() {
                   <View key={idx} style={styles.movementCard}>
                     <View style={styles.movementLeft}>
                       <Text style={styles.movementName}>{mv.name}</Text>
-                      {mv.muscleGroups?.length > 0 && (
-                        <Text style={styles.movementMuscles}>{mv.muscleGroups.join(", ")}</Text>
+                      {(mv.muscleGroups ?? []).length > 0 && (
+                        <Text style={styles.movementMuscles}>{(mv.muscleGroups ?? []).join(", ")}</Text>
                       )}
                       {mv.volume && <Text style={styles.movementVolume}>{mv.volume}</Text>}
                     </View>

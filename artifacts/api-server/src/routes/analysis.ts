@@ -114,6 +114,12 @@ router.get("/workouts/sessions/:id/analysis", async (req: Request, res: Response
     const input = buildWorkoutInput(session);
     const result = scoreWorkout(input);
 
+    console.info("[analysis] session=%d movements=%d fallback=%d",
+      sessionId,
+      result.metadata.totalMovements,
+      result.metadata.fallbackMovements
+    );
+
     res.json(result);
   } catch (err) {
     console.error("Session analysis error:", err);
@@ -168,6 +174,10 @@ router.get("/workouts/external/:id/analysis", async (req: Request, res: Response
     const { input, quality } = adaptExternalWorkout(workout);
 
     if (!quality.isEligible) {
+      console.info("[analysis] external=%d eligible=false reason=%s",
+        workoutId,
+        quality.ineligibleReason ?? "unknown"
+      );
       res.status(422).json({
         eligible: false,
         reason: quality.ineligibleReason ?? "Not enough data to score this workout.",
@@ -177,6 +187,13 @@ router.get("/workouts/external/:id/analysis", async (req: Request, res: Response
 
     const result = scoreWorkout(input);
     const dataNote = importedDataNote(quality);
+
+    console.info("[analysis] external=%d eligible=true movements=%d fallback=%d hasSetData=%s",
+      workoutId,
+      result.metadata.totalMovements,
+      result.metadata.fallbackMovements,
+      quality.hasSetData
+    );
 
     res.json({ ...result, importedDataNote: dataNote });
   } catch (err) {
@@ -241,6 +258,19 @@ router.get("/training/history-analysis", async (req: Request, res: Response) => 
 
     const rollup = scoreHistory(historicalInputs);
     const insights = generateInsights(rollup, { rangeLabel });
+
+    const totalWorkouts = historicalInputs.length;
+    const fallbackRate  = totalWorkouts > 0
+      ? rollup.metadata.workoutsWithFallback / totalWorkouts
+      : 0;
+    console.info("[analysis] history days=%d sessions=%d external=%d total=%d fallback_workouts=%d fallback_rate=%.2f",
+      days,
+      sessions.length,
+      externalWorkouts.length,
+      totalWorkouts,
+      rollup.metadata.workoutsWithFallback,
+      fallbackRate
+    );
 
     res.json({ rollup, insights });
   } catch (err) {

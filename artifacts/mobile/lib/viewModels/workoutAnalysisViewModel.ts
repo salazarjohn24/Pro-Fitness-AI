@@ -1,11 +1,12 @@
 /**
- * workoutAnalysisViewModel.ts — Step 6 presentation model for a single workout.
+ * workoutAnalysisViewModel.ts — Steps 6–9 presentation model for a single workout.
  *
  * Transforms a WorkoutScoreResult (Step 3 output) into a UI-ready display
  * model. All scoring concerns stay in the backend — this file only formats
  * and labels existing outputs.
  *
- * Input:  WorkoutScoreResult (from GET /api/workouts/sessions/:id/analysis)
+ * Input:  WorkoutScoreResult (from GET /api/workouts/sessions/:id/analysis
+ *                             or  GET /api/workouts/external/:id/analysis)
  * Output: WorkoutAnalysisDisplayModel (ready for RN components)
  *
  * Design rules:
@@ -13,9 +14,28 @@
  *   - Handle null / empty / low-data states without throwing.
  *   - All display text sourced from trainingDisplay.ts formatters.
  *   - No prescriptive language introduced here.
+ *   - analysisConfidence is derived from the fallback ratio and gives the
+ *     screen a single signal for trust-level decisions.
+ *   - Coexistence rule: when hasAnalysis=true, the screen must not show
+ *     duplicate coarse fields (e.g. stimulusPoints) that contradict the
+ *     premium stimulus chip. See workout-detail.tsx comment block.
  */
 
 import { muscleLabel, patternLabel, stimulusLabel, roundScore } from "../formatters/trainingDisplay";
+
+// ---------------------------------------------------------------------------
+// Quality thresholds — exported so tests can import them directly
+// ---------------------------------------------------------------------------
+
+/**
+ * Fallback ratio at or above which a strong quality note is shown (≥50% fallback).
+ */
+export const QUALITY_NOTE_HIGH_THRESHOLD = 0.5;
+
+/**
+ * Fallback ratio at or above which a moderate quality note is shown (≥20% fallback).
+ */
+export const QUALITY_NOTE_LOW_THRESHOLD = 0.2;
 
 // ---------------------------------------------------------------------------
 // Input mirror types (matching api-server's WorkoutScoreResult JSON shape)
@@ -80,6 +100,17 @@ export interface WorkoutAnalysisSection {
   items: string[];
 }
 
+/**
+ * Confidence in the analysis result.
+ *
+ * "high"   — All movements were recognised (0% fallback).
+ * "medium" — Some movements used generic patterns (>0% and <50% fallback).
+ * "low"    — Most or all movements used generic patterns (≥50% fallback).
+ *
+ * Only meaningful when hasAnalysis=true.
+ */
+export type AnalysisConfidence = "high" | "medium" | "low";
+
 export interface WorkoutAnalysisDisplayModel {
   headline: string;
   topMuscles: WorkoutMuscleRow[];
@@ -90,6 +121,8 @@ export interface WorkoutAnalysisDisplayModel {
   movementCount: number;
   scoredCount: number;
   fallbackCount: number;
+  /** Single-signal quality tier for trust-level UI decisions. */
+  analysisConfidence: AnalysisConfidence;
   hasAnalysis: boolean;
   sections: WorkoutAnalysisSection[];
 }
@@ -108,6 +141,7 @@ export const EMPTY_WORKOUT_ANALYSIS: WorkoutAnalysisDisplayModel = {
   movementCount: 0,
   scoredCount: 0,
   fallbackCount: 0,
+  analysisConfidence: "high",
   hasAnalysis: false,
   sections: [],
 };
@@ -160,6 +194,7 @@ export function buildWorkoutAnalysisViewModel(
 
   const headline = buildWorkoutHeadline(topPatterns, dominantRow, metadata.totalMovements, presentStimuli.length > 0);
   const dataQualityNote = buildDataQualityNote(metadata);
+  const confidence = computeAnalysisConfidence(metadata);
   const sections = buildSections(topMuscles, topPatterns, dominantRow);
 
   return {
@@ -172,6 +207,7 @@ export function buildWorkoutAnalysisViewModel(
     movementCount: metadata.totalMovements,
     scoredCount:   metadata.scoredMovements,
     fallbackCount: metadata.fallbackMovements,
+    analysisConfidence: confidence,
     hasAnalysis: true,
     sections,
   };
@@ -200,9 +236,35 @@ function buildWorkoutHeadline(
 }
 
 // ---------------------------------------------------------------------------
+// Analysis confidence
+// ---------------------------------------------------------------------------
+
+/**
+ * Derive a confidence level from the fallback ratio.
+ *
+ * Thresholds use the exported constants above so tests can assert them
+ * without hardcoding magic numbers.
+ */
+function computeAnalysisConfidence(
+  metadata: WorkoutScoreResultJSON["metadata"]
+): AnalysisConfidence {
+  if (metadata.totalMovements === 0) return "high"; // vacuously, but hasAnalysis=false guards this
+  if (metadata.fallbackMovements === 0) return "high";
+  const rate = metadata.fallbackMovements / metadata.totalMovements;
+  if (rate >= QUALITY_NOTE_HIGH_THRESHOLD) return "low";
+  return "medium";
+}
+
+// ---------------------------------------------------------------------------
 // Data quality note
 // ---------------------------------------------------------------------------
 
+/**
+ * Produce a data-quality note when the fallback ratio warrants it.
+ *
+ * Uses "generic patterns" rather than "not in the library" to avoid
+ * implying that users need to add exercises somewhere.
+ */
 function buildDataQualityNote(metadata: WorkoutScoreResultJSON["metadata"]): string | null {
   if (metadata.fallbackMovements === 0) return null;
 
@@ -210,11 +272,15 @@ function buildDataQualityNote(metadata: WorkoutScoreResultJSON["metadata"]): str
     ? metadata.fallbackMovements / metadata.totalMovements
     : 0;
 
-  if (rate >= 0.5) {
-    return `${metadata.fallbackMovements} of ${metadata.totalMovements} movement${metadata.totalMovements !== 1 ? "s" : ""} weren't in the library — muscle detail may be limited.`;
+  const fb    = metadata.fallbackMovements;
+  const total = metadata.totalMovements;
+  const unit  = total === 1 ? "movement" : "movements";
+
+  if (rate >= QUALITY_NOTE_HIGH_THRESHOLD) {
+    return `${fb} of ${total} ${unit} used generic patterns — muscle targets are estimated.`;
   }
-  if (rate >= 0.2) {
-    return `Some movements weren't recognised — full muscle breakdown may not be available.`;
+  if (rate >= QUALITY_NOTE_LOW_THRESHOLD) {
+    return `Some movements used generic patterns — muscle detail may be approximate.`;
   }
   return null;
 }

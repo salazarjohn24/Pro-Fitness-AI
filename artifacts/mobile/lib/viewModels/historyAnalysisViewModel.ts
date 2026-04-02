@@ -1,5 +1,5 @@
 /**
- * historyAnalysisViewModel.ts — Step 6 presentation model for training history.
+ * historyAnalysisViewModel.ts — Steps 6–9 presentation model for training history.
  *
  * Transforms the combined output of Step 4 (HistoricalRollupResult) and
  * Step 5 (InsightGenerationResult) into a UI-ready display model for the
@@ -14,9 +14,31 @@
  *   - Insight cards are ordered by severity descending (as delivered by the API).
  *   - Muscle/pattern labels go through trainingDisplay.ts.
  *   - No new prescriptive language introduced here.
+ *   - dataConfidence surfaces the fallback-workout ratio as a single signal
+ *     for trust-level decisions (parallel to workoutAnalysisViewModel.ts).
  */
 
 import { muscleLabel, patternLabel, stimulusLabel, severityTier } from "../formatters/trainingDisplay";
+
+// ---------------------------------------------------------------------------
+// Quality thresholds — exported so tests can import them directly
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimum workout count for the history overview to have enough data to
+ * draw meaningful inferences (e.g. trend arrows, insight comparisons).
+ */
+export const HISTORY_MIN_WORKOUTS_FOR_DATA = 2;
+
+/**
+ * Fallback-workout ratio at or above which a strong history quality note is shown.
+ */
+export const HISTORY_QUALITY_NOTE_HIGH_THRESHOLD = 0.5;
+
+/**
+ * Fallback-workout ratio at or above which a moderate history quality note is shown.
+ */
+export const HISTORY_QUALITY_NOTE_LOW_THRESHOLD = 0.25;
 
 // ---------------------------------------------------------------------------
 // Input mirror types (JSON shape from API)
@@ -115,11 +137,26 @@ export interface RecentShiftRow {
   rankDelta: number;
 }
 
+/**
+ * Confidence in the history analysis result.
+ *
+ * "high"   — Few or no workouts used fallback patterns (<25% of workouts).
+ * "medium" — Some workouts used fallback patterns (≥25% and <50%).
+ * "low"    — Most workouts used fallback patterns (≥50%).
+ */
+export type HistoryDataConfidence = "high" | "medium" | "low";
+
 export interface HistoryAnalysisDisplayModel {
   headline: string;
   rangeLabel: string;
   workoutCount: number;
+  /**
+   * True when there are enough workouts to make inferences meaningful.
+   * Set by the HISTORY_MIN_WORKOUTS_FOR_DATA threshold.
+   */
   hasEnoughData: boolean;
+  /** Single-signal quality tier for trust-level UI decisions. */
+  dataConfidence: HistoryDataConfidence;
 
   topMuscles: MuscleSummaryRow[];
   topPatterns: PatternSummaryRow[];
@@ -141,6 +178,7 @@ export const EMPTY_HISTORY_ANALYSIS: HistoryAnalysisDisplayModel = {
   rangeLabel: "",
   workoutCount: 0,
   hasEnoughData: false,
+  dataConfidence: "high",
   topMuscles: [],
   topPatterns: [],
   dominantStimulus: "—",
@@ -217,12 +255,14 @@ export function buildHistoryAnalysisViewModel(
   const dataQualityCard = allInsightCards.find((c) => c.type === "data_quality_note");
   const dataQualityNote = dataQualityCard?.text ?? buildDataQualityNote(metadata);
   const insightCards = allInsightCards.filter((c) => c.type !== "data_quality_note");
+  const dataConfidence = computeDataConfidence(metadata);
 
   return {
     headline:   insights.summary.headline,
     rangeLabel: insights.rangeLabel,
     workoutCount,
-    hasEnoughData: workoutCount >= 2,
+    hasEnoughData: workoutCount >= HISTORY_MIN_WORKOUTS_FOR_DATA,
+    dataConfidence,
 
     topMuscles,
     topPatterns,
@@ -237,9 +277,29 @@ export function buildHistoryAnalysisViewModel(
 }
 
 // ---------------------------------------------------------------------------
+// Data confidence
+// ---------------------------------------------------------------------------
+
+function computeDataConfidence(
+  metadata: HistoricalRollupResultJSON["metadata"]
+): HistoryDataConfidence {
+  if (metadata.filteredWorkouts === 0) return "high"; // vacuously; empty state guards this
+  if (metadata.workoutsWithFallback === 0) return "high";
+  const rate = metadata.workoutsWithFallback / metadata.filteredWorkouts;
+  if (rate >= HISTORY_QUALITY_NOTE_HIGH_THRESHOLD) return "low";
+  return "medium";
+}
+
+// ---------------------------------------------------------------------------
 // Inline data quality note (fallback when no card emitted)
 // ---------------------------------------------------------------------------
 
+/**
+ * Produce a data-quality note when the fallback-workout ratio warrants it.
+ *
+ * Uses "generic patterns" rather than "not recognised" to avoid
+ * implying that users need to do something to fix it.
+ */
 function buildDataQualityNote(
   metadata: HistoricalRollupResultJSON["metadata"]
 ): string | null {
@@ -247,11 +307,11 @@ function buildDataQualityNote(
   const rate = metadata.filteredWorkouts > 0
     ? metadata.workoutsWithFallback / metadata.filteredWorkouts
     : 0;
-  if (rate >= 0.5) {
-    return "A high proportion of movements in this range weren't recognised — muscle detail may be limited.";
+  if (rate >= HISTORY_QUALITY_NOTE_HIGH_THRESHOLD) {
+    return "Many movements in this range used generic patterns — muscle trends may be estimated.";
   }
-  if (rate >= 0.25) {
-    return "Some movements weren't recognised — full muscle detail may not be available.";
+  if (rate >= HISTORY_QUALITY_NOTE_LOW_THRESHOLD) {
+    return "Some movements in this range used generic patterns — muscle detail may be approximate.";
   }
   return null;
 }

@@ -251,7 +251,7 @@ function TrainingOverviewPanel({
               <View style={overviewStyles.qualityNote} testID="overview-low-data">
                 <Feather name="info" size={11} color={Colors.textSubtle} />
                 <Text style={overviewStyles.qualityNoteText}>
-                  Based on {vm.workoutCount} workout. Add more sessions to see richer trends.
+                  Based on {vm.workoutCount} {vm.workoutCount === 1 ? "workout" : "workouts"}. Add more sessions to see richer trends.
                 </Text>
               </View>
             )}

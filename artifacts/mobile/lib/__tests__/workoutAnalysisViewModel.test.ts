@@ -170,7 +170,7 @@ describe("buildWorkoutAnalysisViewModel: data quality note", () => {
     });
     const m = buildWorkoutAnalysisViewModel(result);
     expect(m.dataQualityNote).not.toBeNull();
-    expect(m.dataQualityNote).toContain("weren't in the library");
+    expect(m.dataQualityNote).toContain("generic patterns");
   });
 
   it("softer note when 20–50% fallback", () => {

@@ -1,0 +1,194 @@
+Implement Step 9 only.
+
+Goal
+Complete the final MVP hardening pass for the training-analysis system now that Steps 1–8 are done.
+
+Current state
+The system already supports:
+
+canonical movement profiles
+movement-level scoring
+workout-level aggregation
+historical rollups
+structured insights
+internal workout analysis in the UI
+external workout analysis unification when enough imported data exists
+coarse fallback behavior when analysis is not possible
+
+Step 9 objective
+Finish the product as a cohesive MVP by:
+
+reducing ambiguity between old coarse logic and the new premium analysis path
+tightening trust and data-quality signaling
+improving observability / telemetry for analysis quality and fallback usage
+unifying contracts and presentation behavior where practical
+hardening edge cases and consistency across internal vs external flows
+
+Important scope constraints
+Do NOT build Step 10 features.
+Do NOT build readiness/recovery/fatigue scoring.
+Do NOT build prescribed vs performed delta logic.
+Do NOT build body-map rendering.
+Do NOT build programming recommendations.
+Do NOT redesign the entire app.
+Do NOT create a giant refactor that destabilizes working flows.
+
+What “done” means for Step 9
+A strong Step 9 result should make the product feel internally consistent, trustworthy, and launchable by:
+
+clarifying when premium analysis is being shown
+clarifying when fallback/coarse analysis is being shown
+avoiding duplicate/conflicting signals
+making internal and external experiences feel intentionally different only when the data truly requires it
+giving the team visibility into where analysis succeeds, degrades, or falls back
+
+High-priority workstreams
+
+Analysis contract hardening
+Audit all analysis responses and view models across:
+internal workout analysis
+external workout analysis
+history analysis
+insight generation
+
+Then tighten consistency where practical:
+
+stable fields
+stable empty states
+stable data-quality semantics
+stable notes / labels / severity behavior
+
+If useful, add a thin shared response-normalization layer, but only if it reduces ambiguity and duplication.
+
+Trust and data-quality UX hardening
+Audit all cases where users might misread the analysis as more certain than it is.
+
+Improve or standardize:
+
+importedDataNote behavior
+fallback/data-quality note wording
+low-data thresholds
+empty-state messaging
+when premium analysis should appear vs degrade to coarse fallback
+
+Goal:
+The product should feel honest and consistent about what it knows and how it knows it.
+
+Old coarse logic cleanup
+Audit where coarse legacy fields still appear:
+muscleGroups chips
+stimulusPoints
+fatiguePercent
+coarse primaryMuscle chips
+any old summary sections
+
+Do NOT remove them recklessly.
+Instead:
+
+document which ones remain intentionally
+hide or de-emphasize them where premium analysis is present
+prevent contradictory duplication where possible
+make coexistence rules explicit and testable
+Telemetry / observability
+Add lightweight observability for analysis quality and fallback behavior.
+
+Examples of useful signals:
+
+internal analysis success rate
+external analysis eligibility rate
+fallback usage rate
+imported name-only scoring rate
+analysis endpoint empty-state / 422 frequency
+percent of workouts showing premium panel vs coarse fallback
+
+This can be logging, counters, analytics hooks, or similar lightweight instrumentation depending on the codebase conventions.
+Do not overengineer.
+
+Edge-case hardening
+Review and tighten behavior for:
+workouts with very sparse data
+partially scoreable external workouts
+fallback-heavy histories
+very small time windows
+history views with 1 workout
+missing labels or unexpected values in display layers
+contradictory note combinations (for example imported note + fallback note duplication)
+Final consistency pass
+Ensure the app now presents a coherent mental model:
+premium analysis when enough data exists
+coarse fallback when it does not
+relative insight language only
+no misleading overlap
+no confusing duplicate chips/notes/sections
+
+Suggested implementation areas
+Please inspect the repo and work in the cleanest places, but likely areas include:
+
+analysis.ts
+externalWorkoutAdapter.ts
+trainingDisplay.ts
+workoutAnalysisViewModel.ts
+historyAnalysisViewModel.ts
+workout-detail.tsx
+activity-history.tsx
+any shared panel or note components related to analysis/fallback/data quality
+analytics / logging helpers if they already exist
+
+Expected output
+Return your response in this structure:
+
+Step 9 audit
+what still felt inconsistent or risky before this pass
+where old coarse logic still coexisted
+where trust/data-quality signaling needed hardening
+Exact changes made
+files changed
+files added
+contract changes
+note/label/threshold changes
+telemetry or observability added
+coexistence rules tightened
+Final product consistency decisions
+Document clearly:
+when premium analysis is shown
+when coarse fallback is shown
+which old coarse fields remain and why
+how internal vs external workouts now differ
+how history views handle low-data / fallback-heavy ranges
+Tests added
+Add tests for:
+premium vs coarse coexistence rules
+note precedence / deduplication
+low-data / fallback-heavy messaging
+internal vs external consistency
+deterministic contract behavior
+telemetry/logging hooks if applicable
+any remaining UI edge cases
+Remaining non-blocking gaps
+List only the things intentionally deferred to Step 10+:
+body map
+prescribed vs performed
+readiness/recovery/fatigue
+recommendations
+any other premium enhancements
+
+Success criteria
+A successful Step 9 implementation should make the current MVP feel:
+
+internally consistent
+trustworthy
+low-risk
+coherent across internal and external workout sources
+ready to ship without obvious product ambiguity
+
+Priority order
+If you need to trade off scope, prioritize in this order:
+
+trust/data-quality consistency
+coexistence cleanup between premium and coarse logic
+telemetry / observability
+edge-case hardening
+minor contract cleanup
+
+Do not drift into Step 10.
+Finish the MVP hardening pass only.
