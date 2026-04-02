@@ -18,6 +18,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { getApiBase, getAuthHeaders, getFetchOptions } from "@/hooks/apiHelpers";
 import type { WorkoutScoreResultJSON } from "@/lib/viewModels/workoutAnalysisViewModel";
+import type { ActivityBasedAnalysisResult } from "@/lib/viewModels/appleHealthActivityViewModel";
 
 export interface ExternalWorkoutAnalysisResult extends WorkoutScoreResultJSON {
   /**
@@ -54,7 +55,7 @@ export interface IneligibleAnalysisResult {
 }
 
 export function useExternalWorkoutAnalysis(workoutId: number | null) {
-  return useQuery<ExternalWorkoutAnalysisResult | IneligibleAnalysisResult | null>({
+  return useQuery<ExternalWorkoutAnalysisResult | ActivityBasedAnalysisResult | IneligibleAnalysisResult | null>({
     queryKey: ["externalWorkoutAnalysis", workoutId],
     queryFn:  async () => {
       if (workoutId == null) return null;
@@ -79,7 +80,16 @@ export function useExternalWorkoutAnalysis(workoutId: number | null) {
         throw new Error(`External workout analysis failed: ${res.status}`);
       }
 
-      return res.json();
+      const body = await res.json();
+
+      // Activity-based analysis (Apple Health workouts with no exercise detail).
+      // Server returns analysisKind: "activity-based" for this case.
+      if (body?.analysisKind === "activity-based") {
+        return body as ActivityBasedAnalysisResult;
+      }
+
+      // Movement-based analysis (normal scored workout).
+      return body as ExternalWorkoutAnalysisResult;
     },
     enabled:   workoutId != null,
     staleTime: 5 * 60 * 1000,

@@ -340,6 +340,42 @@ Wires `SyncResult.workouts` into the `ExternalWorkout` persistence pipeline so s
 - api-server: **1,428 tests / 23 files** (+19: 5 AH adapter tests + 14 mapHKActivity tests)
 - mobile: **427 tests / 11 files** (unchanged)
 
+### Apple Health Activity-Based Analysis (April 2026)
+
+Upgrades Apple Health workout analysis from 422/ineligible to a real 200 `analysisKind: "activity-based"` response.
+
+**Server — `appleHealthActivityAnalysis.ts`:**
+- Pure mapping module: `analyzeAppleHealthActivity(label, workoutType, duration) → ActivityAnalysisHint`
+- 24 explicit label mappings (Running→cyclical/medium, Strength Training→strength/low, Yoga→mobility/low, etc.)
+- workoutType-level fallbacks for unknown labels; ultimate fallback for entirely unknown inputs
+- Confidence tiers: "medium" for predictable cyclical cardio (Running, Cycling, Rowing, Swimming, Hiking, Elliptical, Stair Climbing, Walking); "low" for variable activities
+
+**Server — `analysis.ts`:**
+- Apple Health workouts with `ineligibleReason === "apple-health-activity-only"` now return HTTP 200 (not 422)
+- Response shape: `{ analysisKind: "activity-based", activityHint: ActivityAnalysisHint, activitySummary: {...} }`
+- Retains 422 for all other ineligible reasons
+
+**Mobile — `appleHealthActivityViewModel.ts`:**
+- `isActivityBasedAnalysis(data)` type guard for hook branching
+- `buildAppleHealthActivityViewModel(result) → WorkoutAnalysisDisplayModel` — builds display model from activity hint
+- Reuses existing `WorkoutAnalysisDisplayModel` type so `WorkoutAnalysisPanel` renders it without modification
+- `hasAnalysis: true`, `analysisConfidence` from server's confidenceTier, `dataQualityNote` = trust note
+- Synthetic scores for muscle rows (1.0 → 0.2 descending); area pseudo-keys (lower_body, full_body) humanize via muscleLabel fallback
+
+**Mobile — `useExternalWorkoutAnalysis.ts`:**
+- Hook query type extended to `ExternalWorkoutAnalysisResult | ActivityBasedAnalysisResult | IneligibleAnalysisResult | null`
+- Detects `analysisKind: "activity-based"` in 200 response and returns `ActivityBasedAnalysisResult`
+
+**Mobile — `workout-detail.tsx`:**
+- `isActivityAnalysis` flag gates VM selection: activity → `buildAppleHealthActivityViewModel`, movement → `buildWorkoutAnalysisViewModel`
+- `extMovementData` typed as `ExternalWorkoutAnalysisResult | null` for clean `importedDataNote` and `muscleVector` access
+- `MuscleEmphasisMap` hidden for activity-based analysis (no per-muscle vector)
+- `importNote` suppressed for activity-based (trust note already in `dataQualityNote`)
+
+**Test baseline (April 2026, after activity-based analysis):**
+- api-server: **1,513 tests / 24 files** (+85: full appleHealthActivityAnalysis coverage)
+- mobile: **471 tests / 12 files** (+44: full appleHealthActivityViewModel + isActivityBasedAnalysis coverage)
+
 ### Deferred to Step 11+
 Readiness/recovery/fatigue scoring, personalized programming recommendations, prescribed vs. performed delta, advanced anatomy breakdown (more than 4 regions). Anchored/incremental sync (anchor token storage). Expanded Apple Health permissions (HeartRate, RestingHeartRate). Writing workouts back to Apple Health.
 

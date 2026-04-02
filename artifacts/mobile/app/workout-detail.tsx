@@ -20,8 +20,9 @@ import { Colors } from "@/constants/colors";
 import { useRecentExternalWorkouts, useUpdateExternalWorkout, type ExternalWorkout } from "@/hooks/useProfile";
 import { useSessionDetail, useUpdateSessionExercises, useDeleteSession } from "@/hooks/useWorkout";
 import { useWorkoutAnalysis } from "@/hooks/useWorkoutAnalysis";
-import { useExternalWorkoutAnalysis } from "@/hooks/useExternalWorkoutAnalysis";
+import { useExternalWorkoutAnalysis, type ExternalWorkoutAnalysisResult } from "@/hooks/useExternalWorkoutAnalysis";
 import { buildWorkoutAnalysisViewModel, type WorkoutAnalysisDisplayModel } from "@/lib/viewModels/workoutAnalysisViewModel";
+import { buildAppleHealthActivityViewModel, isActivityBasedAnalysis } from "@/lib/viewModels/appleHealthActivityViewModel";
 import { buildBodyMapViewModel } from "@/lib/viewModels/bodyMapViewModel";
 import { MuscleEmphasisMap } from "@/components/MuscleEmphasisMap";
 
@@ -199,9 +200,15 @@ export default function WorkoutDetailScreen() {
   const { data: extAnalysisData } = useExternalWorkoutAnalysis(
     type === "external" ? id : null
   );
-  const extAnalysisVm = buildWorkoutAnalysisViewModel(extAnalysisData ?? null);
+  // Build the correct view model depending on whether the server returned
+  // a movement-based score or an activity-based estimate (Apple Health).
+  const isActivityAnalysis = isActivityBasedAnalysis(extAnalysisData);
+  const extMovementData = isActivityAnalysis ? null : (extAnalysisData as ExternalWorkoutAnalysisResult | null);
+  const extAnalysisVm = isActivityAnalysis
+    ? buildAppleHealthActivityViewModel(extAnalysisData as Parameters<typeof buildAppleHealthActivityViewModel>[0])
+    : buildWorkoutAnalysisViewModel(extMovementData);
   // Additional note surfaced when scoring was from movement names only (no set data)
-  const extImportNote = extAnalysisData?.importedDataNote ?? null;
+  const extImportNote = extMovementData?.importedDataNote ?? null;
 
   const [isEditMode, setIsEditMode] = useState(false);
   const [editExercises, setEditExercises] = useState<typeof session extends undefined ? never : NonNullable<typeof session>["exercises"] | null>(null);
@@ -556,16 +563,19 @@ export default function WorkoutDetailScreen() {
         {type === "external" && (
           extAnalysisVm.hasAnalysis ? (
             <>
-              <WorkoutAnalysisPanel vm={extAnalysisVm} importNote={extImportNote} />
-              {/* Step 10: Muscle emphasis map for external premium analysis */}
-              <MuscleEmphasisMap
-                vm={buildBodyMapViewModel(extAnalysisData?.muscleVector, {
-                  mode:        "workout",
-                  sourceLabel: "This workout · relative emphasis",
-                  hasLowData:  extAnalysisVm.analysisConfidence === "low",
-                })}
-                testID="ext-workout-muscle-emphasis-map"
-              />
+              <WorkoutAnalysisPanel vm={extAnalysisVm} importNote={isActivityAnalysis ? null : extImportNote} />
+              {/* Muscle emphasis map: only shown for movement-based analysis.
+                  Activity-based estimates lack a precise per-muscle vector. */}
+              {!isActivityAnalysis && (
+                <MuscleEmphasisMap
+                  vm={buildBodyMapViewModel(extMovementData?.muscleVector, {
+                    mode:        "workout",
+                    sourceLabel: "This workout · relative emphasis",
+                    hasLowData:  extAnalysisVm.analysisConfidence === "low",
+                  })}
+                  testID="ext-workout-muscle-emphasis-map"
+                />
+              )}
             </>
           ) : (external?.muscleGroups ?? []).length > 0 ? (
             <View style={styles.muscleRow}>

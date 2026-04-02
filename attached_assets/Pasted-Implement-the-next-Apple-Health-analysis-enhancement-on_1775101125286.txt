@@ -1,0 +1,140 @@
+Implement the next Apple Health analysis enhancement only.
+
+Goal
+Use the newly imported Apple Health workout metadata more intelligently in the analysis pipeline so Apple Health workouts become more useful even when they do not contain movement-level detail.
+
+Current state
+We already have:
+
+hardened Apple Health integration
+workout-native query path
+structured workout metadata in SyncResult.workouts
+Apple Health workouts imported into the database
+Apple Health workouts visible in workout history
+apple-health-activity-only ineligible reason for analysis when workouts have no movements
+structured 422 response with Apple Health activity summary
+external workout analysis path already exists
+
+We also reviewed kingstinct/react-native-healthkit, which is stronger than our current app in:
+
+richer workout activity typing
+stronger typed workout query models
+anchor-first sync patterns
+subscription/update patterns
+
+We do NOT want to migrate to that library.
+We want to borrow the most useful conceptual improvements and fit them into our existing architecture.
+
+Objective
+Improve Apple Health workout classification and fallback analysis quality by using Apple Health activity metadata more intentionally.
+
+Important scope constraints
+Do NOT implement full anchored sync persistence yet
+Do NOT expand HealthKit permissions yet
+Do NOT redesign the full Apple Health architecture
+Do NOT fake movement-level precision
+Do NOT add readiness/recovery features
+Do NOT add recommendations
+Do NOT rewrite the analysis engine
+
+High-priority tasks
+
+Add an Apple Health workout activity mapping layer
+Create a small utility/module that maps Apple Health activity metadata into app-level analysis hints.
+
+Use fields like:
+
+activityName
+activityId
+duration
+distance
+calories
+sourceName
+
+Examples of desired output hints:
+
+dominant pattern category
+broad muscle emphasis hints
+broad stimulus bias
+analysis confidence tier
+whether the workout is eligible for premium-ish fallback analysis vs coarse fallback only
+
+Keep this conservative and heuristic.
+Do not pretend activity type equals true movement detail.
+
+Improve Apple Health analysis behavior
+For Apple Health workouts with no movements, do not stop at “ineligible.”
+Use activity metadata to decide whether we can return a broader structured fallback analysis that is still more useful than coarse chips alone.
+
+Examples:
+
+Running / Walking / Hiking → lower-body / cyclical / conditioning leaning
+Rowing → cyclical / upper-back + lower-body leaning
+Cycling → cyclical / quad-dominant
+TraditionalStrengthTraining → broad strength / mixed-body / lower-confidence
+HIIT / CrossTraining / FunctionalStrengthTraining → mixed-modal / conditioning-forward / lower-confidence
+Yoga / Pilates / Stretching → recovery / mobility-oriented, low-confidence analysis or safe fallback
+Keep trust cues strong
+If Apple Health activity-only analysis is shown:
+clearly label it as activity-based analysis
+keep confidence/data-quality notes honest
+distinguish it from full movement-based premium analysis
+avoid fake precision
+Reuse the existing analysis contract where practical
+Keep internal, external, and Apple Health analysis responses as consistent as possible.
+If Apple Health needs a special fallback shape, keep it minimal and clearly typed.
+Optional anchor groundwork
+Only if small and safe:
+add comments/types/interfaces showing where anchor persistence would plug in later
+Do not implement full anchor storage yet unless it is clearly trivial.
+
+Suggested implementation areas
+Please inspect the repo and work in the cleanest places, but likely areas include:
+
+Apple Health import/adapter utilities
+external workout analysis adapter
+analysis routes
+view models / trust-note logic for external workouts
+possibly a new module such as:
+lib/appleHealthWorkoutMapping.ts
+lib/appleHealthActivityAnalysis.ts
+
+Expected output
+Return your response in this structure:
+
+Apple Health comparison audit for this step
+what kingstinct/react-native-healthkit does better in this area
+where our current app was still comparatively weak
+Exact changes made
+files added
+files changed
+how Apple Health metadata is now used more intelligently
+Apple Health analysis behavior
+how activity types are mapped
+when Apple Health workouts get activity-based fallback analysis
+when they still stay coarse/ineligible
+what confidence/data-quality notes appear
+Trust and UI behavior
+how the user can tell movement-based analysis from activity-based fallback analysis
+what changed in the workout detail/history experience, if anything
+Tests added
+Add tests for:
+Apple Health activity mapping
+confidence tier behavior
+fallback analysis behavior
+deterministic output
+trust/data-quality messaging
+Remaining non-blocking gaps
+List only what is intentionally deferred:
+full anchored sync persistence
+expanded permissions
+HR/sleep/weight usage
+subscriptions/background updates
+readiness/recovery
+recommendations
+
+Success criteria
+A successful pass should make Apple Health workouts more useful inside the existing analysis product even when only activity-level metadata exists, while preserving trust and avoiding fake movement precision.
+
+My recommendation
+This is the highest-value next step because it directly incorporates the key lesson from the kingstinct repo — richer workout activity typing — without forcing a risky HealthKit migration or a huge sync redesign.

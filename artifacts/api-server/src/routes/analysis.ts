@@ -30,6 +30,7 @@ import { scoreHistory } from "../lib/historyAggregation.js";
 import { generateInsights } from "../lib/historyInsights.js";
 import { parseWeightToKg } from "../lib/weightParser.js";
 import { adaptExternalWorkout, importedDataNote } from "../lib/externalWorkoutAdapter.js";
+import { analyzeAppleHealthActivity } from "../lib/appleHealthActivityAnalysis.js";
 import type { PerformedMovementInput, PerformedWorkoutInput } from "../lib/workoutScoringTypes.js";
 import type { HistoricalWorkoutInput } from "../lib/historyScoringTypes.js";
 
@@ -180,9 +181,23 @@ router.get("/workouts/external/:id/analysis", async (req: Request, res: Response
       );
 
       if (quality.ineligibleReason === "apple-health-activity-only") {
-        res.status(422).json({
-          eligible: false,
-          reason: "This Apple Health workout contains activity-level data only — individual exercises were not recorded.",
+        // Upgrade from 422 → 200 activity-based analysis.
+        // Individual exercises were not recorded, but we can still derive
+        // meaningful muscle/pattern/stimulus estimates from the activity type.
+        const activityHint = analyzeAppleHealthActivity(
+          workout.label,
+          workout.workoutType,
+          workout.duration
+        );
+        console.info(
+          "[analysis] external=%d activity-based pattern=%s confidence=%s",
+          workoutId,
+          activityHint.dominantPattern,
+          activityHint.confidenceTier
+        );
+        res.status(200).json({
+          analysisKind:    "activity-based" as const,
+          activityHint,
           activitySummary: {
             label:           workout.label,
             durationMinutes: workout.duration,
