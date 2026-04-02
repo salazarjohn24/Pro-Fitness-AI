@@ -11,6 +11,7 @@ import exercisesRouter from "./exercises";
 import auditRouter from "./audit";
 import feedbackRouter from "./feedback";
 import metricsRouter from "./metrics";
+import analysisRouter from "./analysis";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use(exercisesRouter);
 router.use(auditRouter);
 router.use(feedbackRouter);
 router.use(metricsRouter);
+router.use(analysisRouter);
 
 export default router;

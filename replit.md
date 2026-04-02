@@ -152,6 +152,46 @@ A canonical muscle weighting engine that augments (never replaces) the broad key
 ### Deferred to Step 2+
 Prescribed vs. performed architecture, historical rollups/aggregations, readiness/recovery/fatigue scoring, broad UI redesigns.
 
+## Training Intelligence Engine — Steps 1–6 (April 2026)
+
+A pure-TypeScript scoring stack in `artifacts/api-server/src/lib/`. All steps are additive layers — each imports only from the one below, never upward.
+
+### Step 1 — Muscle profiles (`movementProfiles.ts`)
+50 canonical movement profiles. `getMovementProfile(name)` → muscle weight vector.
+
+### Step 2 — Movement-level scoring (`muscleVector.ts`)
+`scoreMovement(input)` → `MovementScoreResult` with `muscleVector`, `stimulusVector`, `rawScore`, pattern, method.
+
+### Step 3 — Workout-level aggregation (`workoutVector.ts`)
+`scoreWorkout(input)` → `WorkoutScoreResult` with additive `muscleVector`, `patternVector`, rawScore-weighted `stimulusVector`, ranked `summary`.
+
+### Step 4 — Historical rollup (`historyAggregation.ts`)
+`scoreHistory(inputs, options)` → `HistoricalRollupResult` with cumulative + recency-decay vectors (0–2d=1.0, 3–7d=0.80, 8–14d=0.55, 15–30d=0.30, 31–90d=0.15, >90d=0.08), rank-shift detection, fully injectable `referenceDate`.
+
+### Step 5 — Insight layer (`historyInsights.ts`)
+`generateInsights(rollup, options)` → `InsightGenerationResult`. 8 insight types (recently elevated/reduced, underrepresented muscle/pattern, dominant pattern/stimulus bias, balance observations, data quality note). All text is relative/descriptive — never prescriptive.
+
+### Step 6 — Presentation integration (April 2026)
+
+**Backend routes** (`artifacts/api-server/src/routes/analysis.ts`):
+- `GET /api/workouts/sessions/:id/analysis` — runs `scoreWorkout` on a stored session's exercises; returns `WorkoutScoreResult`
+- `GET /api/training/history-analysis?days=N&rangeLabel=...` — runs `scoreHistory` + `generateInsights`; returns `{ rollup, insights }`
+- Weight parser: `artifacts/api-server/src/lib/weightParser.ts` — converts "135 lbs" / "60 kg" / bare number / "bodyweight" to kg
+
+**Mobile presentation layer**:
+- `artifacts/mobile/lib/formatters/trainingDisplay.ts` — label maps (muscleLabel, patternLabel, stimulusLabel), roundScore, formatScorePct, severityTier, displayOrFallback
+- `artifacts/mobile/lib/viewModels/workoutAnalysisViewModel.ts` — `buildWorkoutAnalysisViewModel(WorkoutScoreResultJSON)` → `WorkoutAnalysisDisplayModel` with headline, topMuscles, topPatterns, dominantStimulus, presentStimuli, dataQualityNote, sections
+- `artifacts/mobile/lib/viewModels/historyAnalysisViewModel.ts` — `buildHistoryAnalysisViewModel(rollup, insights)` → `HistoryAnalysisDisplayModel` with headline, topMuscles, recentShifts, insightCards, dataQualityNote, summaryObservations
+- `artifacts/mobile/hooks/useWorkoutAnalysis.ts` — React Query hook for session analysis endpoint
+- `artifacts/mobile/hooks/useTrainingAnalysis.ts` — React Query hook for history analysis endpoint (`TrainingRangePreset`: 7 | 14 | 30 | 60 | 90)
+
+**Test baseline (April 2026):**
+- api-server: **1,376 tests / 21 files** (Steps 1–6 including weightParser)
+- mobile: **255 tests / 7 files** (trainingDisplay, workoutAnalysisViewModel, historyAnalysisViewModel)
+
+### Deferred to Step 7+
+Readiness/recovery/fatigue scoring, personalized recommendations, prescribed vs. performed delta, body-map rendering, UI screens consuming the view models.
+
 ## External Dependencies
 
 - **OpenAI**: Integrated via Replit AI Integrations for all AI-powered features (workout generation, parsing, insights, coach notes).

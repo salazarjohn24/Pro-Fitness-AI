@@ -1,0 +1,128 @@
+Implement Step 6 only.
+
+Goal
+Integrate the completed training-intelligence stack into the product presentation layer so users can actually see and use:
+
+workout analysis
+historical summaries
+insight cards
+data quality/confidence messaging
+
+Existing foundation
+Step 1 exists:
+
+canonical movement profiles
+
+Step 2 exists:
+
+movement-level scoring
+
+Step 3 exists:
+
+workout-level aggregation
+
+Step 4 exists:
+
+historical rollups
+
+Step 5 exists:
+
+structured insight generation
+
+Do not work on Step 7 or beyond.
+Do not build readiness/recovery/fatigue scoring.
+Do not build prescribed vs performed delta logic.
+Do not add programming recommendations.
+Do not overbuild charts or body-map rendering unless clearly trivial.
+Do not redesign the whole app.
+
+Step 6 objective
+Create the presentation integration layer that transforms backend scoring outputs into UI-friendly models for:
+
+workout detail analysis
+history summary
+insight cards
+data quality/confidence notes
+
+Expected work
+Please inspect the codebase and implement the cleanest version of:
+
+mobile/lib/viewModels/workoutAnalysisViewModel.ts
+mobile/lib/viewModels/historyAnalysisViewModel.ts
+optional: mobile/lib/viewModels/insightCards.ts
+optional: mobile/lib/formatters/trainingDisplay.ts
+
+Also audit where old broad client-side stimulus logic is still used and refactor only the minimum necessary to route new UI surfaces through the Step 3–5 outputs.
+
+Suggested responsibilities
+
+workoutAnalysisViewModel.ts
+Transform WorkoutScoreResult into:
+headline
+top muscles
+top patterns
+dominant stimulus
+fallback/data-quality note
+card-ready sections
+historyAnalysisViewModel.ts
+Transform HistoricalRollupResult + InsightGenerationResult into:
+time-range headline
+top muscles
+top patterns
+recent vs cumulative emphasis
+insight cards
+data quality note
+trainingDisplay.ts
+Centralize formatting:
+muscle labels
+pattern labels
+stimulus labels
+score rounding
+safe user-facing wording
+
+Important guidance
+
+keep backend scoring logic untouched
+keep presentation logic separate from core scoring
+avoid overclaiming language
+surface fallback/data quality honestly
+handle low-data states safely
+prefer a few strong summary surfaces over too many UI elements
+
+High-priority UI surfaces
+
+workout detail analysis
+history summary
+insight cards
+
+Tests required
+Add tests for:
+
+view model formatting correctness
+deterministic ordering
+fallback/data-quality display
+low-data / empty-state behavior
+copy safety and label consistency
+
+Expected output
+Return:
+
+current-state audit for Step 6
+exact files/modules added or changed
+presentation-layer implementation details
+any old client-side logic that remains and why
+tests added
+non-blocking gaps intentionally deferred to Step 7+
+
+Success criteria
+A successful Step 6 implementation should make it possible for the app to clearly show:
+
+what a workout emphasized
+what recent training has emphasized
+what has been less emphasized
+what insights stand out
+when data quality is weaker due to fallback usage
+
+My recommendation
+Step 6 should focus on making the intelligence visible and trustworthy, not more complex.
+The fastest path to real product value now is wiring the engine into a few clear summary surfaces.
