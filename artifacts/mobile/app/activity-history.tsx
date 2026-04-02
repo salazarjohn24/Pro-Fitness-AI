@@ -20,6 +20,8 @@ import {
   buildHistoryAnalysisViewModel,
   type InsightCard,
 } from "@/lib/viewModels/historyAnalysisViewModel";
+import { buildBodyMapViewModel, type BodyMapMode } from "@/lib/viewModels/bodyMapViewModel";
+import { MuscleEmphasisMap } from "@/components/MuscleEmphasisMap";
 
 // ---------------------------------------------------------------------------
 // Severity → Color (for insight cards)
@@ -152,10 +154,28 @@ function TrainingOverviewPanel({
   onRangeChange: (r: TrainingRangePreset) => void;
 }) {
   const { data: analysisData, isLoading } = useTrainingAnalysis(range);
+  const [emphasisMode, setEmphasisMode] = useState<BodyMapMode>("cumulative");
+
   const vm = buildHistoryAnalysisViewModel(
     analysisData?.rollup ?? null,
     analysisData?.insights ?? null,
   );
+
+  const rollup = analysisData?.rollup ?? null;
+  const emphasisVector =
+    emphasisMode === "recent"
+      ? rollup?.recencyMuscleVector
+      : rollup?.cumulativeMuscleVector;
+
+  const rangeLabel = range === 7  ? "Past 7 days"
+                   : range === 30 ? "Past 30 days"
+                   : `Past ${range} days`;
+
+  const bodyMapVm = buildBodyMapViewModel(emphasisVector ?? null, {
+    mode:        emphasisMode,
+    sourceLabel: emphasisMode === "recent" ? "Recent workouts" : rangeLabel,
+    hasLowData:  vm.dataConfidence === "low",
+  });
 
   return (
     <View style={overviewStyles.wrapper} testID="training-overview-panel">
@@ -216,6 +236,15 @@ function TrainingOverviewPanel({
                   ))}
                 </View>
               </View>
+            )}
+
+            {/* Step 10: Muscle emphasis map — cumulative/recent toggle */}
+            {bodyMapVm.hasData && (
+              <MuscleEmphasisMap
+                vm={bodyMapVm}
+                onModeChange={setEmphasisMode}
+                testID="history-muscle-emphasis-map"
+              />
             )}
 
             {/* Insight cards (max 3, excluding data quality) */}

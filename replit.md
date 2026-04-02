@@ -258,8 +258,51 @@ A pure-TypeScript scoring stack in `artifacts/api-server/src/lib/`. All steps ar
 - api-server: **1,409 tests / 22 files** (unchanged)
 - mobile: **356 tests / 10 files** (+42 step9Integration)
 
-### Deferred to Step 10+
-Readiness/recovery/fatigue scoring, personalized recommendations, prescribed vs. performed delta, body-map rendering.
+### Step 10 — Muscle-emphasis visualization (April 2026)
+
+**New files:**
+- `mobile/lib/viewModels/bodyMapViewModel.ts` — pure transform: muscle vector → `BodyMapDisplayModel`
+  - `buildBodyMapViewModel(muscleVector, { mode, sourceLabel, hasLowData? })` works for workout, cumulative, and recent modes
+  - Normalization is always relative (max muscle = 1.0); absolute values never shown
+  - EmphasisTier: `none / low (< 0.33) / medium (< 0.67) / high`; matches brand colors
+  - 4 anatomical regions (push / pull / core / lower) with `BodyMapRegion[]` for grid layout callers
+  - `BODY_MAP_MAX_ROWS = 8` (capped bar chart), regions are uncapped
+  - `EMPTY_BODY_MAP` constant for zero/null input; `hasData=false` collapses the component
+  - Unknown muscle keys gracefully fall back to humanized key string
+- `mobile/components/MuscleEmphasisMap.tsx` — compact horizontal bar-chart visualization
+  - Renders top muscles as proportional fill bars (steel blue → gold → orange by emphasis tier)
+  - Optional `onModeChange` prop adds an ALL / RECENT pill toggle (for history view)
+  - Without toggle, shows a static `sourceLabel` subtitle
+  - Low-data qualifier rendered when `vm.hasLowData=true`
+  - Returns `null` when `vm.hasData=false` — callers need no guard
+
+**Screen integrations:**
+- `workout-detail.tsx`: `MuscleEmphasisMap` rendered below `WorkoutAnalysisPanel` for both internal (session) and external workout paths, only when `hasAnalysis=true`; `hasLowData` tied to `analysisConfidence === "low"`
+- `activity-history.tsx`: `MuscleEmphasisMap` rendered inside `TrainingOverviewPanel` after the top-muscle chips; ALL/RECENT toggle swaps between `cumulativeMuscleVector` and `recencyMuscleVector` from the rollup; `hasLowData` tied to `vm.dataConfidence === "low"`
+
+**Coexistence contract:**
+- MuscleEmphasisMap is purely additive — all existing chips, cards, and quality notes remain
+- Shown only when premium analysis data is available (guarded by `hasAnalysis` / `bodyMapVm.hasData`)
+- Wording remains relative and non-prescriptive ("relative emphasis only")
+
+**Tests (`bodyMapViewModel.test.ts`, +41 mobile tests):**
+- Normalization (max always 1.0, proportional fractions)
+- EmphasisTier boundary conditions (threshold constants)
+- Row ordering, 1-based rank, BODY_MAP_MAX_ROWS cap
+- Region grouping: all 4 regions always present; correct muscle membership; regionTopScore; region ordering uncapped vs. row cap
+- Empty state (null / empty object / all-zero vector → hasData=false)
+- hasLowData propagation
+- Determinism (same vector → identical model)
+- Unknown muscle key graceful fallback
+- Known label map (upper_back_lats → "Upper back / lats", quads → "Quadriceps")
+- All three modes (workout / cumulative / recent)
+
+**Test baseline (April 2026, after Step 10):**
+- api-server: **1,409 tests / 22 files** (unchanged)
+- mobile: **397 tests / 11 files** (+41 bodyMapViewModel)
+
+### Deferred to Step 11+
+Readiness/recovery/fatigue scoring, personalized programming recommendations, prescribed vs. performed delta, advanced anatomy breakdown (more than 4 regions).
 
 ## External Dependencies
 

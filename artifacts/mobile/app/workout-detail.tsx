@@ -22,6 +22,8 @@ import { useSessionDetail, useUpdateSessionExercises, useDeleteSession } from "@
 import { useWorkoutAnalysis } from "@/hooks/useWorkoutAnalysis";
 import { useExternalWorkoutAnalysis } from "@/hooks/useExternalWorkoutAnalysis";
 import { buildWorkoutAnalysisViewModel, type WorkoutAnalysisDisplayModel } from "@/lib/viewModels/workoutAnalysisViewModel";
+import { buildBodyMapViewModel } from "@/lib/viewModels/bodyMapViewModel";
+import { MuscleEmphasisMap } from "@/components/MuscleEmphasisMap";
 
 // ---------------------------------------------------------------------------
 // Formatters
@@ -518,6 +520,18 @@ export default function WorkoutDetailScreen() {
                 ))}
               </View>
             ) : null}
+
+            {/* Step 10: Muscle emphasis map — additive, shown only with premium analysis */}
+            {analysisVm.hasAnalysis && !analysisLoading && (
+              <MuscleEmphasisMap
+                vm={buildBodyMapViewModel(analysisData?.muscleVector, {
+                  mode:        "workout",
+                  sourceLabel: "This workout · relative emphasis",
+                  hasLowData:  analysisVm.analysisConfidence === "low",
+                })}
+                testID="workout-muscle-emphasis-map"
+              />
+            )}
           </>
         )}
 
@@ -541,7 +555,18 @@ export default function WorkoutDetailScreen() {
          */}
         {type === "external" && (
           extAnalysisVm.hasAnalysis ? (
-            <WorkoutAnalysisPanel vm={extAnalysisVm} importNote={extImportNote} />
+            <>
+              <WorkoutAnalysisPanel vm={extAnalysisVm} importNote={extImportNote} />
+              {/* Step 10: Muscle emphasis map for external premium analysis */}
+              <MuscleEmphasisMap
+                vm={buildBodyMapViewModel(extAnalysisData?.muscleVector, {
+                  mode:        "workout",
+                  sourceLabel: "This workout · relative emphasis",
+                  hasLowData:  extAnalysisVm.analysisConfidence === "low",
+                })}
+                testID="ext-workout-muscle-emphasis-map"
+              />
+            </>
           ) : (external?.muscleGroups ?? []).length > 0 ? (
             <View style={styles.muscleRow}>
               {(external!.muscleGroups ?? []).map((m: string) => (

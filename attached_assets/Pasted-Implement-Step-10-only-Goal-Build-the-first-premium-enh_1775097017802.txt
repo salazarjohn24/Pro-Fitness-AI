@@ -1,0 +1,207 @@
+Implement Step 10 only.
+
+Goal
+Build the first premium enhancement layer on top of the completed MVP training-analysis system.
+
+Current state
+Steps 1–9 are complete:
+
+canonical movement profiles
+movement-level scoring
+workout-level aggregation
+historical rollups
+insight generation
+workout analysis UI
+history analysis UI
+external workout analysis unification
+final MVP hardening, trust cues, coexistence cleanup, and observability
+
+Step 10 objective
+Add one premium enhancement that materially improves user understanding without destabilizing the product.
+
+Priority for Step 10
+Implement body-map / muscle-balance visualization first.
+Do NOT build readiness/recovery/fatigue or recommendations in this step unless the body-map work is already complete and clearly low-risk.
+
+Why
+The current product already has strong text and chip-based analysis.
+The biggest remaining UX gap is more intuitive visual understanding of:
+
+what muscles have been emphasized
+what muscles have been less emphasized
+how a workout or timeframe distributes load across the body
+
+Important scope constraints
+Do NOT build prescribed vs performed delta logic.
+Do NOT build readiness/recovery/fatigue scoring.
+Do NOT build programming recommendations.
+Do NOT redesign the whole app.
+Do NOT replace the existing analysis panels.
+Do NOT create a huge visualization framework.
+Keep this additive, low-risk, and useful.
+
+Step 10 primary deliverable
+Add a body-map / muscle-balance visualization layer that can consume the existing analysis outputs for:
+
+a single workout analysis
+a historical time-range analysis
+
+The visualization should make it easier to understand muscle emphasis at a glance, but should remain honest and relative.
+
+Recommended product behavior
+
+Workout detail screen
+Add a compact visual section under or near the analysis summary:
+
+body-region emphasis view or muscle-balance map
+visually indicate top-loaded muscle groups for the workout
+remain compatible with fallback/data-quality notes
+
+History analysis screen
+Add a compact visual section that reflects the selected range:
+
+recent or cumulative muscle emphasis view
+optionally allow a simple toggle between recent and cumulative if trivial
+keep the rest of the history insight cards intact
+
+Recommended implementation strategy
+Use the existing 12 muscle groups as the rendering basis:
+
+chest
+shoulders
+triceps
+biceps
+upper_back_lats
+lower_back
+core
+glutes
+hamstrings
+quads
+calves
+forearms_grip
+
+Map them into a simple front/back body-region visualization or grouped body blocks.
+Do not attempt detailed anatomy.
+Do not imply medical or biomechanical precision.
+This should be a relative emphasis visualization only.
+
+Expected new files/modules
+Please inspect the codebase and implement the cleanest version of something like:
+
+mobile/components/BodyMap.tsx
+mobile/components/MuscleBalanceLegend.tsx
+mobile/lib/viewModels/bodyMapViewModel.ts
+optional: mobile/lib/formatters/bodyMapDisplay.ts
+
+Suggested responsibilities
+
+bodyMapViewModel.ts
+Transform workout/history muscle vectors into UI-friendly visualization input:
+normalize scores for display
+group or map each muscle to a visual region
+preserve labels and relative ranking
+handle empty/low-data states
+allow a display mode like:
+cumulative
+recent
+workout
+BodyMap.tsx
+Render a compact, simple, deterministic visualization.
+This can be:
+front/back silhouette regions
+stacked body sections
+mirrored region cards
+any clear, low-risk visual representation
+
+The visualization should:
+
+highlight relative emphasis
+support accessibility and simple labels
+work without needing advanced graphics
+not require a full redesign
+MuscleBalanceLegend.tsx
+Provide simple explanatory context:
+higher emphasis
+lower emphasis
+relative to selected workout or selected range
+optional note when data confidence is low
+
+Integration guidance
+Wire the body-map visualization into:
+
+internal workout analysis panel
+external workout analysis panel only when premium analysis exists
+history analysis overview
+
+Keep existing chips, cards, and notes.
+The visualization should augment the existing analysis, not replace it.
+
+Important guidance
+
+keep the visualization relative, not absolute
+keep safe wording
+preserve fallback/data quality notes
+do not create conflicting signals with the existing summary text
+handle low-data and empty states gracefully
+prefer a compact, legible MVP visualization over a flashy but fragile one
+
+Testing required
+Add tests for:
+
+bodyMapViewModel normalization and mapping
+empty-state handling
+deterministic region ordering
+label consistency
+low-data / fallback note coexistence
+workout vs history visualization inputs
+integration into existing analysis panels/screens
+
+Expected output
+Return:
+
+Step 10 audit
+what the current UI still lacked before this pass
+why the chosen body-map visualization approach was selected
+Exact changes made
+files added
+files changed
+where the visualization is rendered
+any view-model or formatter additions
+Visualization behavior
+how muscle groups map to regions
+how normalization works
+how low-data states are handled
+how workout vs history views differ
+Tests added
+view model tests
+rendering/integration tests
+edge cases
+Remaining non-blocking gaps
+Only list what is intentionally still deferred beyond Step 10:
+prescribed vs performed delta
+readiness/recovery/fatigue
+recommendations
+any more advanced premium enhancements
+
+Success criteria
+A successful Step 10 implementation should make it much easier for a user to visually understand:
+
+what a workout emphasized
+what a timeframe emphasized
+what seems more or less represented
+without overstating confidence or changing the underlying scoring logic.
+
+Priority order
+If scope needs to be constrained, prioritize:
+
+history body-map visualization
+workout body-map visualization
+legend / trust cues
+refinement of visual styling
+
+Do not drift into recommendations or readiness.
+This step is visualization only.
+
+My recommendation
+Ask Replit to keep the visual design simple and robust.
+A clean, trustworthy body-region visualization will add more value right now than jumping into fatigue/recommendation logic.
