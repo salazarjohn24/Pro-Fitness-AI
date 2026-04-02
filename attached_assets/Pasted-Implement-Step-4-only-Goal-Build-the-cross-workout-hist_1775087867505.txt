@@ -1,0 +1,148 @@
+Implement Step 4 only.
+
+Goal
+Build the cross-workout historical rollup engine that aggregates multiple scored workouts across a selected time range.
+
+Existing foundation
+Step 1 exists:
+
+canonical movement profiles
+aliases
+explicit muscle roles
+15-pattern taxonomy
+
+Step 2 exists:
+
+movement-level scoring engine
+exposure scoring
+muscle vectors
+stimulus vectors
+
+Step 3 exists:
+
+workout-level aggregation
+workout summaries
+workout muscle/pattern/stimulus vectors
+fallback metadata
+
+Do not work on Step 5 or beyond.
+Do not build readiness/recovery/fatigue scoring.
+Do not build prescribed vs performed delta logic.
+Do not redesign UI.
+Do not add body map rendering.
+Do not add personalized recommendations.
+
+Step 4 objective
+Given a collection of scored workouts with timestamps, return historical rollups for a selected time range, including:
+
+cumulative muscle exposure
+recency-weighted muscle exposure
+cumulative pattern exposure
+recency-weighted pattern exposure
+cumulative stimulus distribution
+recency-weighted stimulus distribution
+ranked top muscles/patterns
+underrepresented muscles/patterns
+summary observations and metadata
+
+Expected new modules
+Please inspect the codebase and implement the cleanest version of the following, adjusting filenames only if there is a clearly better fit:
+
+lib/historyScoringTypes.ts
+lib/historyAggregation.ts
+lib/recencyWeighting.ts
+lib/historySummary.ts
+optional: lib/timeRange.ts
+
+Suggested types
+Please define types similar to:
+
+HistoricalWorkoutInput
+TimeRangePreset
+HistoricalRollupResult
+HistoryAggregationMetadata
+RankedEntry
+RecencyWeightedVector
+
+Suggested responsibilities
+
+historyAggregation.ts
+Main entry point.
+accept a collection of scored workouts plus timestamps
+filter by selected date range
+sum cumulative muscle vectors
+sum cumulative pattern vectors
+sum cumulative stimulus vectors
+compute recency-weighted versions
+roll up fallback/unknown metadata
+recencyWeighting.ts
+Encapsulate a simple, explainable V1 recency weighting model.
+Keep it heuristic and transparent.
+Prefer day-bucket or simple exponential decay.
+Do not overclaim physiology.
+historySummary.ts
+Generate ranked summaries and observations:
+top muscles
+top patterns
+underrepresented muscles/patterns
+recent emphasis vs full-range emphasis
+dominant stimulus tendencies
+timeRange.ts
+Optional helper for preset/custom time filtering.
+
+Important guidance
+
+keep historical aggregation separate from workout scoring
+keep cumulative and recency-weighted views separate
+use relative language like “underrepresented relative to selected range”
+do not create hard-coded universal training ideals
+keep outputs explainable and deterministic
+preserve safe behavior for empty histories and incomplete metadata
+
+Recommended V1 recency model
+Use a simple explainable recency weighting model such as:
+
+0–2 days ago = 1.0
+3–7 days ago = 0.8
+8–14 days ago = 0.55
+15–30 days ago = 0.3
+31–90 days ago = 0.15
+older = 0.08
+
+You may refine the bucket edges if the codebase suggests a cleaner implementation, but keep the model simple and explainable.
+
+Tests required
+Add tests for:
+
+date range filtering
+cumulative aggregation correctness
+recency weighting behavior
+top/bottom ranking determinism
+mixed-history summaries
+empty history safety
+metadata rollup correctness
+repeated calls deterministic output
+
+Expected output
+Return:
+
+current-state audit for Step 4
+exact new files/modules
+exact types/interfaces
+implementation of historical rollups
+tests added
+what old logic remains untouched
+non-blocking gaps intentionally deferred to Step 5+
+
+Success criteria
+A successful Step 4 implementation should let us answer:
+
+what muscles and patterns have been emphasized this week/month/quarter/year?
+what has been less emphasized relative to the selected range?
+what is recently elevated versus only cumulatively high?
+what broad stimulus tendencies dominate the selected window?
+
+My recommendation
+Step 4 should stop at historical rollups and relative emphasis.
+Do not let it drift into readiness or recommendations yet.
+That will keep the system honest and make Step 5 much cleaner.
