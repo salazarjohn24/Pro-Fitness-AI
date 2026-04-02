@@ -175,6 +175,7 @@ A pure-TypeScript scoring stack in `artifacts/api-server/src/lib/`. All steps ar
 
 **Backend routes** (`artifacts/api-server/src/routes/analysis.ts`):
 - `GET /api/workouts/sessions/:id/analysis` — runs `scoreWorkout` on a stored session's exercises; returns `WorkoutScoreResult`
+- `GET /api/workouts/external/:id/analysis` — Step 8: adapts external workout via `externalWorkoutAdapter`, scores when eligible; returns `WorkoutScoreResult + importedDataNote`; 422 when ineligible
 - `GET /api/training/history-analysis?days=N&rangeLabel=...` — runs `scoreHistory` + `generateInsights`; returns `{ rollup, insights }`
 - Weight parser: `artifacts/api-server/src/lib/weightParser.ts` — converts "135 lbs" / "60 kg" / bare number / "bodyweight" to kg
 
@@ -184,6 +185,7 @@ A pure-TypeScript scoring stack in `artifacts/api-server/src/lib/`. All steps ar
 - `artifacts/mobile/lib/viewModels/historyAnalysisViewModel.ts` — `buildHistoryAnalysisViewModel(rollup, insights)` → `HistoryAnalysisDisplayModel` with headline, topMuscles, recentShifts, insightCards, dataQualityNote, summaryObservations
 - `artifacts/mobile/hooks/useWorkoutAnalysis.ts` — React Query hook for session analysis endpoint
 - `artifacts/mobile/hooks/useTrainingAnalysis.ts` — React Query hook for history analysis endpoint (`TrainingRangePreset`: 7 | 14 | 30 | 60 | 90)
+- `artifacts/mobile/hooks/useExternalWorkoutAnalysis.ts` — Step 8: React Query hook for external workout analysis; returns null on 422/404 (graceful fallback)
 
 **Test baseline (April 2026):**
 - api-server: **1,376 tests / 21 files** (Steps 1–6 including weightParser)
@@ -191,17 +193,35 @@ A pure-TypeScript scoring stack in `artifacts/api-server/src/lib/`. All steps ar
 
 ### Step 7 — UI wiring (April 2026)
 
-**`artifacts/mobile/app/workout-detail.tsx`** — internal sessions now show a `WorkoutAnalysisPanel` (headline, engine-scored muscle chips, pattern chips, stimulus badge, data quality note) in place of the coarse `primaryMuscle` chips. External workouts keep their existing coarse `muscleGroups` chips unchanged. Fallback to coarse chips if analysis is empty. Loading skeleton shown while analysis fetches.
+**`artifacts/mobile/app/workout-detail.tsx`** — internal sessions now show a `WorkoutAnalysisPanel` (headline, engine-scored muscle chips, pattern chips, stimulus badge, data quality note) in place of the coarse `primaryMuscle` chips. Fallback to coarse chips if analysis is empty. Loading skeleton shown while analysis fetches.
 
-**`artifacts/mobile/app/activity-history.tsx`** — a `TrainingOverviewPanel` is added as `FlatList` ListHeaderComponent (scrolls with the list). Includes a range picker (7d / 30d / 90d), headline, top-muscle chips with recency shift arrows (↑/↓), insight cards (max 3), summary observations, data quality note, and a low-data trust cue for sparse ranges. Existing workout list rows and `stimulusPoints` subtitle are unchanged.
+**`artifacts/mobile/app/activity-history.tsx`** — `TrainingOverviewPanel` added as `FlatList ListHeaderComponent`. Range picker (7d/30d/90d), muscle chips with ↑/↓ shift indicators, insight cards, data quality notes. History analysis hook calls the backend. Shows skeleton while loading, empty state for no data.
 
 **`lib/__tests__/step7Integration.test.ts`** — 43 new tests covering: workout analysis panel render/fallback/loading/error, history overview states, insight card structure and text-safety contract, recent shift flags, severity values, coexistence decisions, and determinism.
 
 **Test baseline (April 2026, after Step 7):**
-- api-server: **1,376 tests / 21 files**
-- mobile: **298 tests / 8 files**
+- api-server: **1,376 tests / 21 files** (unchanged)
+- mobile: **298 tests / 8 files** (+43 step7Integration)
 
-### Deferred to Step 8+
+### Step 8 — External workout analysis unification (April 2026)
+
+**`artifacts/api-server/src/lib/externalWorkoutAdapter.ts`** — Pure adapter converting external workout DB rows → `PerformedWorkoutInput`. Computes `ExtractionQuality` (`totalMovements`, `hasSetData`, `isEligible`, `ineligibleReason`). `importedDataNote()` helper for name-only imports.
+
+**`GET /api/workouts/external/:id/analysis`** — New endpoint in `analysis.ts`. Auth-guarded. Uses adapter → eligibility check → `scoreWorkout()`. Returns `WorkoutScoreResult + importedDataNote` (200) or `{ eligible: false, reason }` (422) or 404.
+
+**`artifacts/mobile/hooks/useExternalWorkoutAnalysis.ts`** — Hook. Returns null on 422/404 (triggers coarse-chip fallback). Throws on 5xx.
+
+**`workout-detail.tsx` external branch** — Now calls `useExternalWorkoutAnalysis`. Shows `WorkoutAnalysisPanel` when eligible (analysis available), falls back to coarse `muscleGroups` chips when not. `importedDataNote` shown as a second info row when present and `dataQualityNote` is null.
+
+**`WorkoutAnalysisPanel`** — Updated to accept optional `importNote` prop (extra info line for external name-only imports).
+
+**History endpoint** — `buildExternalWorkoutInput` inline helper replaced by `adaptExternalWorkout` from the adapter. Eligibility now uses `quality.isEligible` guard (same logic, cleaner code).
+
+**Test baseline (April 2026, after Step 8):**
+- api-server: **1,409 tests / 22 files** (+33 externalWorkoutAdapter)
+- mobile: **314 tests / 9 files** (+16 step8Integration)
+
+### Deferred to Step 9+
 Readiness/recovery/fatigue scoring, personalized recommendations, prescribed vs. performed delta, body-map rendering.
 
 ## External Dependencies

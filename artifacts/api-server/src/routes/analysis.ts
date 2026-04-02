@@ -1,17 +1,22 @@
 /**
- * analysis.ts — Step 6 presentation integration routes.
+ * analysis.ts — Steps 6–8 presentation integration routes.
  *
- * Two endpoints that run the scoring stack against stored session data and
+ * Three endpoints that run the scoring stack against stored workout data and
  * return structured results for the mobile presentation layer.
  *
- * GET /api/workouts/sessions/:id/analysis
- *   Runs Step 3 scoreWorkout() on a stored session's exercises.
+ * GET /api/workouts/sessions/:id/analysis          (Step 6 — in-app sessions)
+ *   Runs scoreWorkout() on a stored session's exercises.
  *   Returns WorkoutScoreResult (JSON-serialisable).
  *
- * GET /api/training/history-analysis?days=N&rangeLabel=...
- *   Runs Step 4 scoreHistory() + Step 5 generateInsights() over the
- *   user's sessions in the last N days (default 30).
- *   Returns { rollup: HistoricalRollupResult, insights: InsightGenerationResult }
+ * GET /api/workouts/external/:id/analysis          (Step 8 — external workouts)
+ *   Adapts external workout movements via externalWorkoutAdapter and runs
+ *   scoreWorkout() when eligible.
+ *   Returns WorkoutScoreResult + importedDataNote, or 422 when ineligible.
+ *
+ * GET /api/training/history-analysis               (Step 6 — rolling window)
+ *   Runs scoreHistory() + generateInsights() over the user's sessions in the
+ *   last N days (default 30).
+ *   Returns { rollup, insights }
  *
  * SCOPE: Presentation bridge only. No DB writes. All scoring is pure and
  * stateless. No readiness/recovery/fatigue logic.
@@ -24,13 +29,14 @@ import { scoreWorkout } from "../lib/workoutVector.js";
 import { scoreHistory } from "../lib/historyAggregation.js";
 import { generateInsights } from "../lib/historyInsights.js";
 import { parseWeightToKg } from "../lib/weightParser.js";
+import { adaptExternalWorkout, importedDataNote } from "../lib/externalWorkoutAdapter.js";
 import type { PerformedMovementInput, PerformedWorkoutInput } from "../lib/workoutScoringTypes.js";
 import type { HistoricalWorkoutInput } from "../lib/historyScoringTypes.js";
 
 const router: IRouter = Router();
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Helpers — internal sessions
 // ---------------------------------------------------------------------------
 
 /**
@@ -73,57 +79,8 @@ function buildWorkoutInput(sessionRow: {
   };
 }
 
-/**
- * Build a PerformedWorkoutInput from an external workout's movements JSON blob.
- */
-function buildExternalWorkoutInput(externalRow: {
-  label?: string | null;
-  workoutType?: string | null;
-  movements?: unknown;
-  duration?: number | null;
-  stimulusPoints?: number | null;
-}): PerformedWorkoutInput {
-  type ExternalMovement = {
-    name: string;
-    movementType?: string;
-    volume?: string;
-    setRows?: Array<{
-      reps?: number;
-      weight?: string;
-      durationSeconds?: number;
-      distance?: number;
-      calories?: number;
-    }>;
-  };
-
-  const rawMovements = (externalRow.movements ?? []) as ExternalMovement[];
-
-  const movements: PerformedMovementInput[] = rawMovements.flatMap((m) => {
-    const rows = m.setRows ?? [];
-    if (rows.length === 0) {
-      return [{ name: m.name }];
-    }
-    return rows.map((r) => ({
-      name: m.name,
-      reps: r.reps != null && r.reps > 0 ? r.reps : undefined,
-      loadKg:
-        r.weight != null && parseWeightToKg(r.weight) > 0
-          ? parseWeightToKg(r.weight)
-          : undefined,
-      distanceM: r.distance != null && r.distance > 0 ? r.distance : undefined,
-      calories: r.calories != null && r.calories > 0 ? r.calories : undefined,
-    }));
-  });
-
-  return {
-    movements,
-    workoutName: externalRow.label ?? undefined,
-    workoutType: externalRow.workoutType ?? undefined,
-  };
-}
-
 // ---------------------------------------------------------------------------
-// GET /api/workouts/sessions/:id/analysis
+// GET /api/workouts/sessions/:id/analysis  (Step 6 — unchanged)
 // ---------------------------------------------------------------------------
 
 router.get("/workouts/sessions/:id/analysis", async (req: Request, res: Response) => {
@@ -165,7 +122,71 @@ router.get("/workouts/sessions/:id/analysis", async (req: Request, res: Response
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/training/history-analysis
+// GET /api/workouts/external/:id/analysis  (Step 8 — new)
+// ---------------------------------------------------------------------------
+
+/**
+ * External workout analysis endpoint.
+ *
+ * Adapts the external workout data via externalWorkoutAdapter and runs the
+ * same Step 3–5 scoring stack as the internal sessions endpoint.
+ *
+ * Response:
+ *   200  — { ...WorkoutScoreResult, importedDataNote: string | null }
+ *   422  — { eligible: false, reason: string }   (ineligible to score)
+ *   404  — workout not found or not owned by user
+ *   401  — not authenticated
+ */
+router.get("/workouts/external/:id/analysis", async (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const workoutId = parseInt(req.params.id, 10);
+  if (isNaN(workoutId)) {
+    res.status(400).json({ error: "Invalid workout ID" });
+    return;
+  }
+
+  try {
+    const [workout] = await db
+      .select()
+      .from(externalWorkoutsTable)
+      .where(
+        and(
+          eq(externalWorkoutsTable.id, workoutId),
+          eq(externalWorkoutsTable.userId, req.user.id)
+        )
+      );
+
+    if (!workout) {
+      res.status(404).json({ error: "Workout not found" });
+      return;
+    }
+
+    const { input, quality } = adaptExternalWorkout(workout);
+
+    if (!quality.isEligible) {
+      res.status(422).json({
+        eligible: false,
+        reason: quality.ineligibleReason ?? "Not enough data to score this workout.",
+      });
+      return;
+    }
+
+    const result = scoreWorkout(input);
+    const dataNote = importedDataNote(quality);
+
+    res.json({ ...result, importedDataNote: dataNote });
+  } catch (err) {
+    console.error("External workout analysis error:", err);
+    res.status(500).json({ error: "Analysis failed" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/training/history-analysis  (Step 6 — updated to use adapter)
 // ---------------------------------------------------------------------------
 
 router.get("/training/history-analysis", async (req: Request, res: Response) => {
@@ -208,14 +229,14 @@ router.get("/training/history-analysis", async (req: Request, res: Response) => 
         performedAt: s.createdAt,
       })),
       ...externalWorkouts
-        .filter((e) => {
-          const movements = (e.movements ?? []) as unknown[];
-          return e.workoutType !== "rest" && movements.length > 0;
-        })
-        .map((e) => ({
-          workoutResult: scoreWorkout(buildExternalWorkoutInput(e)),
-          performedAt: e.workoutDate ? new Date(e.workoutDate) : e.createdAt,
-        })),
+        .flatMap((e) => {
+          const { input, quality } = adaptExternalWorkout(e);
+          if (!quality.isEligible) return [];
+          return [{
+            workoutResult: scoreWorkout(input),
+            performedAt:   e.workoutDate ? new Date(e.workoutDate as string) : e.createdAt,
+          }];
+        }),
     ];
 
     const rollup = scoreHistory(historicalInputs);

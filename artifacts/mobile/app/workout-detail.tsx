@@ -20,6 +20,7 @@ import { Colors } from "@/constants/colors";
 import { useRecentExternalWorkouts, useUpdateExternalWorkout, type ExternalWorkout } from "@/hooks/useProfile";
 import { useSessionDetail, useUpdateSessionExercises, useDeleteSession } from "@/hooks/useWorkout";
 import { useWorkoutAnalysis } from "@/hooks/useWorkoutAnalysis";
+import { useExternalWorkoutAnalysis } from "@/hooks/useExternalWorkoutAnalysis";
 import { buildWorkoutAnalysisViewModel, type WorkoutAnalysisDisplayModel } from "@/lib/viewModels/workoutAnalysisViewModel";
 
 // ---------------------------------------------------------------------------
@@ -80,10 +81,18 @@ const MUSCLE_COLOR: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// WorkoutAnalysisPanel — renders the Step 3–6 analysis for an internal session
+// WorkoutAnalysisPanel — renders the Step 3–8 analysis for sessions and
+// external workouts. importNote is an optional extra note for external
+// workouts scored without set-level data.
 // ---------------------------------------------------------------------------
 
-function WorkoutAnalysisPanel({ vm }: { vm: WorkoutAnalysisDisplayModel }) {
+function WorkoutAnalysisPanel({
+  vm,
+  importNote,
+}: {
+  vm: WorkoutAnalysisDisplayModel;
+  importNote?: string | null;
+}) {
   return (
     <View style={analysisStyles.card} testID="workout-analysis-panel">
       {/* Headline */}
@@ -127,11 +136,19 @@ function WorkoutAnalysisPanel({ vm }: { vm: WorkoutAnalysisDisplayModel }) {
         </View>
       )}
 
-      {/* Data quality note */}
+      {/* Data quality note — fallback-movement ratio */}
       {vm.dataQualityNote != null && (
         <View style={analysisStyles.qualityNote} testID="analysis-quality-note">
           <Feather name="info" size={11} color={Colors.textSubtle} />
           <Text style={analysisStyles.qualityNoteText}>{vm.dataQualityNote}</Text>
+        </View>
+      )}
+
+      {/* Import data note — name-only scoring caveat for external workouts */}
+      {importNote != null && vm.dataQualityNote == null && (
+        <View style={analysisStyles.qualityNote} testID="analysis-import-note">
+          <Feather name="info" size={11} color={Colors.textSubtle} />
+          <Text style={analysisStyles.qualityNoteText}>{importNote}</Text>
         </View>
       )}
     </View>
@@ -170,11 +187,19 @@ export default function WorkoutDetailScreen() {
   const { mutate: updateExternal, isPending: isSavingExternal } = useUpdateExternalWorkout();
   const { mutate: deleteSession, isPending: isDeleting } = useDeleteSession();
 
-  // Step 6 analysis — only for in-app sessions
+  // Step 6 analysis — in-app sessions
   const { data: analysisData, isLoading: analysisLoading } = useWorkoutAnalysis(
     type === "internal" ? id : null
   );
   const analysisVm = buildWorkoutAnalysisViewModel(analysisData ?? null);
+
+  // Step 8 analysis — external workouts (premium when eligible, coarse fallback when not)
+  const { data: extAnalysisData } = useExternalWorkoutAnalysis(
+    type === "external" ? id : null
+  );
+  const extAnalysisVm = buildWorkoutAnalysisViewModel(extAnalysisData ?? null);
+  // Additional note surfaced when scoring was from movement names only (no set data)
+  const extImportNote = extAnalysisData?.importedDataNote ?? null;
 
   const [isEditMode, setIsEditMode] = useState(false);
   const [editExercises, setEditExercises] = useState<typeof session extends undefined ? never : NonNullable<typeof session>["exercises"] | null>(null);
@@ -492,16 +517,20 @@ export default function WorkoutDetailScreen() {
           </>
         )}
 
-        {/* External workouts: coarse muscle chips (no analysis endpoint for external) */}
-        {type === "external" && (external?.muscleGroups ?? []).length > 0 && (
-          <View style={styles.muscleRow}>
-            {(external!.muscleGroups ?? []).map((m: string) => (
-              <View key={m} style={[styles.muscleChip, { borderColor: (MUSCLE_COLOR[m] ?? Colors.textSubtle) + "50" }]}>
-                <View style={[styles.muscleDot, { backgroundColor: MUSCLE_COLOR[m] ?? Colors.textSubtle }]} />
-                <Text style={styles.muscleChipText}>{m}</Text>
-              </View>
-            ))}
-          </View>
+        {/* External workouts: full analysis panel when eligible, coarse chips as fallback */}
+        {type === "external" && (
+          extAnalysisVm.hasAnalysis ? (
+            <WorkoutAnalysisPanel vm={extAnalysisVm} importNote={extImportNote} />
+          ) : (external?.muscleGroups ?? []).length > 0 ? (
+            <View style={styles.muscleRow}>
+              {(external!.muscleGroups ?? []).map((m: string) => (
+                <View key={m} style={[styles.muscleChip, { borderColor: (MUSCLE_COLOR[m] ?? Colors.textSubtle) + "50" }]}>
+                  <View style={[styles.muscleDot, { backgroundColor: MUSCLE_COLOR[m] ?? Colors.textSubtle }]} />
+                  <Text style={styles.muscleChipText}>{m}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null
         )}
 
         {isEditMode && (

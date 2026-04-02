@@ -1,0 +1,89 @@
+Implement Step 8 only.
+
+Goal
+Unify analysis quality across internal and external workouts by allowing external workouts to participate in the Step 3–7 analysis pipeline when enough data exists, while preserving safe fallback behavior when external data is sparse.
+
+Current state
+
+internal sessions already use the premium analysis stack through workout-detail.tsx
+external workouts still use coarse muscleGroups, stimulusPoints, and fatiguePercent
+Step 6 added analysis.ts endpoints for internal sessions and training history
+Step 7 integrated premium analysis into internal workout detail and history overview
+
+Do not work on Step 9 or beyond.
+Do not build readiness/recovery/fatigue scoring.
+Do not build prescribed vs performed delta logic.
+Do not add body-map rendering.
+Do not redesign the whole app.
+
+Step 8 objective
+Create an external workout analysis path that:
+
+extracts usable movement inputs from external workout data
+scores external workouts through the existing Step 3–5 stack when eligible
+returns a compatible analysis response shape
+lets the workout detail screen render the premium analysis panel for external workouts when enough data exists
+falls back gracefully to existing coarse fields when not enough data exists
+
+Expected backend work
+Please inspect the existing external workout data shape and implement the cleanest version of:
+
+lib/externalWorkoutAdapter.ts
+optional: lib/externalWorkoutScoring.ts
+extend routes/analysis.ts with an external workout analysis endpoint
+
+Suggested responsibilities
+
+externalWorkoutAdapter.ts
+convert external workout data into PerformedWorkoutInput-compatible structure
+extract recognizable movements and available reps/load/duration/distance/calories
+compute extraction quality / eligibility metadata
+return whether the workout is scoreable, partially scoreable, or fallback-only
+analysis route
+add external workout analysis endpoint
+reuse the existing Step 3–5 scoring stack when eligible
+return safe fallback metadata when not eligible
+preserve graceful empty states
+
+Expected mobile work
+Please implement the minimum necessary to use external analysis in workout-detail:
+
+hooks/useExternalWorkoutAnalysis.ts
+reuse existing workoutAnalysisViewModel where possible
+update workout-detail.tsx so:
+internal workouts continue using existing premium analysis
+external workouts use premium analysis when external analysis is available and eligible
+otherwise external workouts continue showing the existing coarse fields
+
+Important guidance
+
+do not fake precision when imported data is weak
+clearly surface data quality / imported-data caveats
+keep old coarse external fields as the fallback path
+do not replace the internal analysis path
+keep the implementation low-risk and additive
+
+Tests required
+Add tests for:
+
+external workout adaptation
+scoreability / eligibility thresholds
+external analysis endpoint behavior
+external workout detail rendering with premium analysis
+fallback behavior when external data is insufficient
+data-quality messaging
+deterministic output
+
+Expected output
+Return:
+
+current-state audit for Step 8
+exact files/modules added or changed
+how external workout adaptation works
+how scoring eligibility works
+how workout-detail now handles external workouts
+tests added
+non-blocking gaps intentionally deferred to Step 9+
+
+Success criteria
+A successful Step 8 implementation should make the product feel more unified by allowing external workouts to show the premium analysis experience when the imported data is good enough, while still handling sparse external workouts honestly and safely.
