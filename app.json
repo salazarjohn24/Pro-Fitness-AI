@@ -6,7 +6,10 @@
       }
     },
     "ios": {
-      "bundleIdentifier": "com.salazarjohn24.workspace"
+      "bundleIdentifier": "com.salazarjohn24.workspace",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     }
   }
 }
