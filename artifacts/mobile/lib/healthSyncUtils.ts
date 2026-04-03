@@ -175,6 +175,51 @@ export function localDayEnd(date: Date): Date {
 }
 
 // ---------------------------------------------------------------------------
+// Anchor storage — incremental workout sync
+// ---------------------------------------------------------------------------
+
+/**
+ * AsyncStorage key for the HealthKit workout query anchor.
+ *
+ * The anchor is a server-issued opaque string returned by getAnchoredWorkouts().
+ * Persisting it and passing it on the next call makes subsequent syncs
+ * incremental: HealthKit only returns workouts added/modified since the anchor.
+ *
+ * Anchor lifecycle:
+ *   first sync  → no anchor → full date-range query → receive anchor A1 → store A1
+ *   next sync   → pass A1   → receive only new items → receive anchor A2 → store A2
+ *   ...
+ *   anchor invalid → error  → clear anchor → fall back to full date-range query
+ *
+ * Stored here as a plain string (react-native-health representation).
+ * Clearing the anchor forces a full re-fetch on the next sync (safe fallback).
+ */
+export const WORKOUT_ANCHOR_STORAGE_KEY = "@health_workout_anchor_v1";
+
+/**
+ * Identifies the sync mode for a given workout read.
+ *
+ * "anchor" — incremental: only workouts added/modified since the last stored anchor.
+ * "full"   — date-range sweep: all workouts from 2010-01-01 to now.
+ */
+export type SyncMode = "anchor" | "full";
+
+/**
+ * Heuristic to detect when HealthKit has invalidated a stored anchor.
+ *
+ * When an anchor becomes stale (Health data restored from backup, Health app
+ * reset, etc.) HealthKit may return an error whose message references "anchor".
+ * This helper matches common patterns to trigger the full-sync fallback safely.
+ *
+ * Exported as a pure function so it can be unit-tested without any mocks.
+ * Intentionally broad: false-positive anchor detections just trigger an
+ * unnecessary full sync, which is always safe (server deduplicates by UUID).
+ */
+export function isAnchorInvalidationError(errorMessage: string): boolean {
+  return /anchor/i.test(errorMessage);
+}
+
+// ---------------------------------------------------------------------------
 // Permission constants — single source of truth for read permission order
 // ---------------------------------------------------------------------------
 

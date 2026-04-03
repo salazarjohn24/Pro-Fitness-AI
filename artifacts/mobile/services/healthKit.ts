@@ -63,8 +63,10 @@ import {
   HealthSyncError,
   DIAG_STORAGE_KEY,
   DIAG_INITIAL,
+  WORKOUT_ANCHOR_STORAGE_KEY,
   dedupeWorkouts,
   dedupeHKWorkouts,
+  isAnchorInvalidationError,
   localDayStart,
   log,
   logError,
@@ -77,6 +79,7 @@ import {
   type HKSample,
   type HKWorkoutSample,
   type HealthErrorCode,
+  type SyncMode,
 } from "@/lib/healthSyncUtils";
 
 // ---------------------------------------------------------------------------
@@ -140,6 +143,47 @@ async function writeDiag(patch: Partial<DiagnosticState>): Promise<void> {
 }
 
 export { readDiag };
+
+// ---------------------------------------------------------------------------
+// Anchor storage helpers — incremental workout sync
+// ---------------------------------------------------------------------------
+
+/**
+ * Read the persisted HealthKit workout anchor from AsyncStorage.
+ * Returns null when no anchor exists (first sync, or after a reset/fallback).
+ */
+async function readWorkoutAnchor(): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(WORKOUT_ANCHOR_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Persist a new HealthKit workout anchor after a successful incremental read.
+ * Non-fatal: if storage fails the next sync just falls back to a full query.
+ */
+async function writeWorkoutAnchor(anchor: string): Promise<void> {
+  try {
+    await AsyncStorage.setItem(WORKOUT_ANCHOR_STORAGE_KEY, anchor);
+  } catch {
+    // Non-fatal — next sync falls back to full query
+  }
+}
+
+/**
+ * Remove the stored workout anchor.
+ * Called when an anchor-based read fails (e.g. anchor invalidated by HealthKit
+ * after a data restore or Health app reset) so the next sync does a full query.
+ */
+async function clearWorkoutAnchor(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(WORKOUT_ANCHOR_STORAGE_KEY);
+  } catch {
+    // Non-fatal
+  }
+}
 
 // ---------------------------------------------------------------------------
 // HealthKit permission helpers
@@ -380,25 +424,49 @@ function getActiveEnergyBurned(
 }
 
 /**
+ * Structured return type for getWorkoutSamples.
+ *
+ * `newAnchor` is the HealthKit-issued token for the NEXT incremental query.
+ * It should be persisted to AsyncStorage immediately after a successful read
+ * and passed back to the next call as the `anchor` parameter.
+ * A null `newAnchor` means the native call returned no anchor (unexpected;
+ * treated as a full-sync result that does not update the stored anchor).
+ */
+interface WorkoutSamplesResult {
+  workouts: HKWorkoutQueriedSampleType[];
+  newAnchor: string | null;
+}
+
+/**
  * HARDEN-2: Reads workouts via getAnchoredWorkouts() — the typed, workout-native
  * HealthKit API — instead of getSamples({ type: "Workout" } as any).
  *
- * getAnchoredWorkouts returns HKWorkoutQueriedSampleType[], which provides:
- *   activityName, activityId, calories, distance, duration, start, end,
- *   device, sourceName, sourceId, tracked, metadata, workoutEvents.
+ * When `anchor` is provided (truthy string from a previous sync), HealthKit
+ * returns ONLY workouts added or modified since that anchor point — making
+ * this an incremental read.  The result always includes a new `anchor` string
+ * that should replace the stored one for the next sync.
  *
- * This replaces the previous untyped path that used a getSamples cast to `any`
- * and discarded all workout metadata. The richer data is captured in SyncResult.workouts.
+ * When `anchor` is absent or undefined, the call behaves as a date-range sweep
+ * (full sync): all workouts from startDate to endDate are returned.
  *
- * No anchor token is used here (returns all workouts in the date window). Anchored
- * incremental sync is a planned follow-up that requires anchor storage — see
- * deferred items in the hardening audit.
+ * Incremental sync lifecycle:
+ *   first sync  → no anchor → full sweep → receive anchor A1 → store A1
+ *   next sync   → pass A1  → incremental → receive anchor A2 → store A2
+ *   …
+ *   anchor bad  → error    → caller clears anchor → falls back to full sweep
  */
-function getWorkoutSamples(startDate: Date, endDate: Date): Promise<HKWorkoutQueriedSampleType[]> {
+function getWorkoutSamples(
+  startDate: Date,
+  endDate: Date,
+  anchor?: string,
+): Promise<WorkoutSamplesResult> {
   return new Promise((resolve, reject) => {
     const options: HealthInputOptions = {
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString(),
+      // Only include anchor when defined — passing undefined would be a no-op,
+      // but explicit is clearer for both the reader and the native layer.
+      ...(anchor ? { anchor } : {}),
     };
     try {
       AppleHealthKit.getAnchoredWorkouts(
@@ -408,7 +476,10 @@ function getWorkoutSamples(startDate: Date, endDate: Date): Promise<HKWorkoutQue
             reject(new HealthSyncError(HEALTH_ERROR.READ_FAILED, error.message));
             return;
           }
-          resolve(results?.data ?? []);
+          resolve({
+            workouts:  results?.data    ?? [],
+            newAnchor: results?.anchor  ?? null,
+          });
         },
       );
     } catch (e) {
@@ -482,13 +553,21 @@ async function doSync(): Promise<SyncResult> {
     timeout_status: "ok",
   });
 
+  // Load the stored workout anchor for incremental sync.
+  // First sync: storedAnchor is null → full date-range sweep.
+  // Subsequent syncs: storedAnchor is set → HealthKit returns only new/modified workouts.
+  const storedAnchor = await readWorkoutAnchor();
+  const initialSyncMode: SyncMode = storedAnchor ? "anchor" : "full";
+  log("read", "anchor_check", { sync_mode: initialSyncMode, has_anchor: !!storedAnchor });
+
   let stepsRetryCount = 0;
   let caloriesRetryCount = 0;
   let workoutsRetryCount = 0;
 
   // HARDEN-4: onRetry callbacks now accept the triggering error (3rd arg) and
   // log error_type / error_code for richer retry diagnostics.
-  const [stepsResult, caloriesResult, workoutsResult] =
+  // `let` (not `const`) so the anchor fallback block can rebind workoutsResult.
+  let [stepsResult, caloriesResult, workoutsResult] =
     await Promise.allSettled([
       withRetry(
         () =>
@@ -532,7 +611,11 @@ async function doSync(): Promise<SyncResult> {
       ),
       withRetry(
         () =>
-          withTimeout(getWorkoutSamples(startDate, endDate), READ_TIMEOUT_MS, "workouts"),
+          withTimeout(
+            getWorkoutSamples(startDate, endDate, storedAnchor ?? undefined),
+            READ_TIMEOUT_MS,
+            "workouts",
+          ),
         {
           maxAttempts: 3,
           baseDelayMs: 500,
@@ -552,6 +635,38 @@ async function doSync(): Promise<SyncResult> {
       ),
     ]);
 
+  // ── Anchor fallback ───────────────────────────────────────────────────────
+  // If an anchor-based workout read fails (e.g. HealthKit invalidated the token
+  // after a data restore or Health app reset), clear the stale anchor and retry
+  // once without it. The full date-range sweep combined with server-side UUID
+  // deduplication guarantees a safe, consistent result.
+  if (workoutsResult.status === "rejected" && storedAnchor) {
+    const reason = workoutsResult.reason;
+    const errMsg =
+      reason instanceof HealthSyncError
+        ? reason.message
+        : String(reason ?? "");
+    const anchorRelated = isAnchorInvalidationError(errMsg);
+    log("read", "anchor_fallback", {
+      sync_mode: "full",
+      anchor_related: anchorRelated,
+      error_code: reason instanceof HealthSyncError ? reason.code : undefined,
+    });
+    await clearWorkoutAnchor();
+    try {
+      const fallbackResult = await withTimeout(
+        getWorkoutSamples(startDate, endDate, undefined),
+        READ_TIMEOUT_MS,
+        "workouts_fallback",
+      );
+      workoutsResult = { status: "fulfilled", value: fallbackResult };
+      log("read", "anchor_fallback_ok", { count: fallbackResult.workouts.length });
+    } catch {
+      // Fallback also failed; workoutsResult stays as "rejected" — handled below
+      log("read", "anchor_fallback_failed");
+    }
+  }
+
   // Log per-read outcomes with retry_count and timeout_status
   if (stepsResult.status === "fulfilled") {
     log("read", "steps_ok", { count: stepsResult.value.length, retry_count: stepsRetryCount, timeout_status: "ok" });
@@ -570,7 +685,13 @@ async function doSync(): Promise<SyncResult> {
       { metric: "calories", retry_count: caloriesRetryCount, timeout_status: isTimeout ? "timed_out" : "ok" });
   }
   if (workoutsResult.status === "fulfilled") {
-    log("read", "workouts_ok", { count: workoutsResult.value.length, retry_count: workoutsRetryCount, timeout_status: "ok" });
+    log("read", "workouts_ok", {
+      count: workoutsResult.value.workouts.length,
+      sync_mode: storedAnchor && workoutsResult.status === "fulfilled" ? initialSyncMode : "full",
+      has_new_anchor: !!workoutsResult.value.newAnchor,
+      retry_count: workoutsRetryCount,
+      timeout_status: "ok",
+    });
   } else {
     const isTimeout = workoutsResult.reason instanceof HealthSyncError &&
       workoutsResult.reason.code === HEALTH_ERROR.READ_TIMEOUT;
@@ -601,8 +722,18 @@ async function doSync(): Promise<SyncResult> {
     stepsResult.status === "fulfilled" ? stepsResult.value : [];
   const rawCalories =
     caloriesResult.status === "fulfilled" ? caloriesResult.value : [];
+  // Extract the workouts array and new anchor from the structured result.
   const rawWorkouts: HKWorkoutQueriedSampleType[] =
-    workoutsResult.status === "fulfilled" ? workoutsResult.value : [];
+    workoutsResult.status === "fulfilled" ? workoutsResult.value.workouts : [];
+  const freshAnchor: string | null =
+    workoutsResult.status === "fulfilled" ? workoutsResult.value.newAnchor : null;
+
+  // Persist the new anchor immediately after a successful workout read so the
+  // NEXT sync can send it back to HealthKit for an incremental query.
+  if (freshAnchor) {
+    await writeWorkoutAnchor(freshAnchor);
+    log("read", "anchor_saved", { sync_mode: initialSyncMode });
+  }
 
   log("transform", "start", { raw_workouts: rawWorkouts.length });
 

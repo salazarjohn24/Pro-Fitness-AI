@@ -1,0 +1,71 @@
+We want to plan and begin implementing the next Apple Health capability layer using our current app plus the uploaded kingstinct/react-native-healthkit repo as a comparison reference.
+
+We are considering three features:
+
+anchored incremental sync for workouts
+expanded Apple Health read permissions for richer workout context
+writing completed in-app workouts back to Apple Health
+
+Goal
+Use the uploaded repo as a comparison reference to help us implement these correctly in our current architecture.
+Do NOT migrate us to that library.
+Do NOT rewrite our HealthKit integration wholesale.
+
+Task
+Inspect our current Apple Health implementation and the uploaded kingstinct/react-native-healthkit repo, then give us a practical implementation plan for all three features and implement the first one if scope allows.
+
+Priority order
+
+anchored incremental sync
+expanded read permissions
+writing workouts back to Apple Health
+
+Important scope constraints
+
+do not redesign the whole HealthKit architecture
+do not add readiness/recovery features
+do not add recommendations
+do not over-expand permissions without a concrete use
+do not implement all three in one giant pass unless clearly safe
+use the uploaded repo as a benchmark/reference, not a migration target
+
+What we want from the comparison
+Tell us:
+
+how the uploaded repo handles anchored queries and anchor lifecycle
+how it models expanded permission support
+how it models saving workouts back to Apple Health
+where our current app is comparatively weakest for each of these
+what the cleanest implementation order is in our codebase
+
+Then implement the highest-value next step:
+Anchored incremental sync for workouts
+
+For anchored sync, please:
+
+identify where our current sync still behaves like a full historical re-fetch
+add the cleanest low-risk anchor storage / retrieval mechanism
+use anchor-based workout sync when possible
+preserve safe fallback to full sync if the anchor is missing or invalid
+add logging/telemetry so we can see when anchor-based sync vs fallback sync is used
+keep current product behavior stable
+
+Also include a plan, but do not necessarily implement yet, for:
+
+which new Apple Health permissions we should add next and why
+what must be true before we safely write workouts back to Apple Health
+
+Expected output
+Return:
+
+comparison audit across the three features
+recommended implementation order
+exact files to change for anchored sync
+anchored sync implementation details
+deferred plan for expanded permissions
+deferred plan for workout write-back
+tests added
+remaining non-blocking gaps
+
+Success criteria
+A successful pass should use the uploaded repo to improve our implementation choices, not replace our architecture, and should land anchored incremental sync as the first concrete improvement.

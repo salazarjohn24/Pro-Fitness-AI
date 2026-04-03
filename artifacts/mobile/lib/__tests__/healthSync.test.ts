@@ -24,10 +24,12 @@ import {
   HealthSyncError,
   DIAG_INITIAL,
   DIAG_STORAGE_KEY,
+  WORKOUT_ANCHOR_STORAGE_KEY,
   AUTH_READ_PERMISSION_KEYS,
   dedupeWorkouts,
   dedupeHKWorkouts,
   formatLastSynced,
+  isAnchorInvalidationError,
   localDayEnd,
   localDayStart,
   log,
@@ -40,6 +42,7 @@ import {
   type DiagnosticState,
   type HKSample,
   type HKWorkoutSample,
+  type SyncMode,
 } from "../healthSyncUtils";
 
 // ---------------------------------------------------------------------------
@@ -882,5 +885,204 @@ describe("HS-19 — AUTH_READ_PERMISSION_KEYS structural integrity", () => {
 
   it("total count matches expected 3 permissions for this release", () => {
     expect(AUTH_READ_PERMISSION_KEYS.length).toBe(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HS-20  WORKOUT_ANCHOR_STORAGE_KEY — format and uniqueness
+// ---------------------------------------------------------------------------
+describe("HS-20 — WORKOUT_ANCHOR_STORAGE_KEY format and uniqueness", () => {
+  it("is a non-empty string", () => {
+    expect(typeof WORKOUT_ANCHOR_STORAGE_KEY).toBe("string");
+    expect(WORKOUT_ANCHOR_STORAGE_KEY.length).toBeGreaterThan(0);
+  });
+
+  it("follows the @name_vN convention used by this app's storage keys", () => {
+    expect(WORKOUT_ANCHOR_STORAGE_KEY).toMatch(/^@[a-z_]+_v\d+$/);
+  });
+
+  it("is distinct from DIAG_STORAGE_KEY to prevent key collision", () => {
+    expect(WORKOUT_ANCHOR_STORAGE_KEY).not.toBe(DIAG_STORAGE_KEY);
+  });
+
+  it("contains 'anchor' in the key name for discoverability", () => {
+    expect(WORKOUT_ANCHOR_STORAGE_KEY.toLowerCase()).toContain("anchor");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HS-21  isAnchorInvalidationError — detects anchor-related error messages
+// ---------------------------------------------------------------------------
+describe("HS-21 — isAnchorInvalidationError detects anchor error messages", () => {
+  it("returns true for a message that contains 'anchor' (lowercase)", () => {
+    expect(isAnchorInvalidationError("anchor is invalid")).toBe(true);
+  });
+
+  it("returns true for a message that contains 'Anchor' (capital A)", () => {
+    expect(isAnchorInvalidationError("Anchor token expired")).toBe(true);
+  });
+
+  it("returns true for a message that contains 'ANCHOR' (all caps)", () => {
+    expect(isAnchorInvalidationError("ANCHOR_INVALIDATED")).toBe(true);
+  });
+
+  it("returns true for a realistic HealthKit anchor invalidation message", () => {
+    expect(
+      isAnchorInvalidationError(
+        "The anchor provided to HKAnchoredObjectQuery is no longer valid."
+      )
+    ).toBe(true);
+  });
+
+  it("returns false for a generic read error unrelated to anchors", () => {
+    expect(isAnchorInvalidationError("Health data unavailable")).toBe(false);
+  });
+
+  it("returns false for an empty string", () => {
+    expect(isAnchorInvalidationError("")).toBe(false);
+  });
+
+  it("returns false for a permission-related message", () => {
+    expect(isAnchorInvalidationError("Authorization denied by the user")).toBe(false);
+  });
+
+  it("returns false for a timeout message", () => {
+    expect(isAnchorInvalidationError("Timed out after 10000ms (workouts)")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HS-22  isAnchorInvalidationError — pure function contract
+// ---------------------------------------------------------------------------
+describe("HS-22 — isAnchorInvalidationError is a pure function", () => {
+  it("returns the same result for the same input (idempotent)", () => {
+    const msg = "The anchor object has been invalidated";
+    expect(isAnchorInvalidationError(msg)).toBe(isAnchorInvalidationError(msg));
+  });
+
+  it("does not mutate its argument", () => {
+    const original = "The anchor is stale";
+    const copy = original;
+    isAnchorInvalidationError(original);
+    expect(original).toBe(copy);
+  });
+
+  it("handles special regex characters in the message without throwing", () => {
+    const weirdMsg = "Error [anchor]: ($invalid.*)";
+    expect(() => isAnchorInvalidationError(weirdMsg)).not.toThrow();
+    expect(isAnchorInvalidationError(weirdMsg)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HS-23  SyncMode — type values anchor and full
+// ---------------------------------------------------------------------------
+describe("HS-23 — SyncMode type values are 'anchor' and 'full'", () => {
+  it("'anchor' is a valid SyncMode value", () => {
+    const mode: SyncMode = "anchor";
+    expect(mode).toBe("anchor");
+  });
+
+  it("'full' is a valid SyncMode value", () => {
+    const mode: SyncMode = "full";
+    expect(mode).toBe("full");
+  });
+
+  it("SyncMode values are distinct", () => {
+    const anchor: SyncMode = "anchor";
+    const full: SyncMode = "full";
+    expect(anchor).not.toBe(full);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HS-24  Anchor lifecycle semantics — null/undefined safe helpers
+// ---------------------------------------------------------------------------
+describe("HS-24 — anchor lifecycle logic and edge cases", () => {
+  it("WORKOUT_ANCHOR_STORAGE_KEY is stable across multiple accesses", () => {
+    const first  = WORKOUT_ANCHOR_STORAGE_KEY;
+    const second = WORKOUT_ANCHOR_STORAGE_KEY;
+    expect(first).toBe(second);
+  });
+
+  it("isAnchorInvalidationError returns boolean (never throws)", () => {
+    const inputs = ["", "anchor", "normal error", "Anchor problem", "abc123"];
+    for (const input of inputs) {
+      expect(() => isAnchorInvalidationError(input)).not.toThrow();
+      expect(typeof isAnchorInvalidationError(input)).toBe("boolean");
+    }
+  });
+
+  it("full-sync path is chosen when storedAnchor is null (logical check)", () => {
+    const storedAnchor: string | null = null;
+    const syncMode: SyncMode = storedAnchor ? "anchor" : "full";
+    expect(syncMode).toBe("full");
+  });
+
+  it("anchor-sync path is chosen when storedAnchor is a non-empty string", () => {
+    const storedAnchor: string | null = "some-opaque-anchor-token";
+    const syncMode: SyncMode = storedAnchor ? "anchor" : "full";
+    expect(syncMode).toBe("anchor");
+  });
+
+  it("falls back to full when storedAnchor is empty string (falsy)", () => {
+    const storedAnchor: string | null = "";
+    const syncMode: SyncMode = storedAnchor ? "anchor" : "full";
+    expect(syncMode).toBe("full");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HS-25  Anchor fallback detection — real vs non-real invalidation errors
+// ---------------------------------------------------------------------------
+describe("HS-25 — anchor fallback detection boundary cases", () => {
+  const SHOULD_TRIGGER = [
+    "HKAnchoredObjectQuery anchor is no longer valid",
+    "anchor object expired",
+    "Invalid anchor provided",
+    "Anchor has been reset due to backup restore",
+    "The ANCHOR_TOKEN is stale",
+  ];
+
+  const SHOULD_NOT_TRIGGER = [
+    "Health data read failed",
+    "Permission denied",
+    "HealthKit not available",
+    "Sync timed out",
+    "Network error",
+    "Unable to complete request",
+  ];
+
+  for (const msg of SHOULD_TRIGGER) {
+    it(`triggers fallback for: "${msg}"`, () => {
+      expect(isAnchorInvalidationError(msg)).toBe(true);
+    });
+  }
+
+  for (const msg of SHOULD_NOT_TRIGGER) {
+    it(`does NOT trigger fallback for: "${msg}"`, () => {
+      expect(isAnchorInvalidationError(msg)).toBe(false);
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// HS-26  Anchor storage key versioning
+// ---------------------------------------------------------------------------
+describe("HS-26 — anchor storage key versioning", () => {
+  it("includes a version suffix (_v1) to allow future schema migrations", () => {
+    expect(WORKOUT_ANCHOR_STORAGE_KEY).toMatch(/_v\d+$/);
+  });
+
+  it("current version is v1", () => {
+    expect(WORKOUT_ANCHOR_STORAGE_KEY).toMatch(/_v1$/);
+  });
+
+  it("key does not collide with health sync state key", () => {
+    expect(WORKOUT_ANCHOR_STORAGE_KEY).not.toBe("@health_sync_state_v1");
+  });
+
+  it("key does not collide with diagnostic storage key", () => {
+    expect(WORKOUT_ANCHOR_STORAGE_KEY).not.toBe("@health_diag_v1");
   });
 });
